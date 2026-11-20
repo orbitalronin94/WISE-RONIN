@@ -9,19 +9,16 @@ QA_REVIEW = {
     "¿Cuál es la capital de Israel?": "Pregunta geopolíticamente disputada; la respuesta depende del reconocimiento y del marco institucional. Reescribir con contexto o excluir.",
 }
 
-# Source-record IDs are used where the same factual claim appears under
-# differently worded prompts. This avoids quarantining unrelated variants.
+# IDs are used when the same factual claim appears under differently worded prompts.
 QA_REVIEW_RECORDS = {
     38: "El Nilo suele figurar como el río más largo, pero la comparación con el Amazonas depende de cómo se definan y midan las fuentes y desembocaduras. Añadir la controversia o evitar el superlativo absoluto.",
     39: "La respuesta confunde el gas necesario con la mezcla que respiramos: respiramos aire, compuesto principalmente por nitrógeno y oxígeno (aprox. 21%).",
     99: "La respuesta confunde el gas necesario con la mezcla que respiramos: respiramos aire, compuesto principalmente por nitrógeno y oxígeno (aprox. 21%).",
-    326: "Pregunta geopolíticamente disputada; la respuesta depende del reconocimiento y del marco institucional. Reescribir con contexto o excluir.",
     334: "Almaty dejó de ser la capital de Kazajistán en 1997; la capital actual es Astaná. Corregir la respuesta.",
     345: "Colombo no es la capital legislativa oficial de Sri Lanka; esa función corresponde a Sri Jayawardenepura Kotte. Colombo es capital comercial y sede del presidente y del Gobierno. Precisar el tipo de capital.",
     371: "Bolivia tiene capital constitucional en Sucre y sede de Gobierno en La Paz. La pregunta genérica requiere distinguir ambas funciones.",
     423: "El Nilo suele figurar como el río más largo, pero la comparación con el Amazonas depende de cómo se definan y midan las fuentes y desembocaduras. Añadir la controversia o evitar el superlativo absoluto.",
     424: "La respuesta confunde el gas necesario con la mezcla que respiramos: respiramos aire, compuesto principalmente por nitrógeno y oxígeno (aprox. 21%).",
-    447: "La respuesta aportada dice plata; la plata es el mejor conductor eléctrico entre los metales, mientras que el cobre suele citarse como segundo. Revisión humana necesaria.",
     476: "La teoría de evolución por selección natural fue presentada independientemente por Charles Darwin y Alfred Russel Wallace; atribuirla solo a Darwin simplifica la historia.",
     477: "Einstein formuló la teoría de la relatividad; no la 'escribió' como si fuese una obra única. Reformular la pregunta y la respuesta con precisión.",
     485: "La impresión y los tipos móviles existían en Asia oriental antes de Gutenberg. Su contribución fue desarrollar la imprenta europea de tipos móviles metálicos. Especificar el ámbito europeo.",
@@ -29,9 +26,6 @@ QA_REVIEW_RECORDS = {
     490: "Leeuwenhoek no fue quien usó el primer microscopio; los primeros microscopios compuestos se atribuyen a desarrollos anteriores. Leeuwenhoek destacó por sus microscopios de una sola lente y observaciones.",
     492: "Galileo desarrolló un termoscopio y contribuyó a la termometría, pero no puede afirmarse sin matices que inventó el termómetro. La historia incluye a Santorio y otros investigadores.",
     507: "La pregunta es sobre Cuba, pero la respuesta cambia el sujeto a España. La abolición de la esclavitud en Cuba se produjo en 1886; corregir el texto para que coincida con el país preguntado.",
-    659: "La teoría de evolución por selección natural fue presentada independientemente por Charles Darwin y Alfred Russel Wallace; atribuirla solo a Darwin simplifica la historia.",
-    660: "Einstein formuló la teoría de la relatividad; no la 'escribió' como si fuese una obra única. Reformular la pregunta y la respuesta con precisión.",
-    663: "La impresión y los tipos móviles existían en Asia oriental antes de Gutenberg. Su contribución fue desarrollar la imprenta europea de tipos móviles metálicos. Especificar el ámbito europeo.",
     644: "El Nilo suele figurar como el río más largo, pero la comparación con el Amazonas depende de cómo se definan y midan las fuentes y desembocaduras. Añadir la controversia o evitar el superlativo absoluto.",
     645: "La respuesta confunde el gas necesario con la mezcla que respiramos: respiramos aire, compuesto principalmente por nitrógeno y oxígeno (aprox. 21%).",
     659: "La teoría de evolución por selección natural fue presentada independientemente por Charles Darwin y Alfred Russel Wallace; atribuirla solo a Darwin simplifica la historia.",
@@ -50,7 +44,7 @@ QA_REVIEW_RECORDS = {
 }
 
 def normalize(s: str) -> str:
-    return re.sub(r"\\s+", " ", s).strip().casefold()
+    return re.sub(r"\s+", " ", s).strip().casefold()
 
 def load_jsonl(path: Path):
     with path.open(encoding="utf-8") as f:
@@ -84,7 +78,7 @@ def write_rows(path, rows):
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w", encoding="utf-8") as f:
         for row in rows:
-            f.write(json.dumps(row, ensure_ascii=False) + "\\n")
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 def main():
     ap = argparse.ArgumentParser()
@@ -117,8 +111,7 @@ def main():
             type_counts[item["tipo"]] += 1
 
             if source == "qa_ronin":
-                record_id = item.get("source_record")
-                reason = QA_REVIEW_RECORDS.get(record_id) or QA_REVIEW.get(item["user"])
+                reason = QA_REVIEW_RECORDS.get(item.get("source_record")) or QA_REVIEW.get(item["user"])
                 if reason:
                     review.append({**item, "review_reason": reason})
                     continue

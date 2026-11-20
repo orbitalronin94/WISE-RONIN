@@ -46,7 +46,7 @@ curated and cited sources before claiming broad factual coverage.
 The GitHub Actions workflow:
 1. Compiles and runs the generator.
 2. Checks the exact target row count.
-3. Requires unique prompts and at least 98% unique literal responses.
+3. Requires 100% unique prompts and 100% unique literal responses.
 4. Verifies every answer anchor appears in its target.
 5. Checks that factual and arithmetic categories have meaningful volume.
 6. Commits the generated JSONL and report to this branch and uploads an

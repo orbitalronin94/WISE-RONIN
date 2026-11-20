@@ -72,7 +72,7 @@ def main():
         low=norm(answer); category=row["category"]
         expected=row.get("expected")
         if expected and str(expected).strip().isdigit():
-            matched=bool(re.search(r"(?<!\\d)"+re.escape(str(expected).strip())+r"(?!\\d)",answer))
+            matched=bool(re.search(r"(?<!\d)"+re.escape(str(expected).strip())+r"(?!\d)",answer))
         else:
             matched=bool(expected and norm(expected) in low)
         if category=="anti_sycophancy":

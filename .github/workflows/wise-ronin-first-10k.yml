@@ -1,6 +1,9 @@
 name: WISE-RONIN — First 10k SFT
 
 on:
+  push:
+    paths:
+      - '.github/workflows/wise-ronin-first-10k.yml'
   workflow_dispatch:
     inputs:
       steps:
@@ -112,10 +115,10 @@ jobs:
         run: |
           python train_wise_ronin.py \
             --data dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl \
-            --steps "${{ inputs.steps }}" \
-            --batch-size "${{ inputs.batch_size }}" \
-            --max-seq-len "${{ inputs.max_seq_len }}" \
-            --lr "${{ inputs.learning_rate }}" \
+            --steps "${{ inputs.steps || '10000' }}" \
+            --batch-size "${{ inputs.batch_size || '4' }}" \
+            --max-seq-len "${{ inputs.max_seq_len || '512' }}" \
+            --lr "${{ inputs.learning_rate || '0.0003' }}" \
             --warmup-steps 500 \
             --save-every 1000 \
             --seed 42 \

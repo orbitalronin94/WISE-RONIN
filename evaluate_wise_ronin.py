@@ -92,7 +92,7 @@ def main():
     (out / "holdout_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     with (out / "holdout_generations.jsonl").open("w", encoding="utf-8") as f:
         for item in results:
-            f.write(json.dumps(item, ensure_ascii=False) + "\\n")
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 

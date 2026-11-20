@@ -155,6 +155,25 @@ GENERAL = [
 ("¿Cuál es la capital de Castilla y León?","Valladolid")
 ]
 
+# Curated additions derived from the user's 2 MiB seed generator.
+# Only unambiguous, non-duplicate anchors are imported; the seed's ornamental
+# response templates are deliberately NOT copied. All rows use this corpus'
+# existing fact_id / variant_id schema and rendering pipeline.
+SEED_CAPITALS = [
+    ("Malasia", "Kuala Lumpur"),
+    ("Singapur", "Singapur"),
+]
+SEED_GENERAL = [
+    ("¿Quién escribió la Odisea?", "Homero"),
+    ("¿Quién compuso la Quinta Sinfonía?", "Ludwig van Beethoven"),
+    ("¿Cuál es la moneda de Japón?", "Yen"),
+    ("¿Qué planeta es conocido como el planeta rojo?", "Marte"),
+    ("¿Cuál es la fórmula química del cloruro de sodio?", "NaCl"),
+    ("¿Qué órgano bombea la sangre por el cuerpo?", "El corazón"),
+    ("¿Cuál es la montaña más alta sobre el nivel del mar?", "El Everest"),
+    ("¿En qué año comenzó la Revolución francesa?", "1789"),
+]
+
 # Each pattern puts the answer first or very near the beginning. No generic fallback.
 OPENERS = [
 "El hecho es {a}.", "Dato confirmado: {a}.", "La respuesta corta es {a}.",
@@ -221,6 +240,15 @@ def fact_rows():
         facts.append((f"¿Qué elemento tiene número atómico {number}?",element,"chemistry"))
     for q,a in GENERAL:
         facts.append((q,a,"general"))
+    # New anchors from the 2 MiB seed, merged into the original factual bank.
+    for country,capital in SEED_CAPITALS:
+        facts.append((f"¿Cuál es la capital de {country}?",capital,"geography_seed"))
+    for q,a in SEED_GENERAL:
+        facts.append((q,a,"general_seed"))
+    # The seed's chemistry material motivates the inverse symbol lookup task.
+    # It reuses the established element table rather than importing a second list.
+    for element,symbol in ELEMENTS:
+        facts.append((f"¿Qué elemento químico tiene el símbolo {symbol}?",element,"chemistry_symbol_lookup"))
     # Remove duplicate question/answer pairs without silently resolving conflicts.
     seen={}
     for q,a,cat in facts:
@@ -231,6 +259,19 @@ def fact_rows():
 
 def arithmetic_rows(limit: int):
     rows=[]
+    # Additional exact tasks adapted from the uploaded seed. These are inserted
+    # before the broad legacy arithmetic sweep so they survive target-row limits.
+    for a in range(2,17):
+        for b in range(2,13):
+            rows.append((f"¿Cuánto es {a} por {b}?",str(a*b),"seed_multiplication"))
+            rows.append((f"¿Cuánto es {a} más {b}?",str(a+b),"seed_addition"))
+    for dividend in range(4,201,4):
+        rows.append((f"¿Cuánto es {dividend} dividido por 4?",str(dividend//4),"seed_division_by_four"))
+    for n in range(2,31):
+        rows.append((f"¿Cuál es la raíz cuadrada de {n*n}?",str(n),"seed_square_root"))
+        rows.append((f"¿Cuánto es {n} elevado a 2?",str(n*n),"seed_square"))
+    for exponent in range(2,16):
+        rows.append((f"¿Cuánto es 2 elevado a {exponent}?",str(2**exponent),"seed_power_of_two"))
     # Distinct, exactly solvable tasks across operations and difficulty bands.
     for a in range(17,217):
         for b in range(13,113):

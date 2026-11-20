@@ -1,0 +1,114 @@
+name: WISE-RONIN — First 10k SFT
+
+on:
+  workflow_dispatch:
+    inputs:
+      steps:
+        description: "Total optimizer updates"
+        required: true
+        default: "10000"
+        type: string
+      batch_size:
+        description: "Batch size"
+        required: true
+        default: "4"
+        type: string
+      max_seq_len:
+        description: "Maximum sequence length (<= 1024)"
+        required: true
+        default: "512"
+        type: string
+      learning_rate:
+        description: "Peak learning rate"
+        required: true
+        default: "0.0003"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wise-ronin-first-10k
+  cancel-in-progress: false
+
+jobs:
+  train:
+    name: Train WISE-RONIN on CPU
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers
+
+      - name: Validate training corpus and isolated holdout
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          train_files = [
+              "dataset_enano_70mb_parte1.jsonl",
+              "dataset_enano_70mb_parte2.jsonl",
+              "dataset_enano_70mb_parte3.jsonl",
+          ]
+          total = 0
+          for name in train_files:
+              path = Path(name)
+              if not path.is_file() or path.stat().st_size == 0:
+                  raise SystemExit(f"Missing/empty training file: {name}")
+              count = 0
+              with path.open(encoding="utf-8") as f:
+                  for line_no, line in enumerate(f, 1):
+                      if not line.strip():
+                          continue
+                      row = json.loads(line)
+                      if not row.get("user") or not row.get("assistant"):
+                          raise SystemExit(f"{name}:{line_no}: missing user/assistant")
+                      count += 1
+              print(f"{name}: {count:,} examples; {path.stat().st_size:,} bytes")
+              total += count
+          holdout = Path("holdout_wise_ronin_500.jsonl")
+          if not holdout.is_file() or holdout.stat().st_size == 0:
+              raise SystemExit("Missing/empty holdout")
+          holdout_rows = [json.loads(x) for x in holdout.read_text(encoding="utf-8").splitlines() if x.strip()]
+          if len(holdout_rows) != 500:
+              raise SystemExit(f"Expected 500 holdout rows, got {len(holdout_rows)}")
+          if any(not x.get("user") or not x.get("pass_si") or not x.get("fail_si") for x in holdout_rows):
+              raise SystemExit("Malformed holdout row")
+          print(f"Training examples: {total:,}; holdout rows: {len(holdout_rows)} (kept separate)")
+          PY
+
+      - name: Train exactly the requested number of steps
+        run: |
+          python train_wise_ronin.py \
+            --data dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl \
+            --steps "${{ inputs.steps }}" \
+            --batch-size "${{ inputs.batch_size }}" \
+            --max-seq-len "${{ inputs.max_seq_len }}" \
+            --lr "${{ inputs.learning_rate }}" \
+            --warmup-steps 500 \
+            --save-every 1000 \
+            --seed 42 \
+            --output-dir artifacts
+
+      - name: Upload checkpoints, tokenizer and run summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-first-10k-sft
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 30

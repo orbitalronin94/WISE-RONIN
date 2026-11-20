@@ -61,10 +61,10 @@ jobs:
           review = Path("data/merged/wise_ronin_qa_manual_review.jsonl")
           assert report["master_rows"] > 160000, report
           assert report["input_rows_by_source"]["qa_ronin"] == 976
-          assert report["qa_rows_quarantined_for_manual_review"] == 32
+          assert report["qa_rows_quarantined_for_manual_review"] == 33
           review_rows = [json.loads(line) for line in review.read_text(encoding="utf-8").splitlines() if line]
-          assert len(review_rows) == 32
-          assert len({row["source_record"] for row in review_rows}) == 32
+          assert len(review_rows) == 33
+          assert len({row["source_record"] for row in review_rows}) == 33
           pairs = set()
           with master.open(encoding="utf-8") as f:
               for line in f:

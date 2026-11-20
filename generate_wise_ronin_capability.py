@@ -365,8 +365,8 @@ def build(base_path: Path):
              "instrumentos", "reptiles", "minerales", "insectos", "vehículos",
              "polígonos", "aves", "peces", "bacterias", "satélites", "poetas",
              "músicos", "mamíferos marinos", "números pares"]
-    properties = ["son seres vivos", "necesitan energía", "pertenecen a esa clase",
-                  "tienen propiedades físicas", "pueden clasificarse", "son objetos"]
+    properties = ["tienen la propiedad P", "requieren energía", "pertenecen a la clase definida",
+                  "presentan la característica indicada", "cumplen el criterio establecido", "tienen la propiedad lógica descrita"]
     for i, noun in enumerate(nouns):
         prop = properties[i % len(properties)]
         for j in range(1, 26):

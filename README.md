@@ -12,7 +12,7 @@ WISE-RONIN es un experimento de entrenamiento de un Transformer decoder-only com
 - Corpus SFT de aproximadamente 70 MB, dividido en tres JSONL.
 - Holdout manual de 500 casos, separado del entrenamiento.
 - Entrenador con número exacto de pasos, checkpoints y soporte opcional para pares de preferencias.
-- Workflow manual de GitHub Actions para el primer experimento de 10.000 pasos.
+- Workflow manual de GitHub Actions para el primer experimento de 10.000 pasos.\n- Evaluador greedy del holdout completo con informe por categoría y generaciones guardadas.
 
 **Importante:** hasta que termine el primer entrenamiento y se evalúe el checkpoint, no hay resultados de aprendizaje que presentar. Los pesos iniciales no demuestran comportamiento aprendido.
 
@@ -126,7 +126,7 @@ Configuración predeterminada:
 - Semilla fija 42.
 - CPU en GitHub-hosted runner; no requiere GPU.
 
-El workflow instala dependencias, valida los tres JSONL y el holdout, ejecuta el entrenamiento y publica checkpoints y tokenizer como artefactos de Actions. El holdout se valida estructuralmente antes de entrenar, pero no se entrega al script de entrenamiento.
+El workflow instala dependencias, valida los tres JSONL y el holdout, compila los scripts, ejecuta el entrenamiento y después evalúa el checkpoint final contra los 500 casos. El holdout se valida estructuralmente antes de entrenar, pero no se entrega al script de entrenamiento ni al tokenizer. El evaluador produce `holdout_report.json` y `holdout_generations.jsonl`; las puntuaciones son comprobaciones heurísticas por subcadenas y requieren revisión manual.
 
 La ejecución es larga y el tiempo real dependerá del coste por paso en el runner. El workflow tiene límite de seis horas; los checkpoints periódicos permiten conservar progreso si el proceso termina correctamente antes del límite.
 

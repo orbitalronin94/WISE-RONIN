@@ -143,6 +143,8 @@ def main():
         raise ValueError(f"Balanced set has {duplicates} duplicate prompts")
     if len(selected)!=80_000:
         raise ValueError(f"Expected 80000 rows, got {len(selected)}")
+    if len({r["assistant"] for r in selected}) != 80_000:
+        raise ValueError("Balanced set contains duplicate assistant responses")
     rng.shuffle(selected)
 
     reserve=[row for i,row in enumerate(source) if i not in used]

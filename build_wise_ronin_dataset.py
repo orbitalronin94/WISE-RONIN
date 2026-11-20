@@ -5,14 +5,14 @@ import argparse, collections, hashlib, json, re
 from pathlib import Path
 
 FACT_PATTERNS = [
-    re.compile(r"El hecho es\\s+(.+?)\\.", re.I | re.S),
-    re.compile(r"El pan es\\s+(.+?)\\.\\s+La piedra", re.I | re.S),
-    re.compile(r"Pues toma:\\s*(.+?)\\.\\s+Y el ", re.I | re.S),
-    re.compile(r"Pues toma:\\s*(.+?)\\.\\s+Y no", re.I | re.S),
+    re.compile(r"El hecho es\s+(.+?)\.", re.I | re.S),
+    re.compile(r"El pan es\s+(.+?)\.\s+La piedra", re.I | re.S),
+    re.compile(r"Pues toma:\s*(.+?)\.\s+Y el ", re.I | re.S),
+    re.compile(r"Pues toma:\s*(.+?)\.\s+Y no", re.I | re.S),
 ]
 KOAN_PATTERNS = [
-    re.compile(r"—¿Qué pone\\?\\s*—(.*?)\\s*—Pues ya está\\.", re.I | re.S),
-    re.compile(r"En la cuarta:\\s*(.*?)\\.\\s*—¿Cuál es el rey\\?", re.I | re.S),
+    re.compile(r"—¿Qué pone\?\s*—(.*?)\s*—Pues ya está\.", re.I | re.S),
+    re.compile(r"En la cuarta:\s*(.*?)\.\s*—¿Cuál es el rey\?", re.I | re.S),
 ]
 STYLE_PREFIXES = [
     ("te_doy_hecho_rodeo", re.compile(r"^Te doy el hecho y te doy el rodeo", re.I)),
@@ -33,22 +33,22 @@ def fact_from(text, patterns):
     for pat in patterns:
         m=pat.search(text)
         if m:
-            value=re.sub(r"\\s+"," ",m.group(1)).strip().rstrip(".")
+            value=re.sub(r"\s+"," ",m.group(1)).strip().rstrip(".")
             if value and len(value)<=180: return value
     return None
 
 def repair(text):
     for noun in sorted(FEM,key=len,reverse=True):
-        text=re.sub(r"\\b(el|un) ("+re.escape(noun)+r")\\b",lambda m:("la " if m.group(1)=="el" else "una ")+m.group(2),text,flags=re.I)
-        text=re.sub(r"(la "+re.escape(noun)+r" y) lo dejó",r"\\1 la dejó",text,flags=re.I)
+        text=re.sub(r"\b(el|un) ("+re.escape(noun)+r")\b",lambda m:("la " if m.group(1)=="el" else "una ")+m.group(2),text,flags=re.I)
+        text=re.sub(r"(la "+re.escape(noun)+r" y) lo dejó",r"\1 la dejó",text,flags=re.I)
     for noun in sorted(MASC,key=len,reverse=True):
-        text=re.sub(r"\\b(la|una) ("+re.escape(noun)+r")\\b",lambda m:("el " if m.group(1)=="la" else "un ")+m.group(2),text,flags=re.I)
-    text=re.sub(r"\\ben el office\\b","en la oficina",text,flags=re.I)
-    text=re.sub(r"(El hecho es |El pan es |Si te digo(?: solo)? |Pues toma: )El (guepardo|Pacífico|Nilo)\\b",lambda m:m.group(1)+"el "+m.group(2),text)
-    text=re.sub(r"(El hecho es |El pan es |Si te digo(?: solo)? |Pues toma: )La (plata|atracción)\\b",lambda m:m.group(1)+"la "+m.group(2),text)
-    text=re.sub(r"(El hecho es |El pan es |Si te digo(?: solo)? |Pues toma: )Una región\\b",r"\\1una región",text)
-    text=re.sub(r"(El hecho es |El pan es |Si te digo(?: solo)? |Pues toma: )El proceso\\b",r"\\1el proceso",text)
-    text=re.sub(r"(El hecho es |El pan es |Si te digo(?: solo)? |Pues toma: )El código\\b",r"\\1el código",text)
+        text=re.sub(r"\b(la|una) ("+re.escape(noun)+r")\b",lambda m:("el " if m.group(1)=="la" else "un ")+m.group(2),text,flags=re.I)
+    text=re.sub(r"\ben el office\b","en la oficina",text,flags=re.I)
+    text=re.sub(r"(El hecho es |El pan es |Si te digo(?: solo)? |Pues toma: )El (guepardo|Pacífico|Nilo)\b",lambda m:m.group(1)+"el "+m.group(2),text)
+    text=re.sub(r"(El hecho es |El pan es |Si te digo(?: solo)? |Pues toma: )La (plata|atracción)\b",lambda m:m.group(1)+"la "+m.group(2),text)
+    text=re.sub(r"(El hecho es |El pan es |Si te digo(?: solo)? |Pues toma: )Una región\b",r"\1una región",text)
+    text=re.sub(r"(El hecho es |El pan es |Si te digo(?: solo)? |Pues toma: )El proceso\b",r"\1el proceso",text)
+    text=re.sub(r"(El hecho es |El pan es |Si te digo(?: solo)? |Pues toma: )El código\b",r"\1el código",text)
     return text
 
 def load(paths):
@@ -100,7 +100,7 @@ def main():
         kc=[r for r in rows if r.get("tipo")=="koan_hecho" and r.get("user","").strip()==q and fact_from(r["assistant"],KOAN_PATTERNS)==answer]
         if kc:
             target=min(kc,key=lambda r:hashlib.sha256((q+r["assistant"]).encode()).hexdigest())["assistant"]
-            target=re.sub(r"(Un joven dev preguntó al maestro:)\\s*.*?(\\s+El maestro)",lambda m:m.group(1)+" "+q+m.group(2),target,count=1,flags=re.I|re.S)
+            target=re.sub(r"(Un joven dev preguntó al maestro:)\s*.*?(\s+El maestro)",lambda m:m.group(1)+" "+q+m.group(2),target,count=1,flags=re.I|re.S)
             koan.append({"system":KOAN_SYSTEM,"user":q,"assistant":repair(target),"tipo":"koan_controlled"})
         by_template=collections.defaultdict(list)
         for r in fact_rows[answer]:
@@ -131,7 +131,7 @@ def main():
     }
     for name,data in files.items():
         with (out/name).open("w",encoding="utf-8") as f:
-            for row in data: f.write(json.dumps(row,ensure_ascii=False)+"\\n")
+            for row in data: f.write(json.dumps(row,ensure_ascii=False)+"\n")
     report={
       "raw_rows":len(rows),"source_type_counts":dict(type_counts),"validated_facts":len(facts),
       "factual_rows":len(factual),"hybrid_rows":len(hybrid),"koan_rows":len(koan),

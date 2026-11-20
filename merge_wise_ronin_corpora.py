@@ -15,6 +15,7 @@ QA_REVIEW_RECORDS = {
     39: "La respuesta confunde el gas necesario con la mezcla que respiramos: respiramos aire, compuesto principalmente por nitrógeno y oxígeno (aprox. 21%).",
     99: "La respuesta confunde el gas necesario con la mezcla que respiramos: respiramos aire, compuesto principalmente por nitrógeno y oxígeno (aprox. 21%).",
     334: "Almaty dejó de ser la capital de Kazajistán en 1997; la capital actual es Astaná. Corregir la respuesta.",
+    340: "La capitalidad de Indonesia está en transición: la ley establece Nusantara como nueva capital, pero el traslado oficial de la sede requiere un decreto presidencial que seguía pendiente en 2026. No presentar Yakarta como respuesta simple sin contexto.",
     345: "Colombo no es la capital legislativa oficial de Sri Lanka; esa función corresponde a Sri Jayawardenepura Kotte. Colombo es capital comercial y sede del presidente y del Gobierno. Precisar el tipo de capital.",
     371: "Bolivia tiene capital constitucional en Sucre y sede de Gobierno en La Paz. La pregunta genérica requiere distinguir ambas funciones.",
     423: "El Nilo suele figurar como el río más largo, pero la comparación con el Amazonas depende de cómo se definan y midan las fuentes y desembocaduras. Añadir la controversia o evitar el superlativo absoluto.",

@@ -1,0 +1,66 @@
+name: Validate WISE-RONIN expanded corpus
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'generate_wise_ronin_expanded.py'
+      - '.github/workflows/validate-expanded-corpus.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile generator
+        run: python -m py_compile generate_wise_ronin_expanded.py
+      - name: Rebuild legacy corpus with seed additions
+        run: |
+          python generate_wise_ronin_expanded.py \
+            --output artifacts/wise_ronin_expanded.jsonl \
+            --target-rows 147627
+      - name: Audit schema, uniqueness and imported coverage
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+
+          path = Path("artifacts/wise_ronin_expanded.jsonl")
+          rows = [json.loads(line) for line in path.open(encoding="utf-8") if line.strip()]
+          assert len(rows) == 147627, len(rows)
+          assert len({r["user"] for r in rows}) == len(rows), "duplicate prompts"
+          assert len({r["assistant"] for r in rows}) == len(rows), "duplicate responses"
+          assert all(r.get("fact_id") and "variant_id" in r for r in rows)
+          assert all({"system", "user", "assistant", "tipo"} <= r.keys() for r in rows)
+          prompts = {r["user"] for r in rows}
+          expected = [
+              "¿Qué elemento químico tiene el símbolo Na?",
+              "¿Qué elemento químico tiene el símbolo Fe?",
+              "¿Cuál es la capital de Malasia?",
+              "¿Cuál es la capital de Singapur?",
+              "¿Quién escribió la Odisea?",
+              "¿Cuánto es 2 elevado a 10?",
+              "¿Cuál es la raíz cuadrada de 144?",
+          ]
+          for q in expected:
+              assert any(q in p for p in prompts), f"missing imported prompt: {q}"
+          types = Counter(r["tipo"] for r in rows)
+          assert any(k.startswith("factual_chemistry_symbol_lookup") for k in types)
+          assert any(k.startswith("math_seed_") for k in types)
+          print(json.dumps({
+              "rows": len(rows),
+              "unique_prompts": len(prompts),
+              "unique_responses": len({r["assistant"] for r in rows}),
+              "independent_fact_ids": len({r["fact_id"] for r in rows}),
+              "seed_type_counts": {k:v for k,v in types.items() if "seed" in k},
+          }, ensure_ascii=False, indent=2))
+          PY

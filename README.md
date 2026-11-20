@@ -8,9 +8,9 @@ WISE-RONIN es un experimento de entrenamiento de un Transformer decoder-only com
 
 ## Modelo principal actual: checkpoint 40k
 
-<badge-placeholder />
+**Versión principal actual · 20 de noviembre de 2026**
 
-El checkpoint de **40.000 pasos** es la versión principal de WISE-RONIN a fecha de **20 de noviembre de 2026**. Parte del checkpoint 30k y recibe 10.000 actualizaciones adicionales de SFT correctivo.
+El checkpoint de **40.000 pasos** es la versión principal de WISE-RONIN. Parte del checkpoint 30k y recibe 10.000 actualizaciones adicionales de SFT correctivo.
 
 - **4.267.520 parámetros efectivos**
 - **1.297 tokens BPE reales**

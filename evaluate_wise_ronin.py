@@ -43,9 +43,9 @@ def main() -> None:
     ap.add_argument("--checkpoint", required=True)
     ap.add_argument("--tokenizer", required=True)
     ap.add_argument("--holdout", default="holdout_wise_ronin_500.jsonl")
-    ap.add_argument("--max-new-tokens", type=int, default=96,
-                    help="Requested generation cap; legacy values below 96 are raised by the safety floor.")
-    ap.add_argument("--minimum-generation-tokens", type=int, default=96,
+    ap.add_argument("--max-new-tokens", type=int, default=128,
+                    help="Requested generation cap; legacy values below 128 are raised by the safety floor.")
+    ap.add_argument("--minimum-generation-tokens", type=int, default=128,
                     help="Safety floor preventing old workflows from silently truncating answers.")
     ap.add_argument("--limit", type=int, default=0, help="0 = all records")
     ap.add_argument("--output-dir", default="artifacts/holdout")

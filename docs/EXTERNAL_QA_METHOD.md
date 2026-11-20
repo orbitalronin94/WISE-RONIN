@@ -24,4 +24,4 @@ Only source \`train\` rows can be exported. A row is excluded until marked \`man
 
 ## Current limitation
 
-One manually authored example is committed as a schema and style seed. The 15,036-question SQAC queue is generated as an Actions artifact for controlled authoring. The corpus is not complete until each admitted row has a reviewed manual answer. No training workflow is triggered by this dataset workflow.
+Eighteen manually authored examples are committed as the initial reviewed seed set. The 15,036-question SQAC queue is generated as an Actions artifact for controlled authoring. The corpus is not complete until each admitted row has a reviewed manual answer. No training workflow is triggered by this dataset workflow.

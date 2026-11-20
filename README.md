@@ -7,7 +7,6 @@
 [![GitHub stars](https://img.shields.io/github/stars/orbitalronin94/WISE-RONIN?style=for-the-badge&logo=github&label=Stars)](https://github.com/orbitalronin94/WISE-RONIN/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/orbitalronin94/WISE-RONIN?style=for-the-badge&logo=github&label=Forks)](https://github.com/orbitalronin94/WISE-RONIN/network/members)
 [![Latest commit](https://img.shields.io/github/last-commit/orbitalronin94/WISE-RONIN?style=for-the-badge)](https://github.com/orbitalronin94/WISE-RONIN/commits/main)
-[![License](https://img.shields.io/github/license/orbitalronin94/WISE-RONIN?style=for-the-badge)](LICENSE)
 
 [Architecture](#architecture) · [Experiments](#experiments) · [Datasets](#datasets) · [Training](#training) · [Evaluation](#evaluation) · [Roadmap](#roadmap)
 
@@ -245,7 +244,7 @@ Please avoid claims that are not backed by a reproducible run or a documented ev
 
 ## License
 
-See [LICENSE](LICENSE). If no license file is present in the repository, all rights remain reserved by the respective rights holders.
+No license file is currently published. Until a license is added, the repository should be treated as **all rights reserved**; do not assume that reuse, redistribution or derivative works are permitted.
 
 ---
 

@@ -39,13 +39,23 @@ def sha256(path: Path) -> str:
 
 
 def _answer_arrays(answers: Any) -> tuple[list[str], list[int]]:
-    """Normalize SQAC's SQuAD-like dict shape without altering answer text."""
-    if not isinstance(answers, dict):
-        raise ValueError("SQAC answers must be an object with text and answer_start arrays")
-    texts = answers.get("text")
-    starts = answers.get("answer_start")
+    """Normalize SQAC's SQuAD-like answer annotations without altering text."""
+    if isinstance(answers, list):
+        if not answers:
+            return [], []
+        if not all(isinstance(item, dict) for item in answers):
+            raise ValueError("SQAC answer list entries must be objects")
+        texts = [item.get("text") for item in answers]
+        starts = [item.get("answer_start") for item in answers]
+    elif isinstance(answers, dict):
+        texts = answers.get("text")
+        starts = answers.get("answer_start")
+        if isinstance(texts, str) and isinstance(starts, int):
+            texts, starts = [texts], [starts]
+    else:
+        raise ValueError(f"Unsupported SQAC answers type: {type(answers).__name__}")
     if not isinstance(texts, list) or not isinstance(starts, list) or len(texts) != len(starts):
-        raise ValueError("SQAC answers.text and answers.answer_start must be aligned arrays")
+        raise ValueError("SQAC answer texts and offsets must be aligned arrays")
     return texts, starts
 
 

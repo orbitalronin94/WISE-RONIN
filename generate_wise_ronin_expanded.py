@@ -296,7 +296,8 @@ def fact_rows():
         facts.append((q,a,"general"))
     # New anchors from the 2 MiB seed, merged into the original factual bank.
     v2_factual, _ = v2_seed_facts()
-    facts.extend(v2_factual)
+    existing_questions = {q for q, _, _ in facts}
+    facts.extend(row for row in v2_factual if row[0] not in existing_questions)
     for country,capital in SEED_CAPITALS:
         facts.append((f"¿Cuál es la capital de {country}?",capital,"geography_seed"))
     for q,a in SEED_GENERAL:

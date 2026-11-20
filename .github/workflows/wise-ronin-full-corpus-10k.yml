@@ -1,4 +1,4 @@
-name: WISE-RONIN — 10k full-corpus continuation from 40k
+name: WISE-RONIN — 10k continuation on cleaned SFT corpus from 40k
 
 on:
   push:
@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   train:
-    name: Continue step 40000 to 50000 on full 169k corpus (CPU)
+    name: Continue step 40000 to 50000 on cleaned ~81k corpus (CPU)
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
@@ -30,8 +30,8 @@ jobs:
       - name: Download validated unified master corpus
         uses: actions/download-artifact@v4
         with:
-          name: wise-ronin-unified-master-dataset
-          run-id: 44779185146
+          name: wise-ronin-clean-master-dataset
+          run-id: 44788464404
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
           path: dataset-source
@@ -98,8 +98,8 @@ jobs:
                   raise SystemExit(f"Missing/empty required file: {p}")
 
           report = json.loads(report_path.read_text(encoding="utf-8"))
-          if report.get("master_rows") != 169319:
-              raise SystemExit(f"Unexpected master row count: {report.get('master_rows')}")
+          if not (80900 <= report.get("master_rows", 0) < 81000):
+              raise SystemExit(f"Unexpected cleaned master row count: {report.get('master_rows')}")
           rows = 0
           with corpus.open(encoding="utf-8") as f:
               for line_no, line in enumerate(f, 1):
@@ -111,8 +111,8 @@ jobs:
                   if not row.get("source_dataset") or not row.get("source_line"):
                       raise SystemExit(f"{corpus}:{line_no}: missing provenance")
                   rows += 1
-          if rows != 169319:
-              raise SystemExit(f"Expected 169319 train rows, got {rows}")
+          if rows != report["master_rows"]:
+              raise SystemExit(f"Expected {report['master_rows']} clean train rows, got {rows}")
 
           ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
           tok = Tokenizer.from_file(str(tokenizer_path))
@@ -145,10 +145,10 @@ jobs:
             --tokenizer artifacts/tokenizer-wise-ronin.json \
             --holdout holdout_wise_ronin_500.jsonl \
             --max-new-tokens 128 \
-            --minimum-generation-tokens 128 \
+            --minimum-generation-tokens 1 \
             --output-dir artifacts/baseline-40k-full-corpus
 
-      - name: Train 10000 additional SFT updates on all 169319 master rows
+      - name: Train 10000 additional SFT updates on the cleaned master only
         run: |
           python train_wise_ronin.py \
             --data dataset-source/merged/wise_ronin_master.jsonl \

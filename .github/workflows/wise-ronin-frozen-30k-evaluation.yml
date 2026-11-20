@@ -32,7 +32,7 @@ jobs:
           run-id: 44721903295
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
-          path: artifacts
+          path: .
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"

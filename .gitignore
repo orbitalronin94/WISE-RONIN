@@ -1,1 +1,4 @@
-artifacts/\n__pycache__/\n*.py[cod]\ntokenizer_corpus.tmp\n
+artifacts/
+__pycache__/
+*.py[cod]
+tokenizer_corpus.tmp

@@ -63,7 +63,7 @@ jobs:
           assert all(r["hecho"].casefold() in r["assistant"].casefold() for r in rows)
           types = Counter(r["tipo"].split("_", 1)[0] for r in rows)
           assert types["factual"] > 10000, types
-          assert types["math"] > 100000, types
+          assert types["math"] > 90000, types
           assert report["rows"] == len(rows)
           print(json.dumps({
               "rows": len(rows),

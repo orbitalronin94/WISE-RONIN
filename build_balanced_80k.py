@@ -120,6 +120,7 @@ def main():
                     template=templates[(task_i*10+variant)%len(templates)]
                     old=str(template.get("hecho",""))
                     assistant=template["assistant"].replace(old,answer) if old else answer
+                    assistant += f" Operación exacta: {dividend} dividido entre {divisor}."
                     prefix=PREFIXES[(task_i*7+variant*3)%len(PREFIXES)]
                     row=dict(template)
                     row.update({

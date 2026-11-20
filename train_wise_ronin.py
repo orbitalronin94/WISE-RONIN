@@ -64,6 +64,8 @@ def train_tokenizer(data_paths: list[str], output_path: Path, vocab_size: int) -
                     out.write(row.get("system", SYSTEM_FIXED) + "\n")
                     out.write(row.get("user", "") + "\n")
                     out.write(row.get("assistant", "") + "\n")
+                    if row.get("chosen") and row.get("rejected"):
+                        out.write(row["chosen"] + "\n" + row["rejected"] + "\n")
     bpe = ByteLevelBPETokenizer()
     bpe.train(files=[str(tmp)], vocab_size=vocab_size, min_frequency=2,
               special_tokens=SPECIAL)
@@ -101,9 +103,9 @@ def encode_record(tok: Tokenizer, row: dict, max_len: int,
     ids = sys_ids + user_ids + answer_ids
     labels = [-100] * (len(sys_ids) + len(user_ids)) + answer_ids
     if len(ids) > max_len:
-        # Keep the system/user prefix and the end of the answer, not a truncated EOS.
-        ids = ids[:max_len]
-        labels = labels[:max_len]
+        # Preserve the assistant target when a long prompt+answer exceeds the cap.
+        ids = ids[-max_len:]
+        labels = labels[-max_len:]
     return ids, labels
 
 

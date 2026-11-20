@@ -1,4 +1,4 @@
-name: WISE-RONIN — Controlled factual correction SFT
+name: WISE-RONIN — 10k-step factual correction SFT
 # Uses repository-root extraction so artifacts/ paths resolve correctly.
 
 on:
@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   correction-sft:
-    name: SFT correction from frozen step 30000
+    name: 10k correction updates from frozen step 30000
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
@@ -79,32 +79,54 @@ jobs:
           print(json.dumps(ckpt["config"],indent=2))
           PY
 
-      - name: Run one conservative SFT epoch (no ORPO)
+      - name: Baseline evaluation — greedy (frozen step 30000)
+        run: |
+          python evaluate_wise_ronin_correction.py \
+            --checkpoint artifacts/wise_ronin_step_30000.pt \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --holdout data/correction/correction_holdout.jsonl \
+            --temperature 0 \
+            --max-new-tokens 64 \
+            --seed 20261120 \
+            --output-dir artifacts/baseline-eval-greedy
+
+      - name: Baseline evaluation — sampling (frozen step 30000)
+        run: |
+          python evaluate_wise_ronin_correction.py \
+            --checkpoint artifacts/wise_ronin_step_30000.pt \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --holdout data/correction/correction_holdout.jsonl \
+            --temperature 0.8 \
+            --top-p 0.9 \
+            --max-new-tokens 64 \
+            --seed 20261120 \
+            --output-dir artifacts/baseline-eval-sampling
+
+      - name: Train 10000 corrective SFT updates (no ORPO)
         run: |
           python train_wise_ronin.py \
             --data data/correction/correction_sft_train.jsonl \
-            --epochs 1 \
+            --steps 40000 \
             --batch-size 4 \
             --max-seq-len 512 \
-            --lr 0.00003 \
-            --warmup-steps 10 \
-            --save-every 50 \
+            --lr 0.00001 \
+            --warmup-steps 100 \
+            --save-every 2500 \
             --seed 20261120 \
             --tokenizer artifacts/tokenizer-wise-ronin.json \
             --reuse-tokenizer \
             --resume artifacts/wise_ronin_step_30000.pt \
             --output-dir artifacts/correction-sft
-
       - name: Verify corrected checkpoint
         run: |
           python - <<'PY'
           import torch
           from pathlib import Path
-          p=Path("artifacts/correction-sft/wise_ronin_step_30248.pt")
+          p=Path("artifacts/correction-sft/wise_ronin_step_40000.pt")
           if not p.is_file():
               raise SystemExit(f"Expected final checkpoint missing: {p}")
           ckpt=torch.load(p,map_location="cpu",weights_only=False)
-          if ckpt.get("step") != 30248:
+          if ckpt.get("step") != 40000:
               raise SystemExit(f"Unexpected final step: {ckpt.get('step')}")
           print(f"Correction checkpoint verified: step={ckpt['step']}")
           PY
@@ -112,7 +134,7 @@ jobs:
       - name: Evaluate corrected checkpoint — greedy
         run: |
           python evaluate_wise_ronin_correction.py \
-            --checkpoint artifacts/correction-sft/wise_ronin_step_30248.pt \
+            --checkpoint artifacts/correction-sft/wise_ronin_step_40000.pt \
             --tokenizer artifacts/tokenizer-wise-ronin.json \
             --holdout data/correction/correction_holdout.jsonl \
             --temperature 0 \
@@ -123,7 +145,7 @@ jobs:
       - name: Evaluate corrected checkpoint — sampling
         run: |
           python evaluate_wise_ronin_correction.py \
-            --checkpoint artifacts/correction-sft/wise_ronin_step_30248.pt \
+            --checkpoint artifacts/correction-sft/wise_ronin_step_40000.pt \
             --tokenizer artifacts/tokenizer-wise-ronin.json \
             --holdout data/correction/correction_holdout.jsonl \
             --temperature 0.8 \
@@ -136,9 +158,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: wise-ronin-correction-sft-step-30248
+          name: wise-ronin-correction-sft-step-40000
           path: |
             artifacts/correction-sft/
+            artifacts/baseline-eval-greedy/
+            artifacts/baseline-eval-sampling/
             artifacts/correction-eval-greedy/
             artifacts/correction-eval-sampling/
             data/correction/

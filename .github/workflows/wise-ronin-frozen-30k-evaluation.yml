@@ -30,8 +30,8 @@ jobs:
         with:
           name: wise-ronin-balanced-80k-two-epochs
           run-id: 44721903295
-          github-token: \${{ secrets.GITHUB_TOKEN }}
-          repository: \${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
           path: artifacts
       - uses: actions/setup-python@v5
         with:
@@ -61,24 +61,24 @@ jobs:
           PY
       - name: Greedy baseline evaluation
         run: |
-          python evaluate_wise_ronin_correction.py \\
-            --checkpoint artifacts/wise_ronin_step_30000.pt \\
-            --tokenizer artifacts/tokenizer-wise-ronin.json \\
-            --holdout data/correction/correction_holdout.jsonl \\
-            --temperature 0 \\
-            --max-new-tokens 64 \\
-            --seed 20261120 \\
+          python evaluate_wise_ronin_correction.py \
+            --checkpoint artifacts/wise_ronin_step_30000.pt \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --holdout data/correction/correction_holdout.jsonl \
+            --temperature 0 \
+            --max-new-tokens 64 \
+            --seed 20261120 \
             --output-dir artifacts/correction-eval-greedy
       - name: Sampling baseline evaluation
         run: |
-          python evaluate_wise_ronin_correction.py \\
-            --checkpoint artifacts/wise_ronin_step_30000.pt \\
-            --tokenizer artifacts/tokenizer-wise-ronin.json \\
-            --holdout data/correction/correction_holdout.jsonl \\
-            --temperature 0.8 \\
-            --top-p 0.9 \\
-            --max-new-tokens 64 \\
-            --seed 20261120 \\
+          python evaluate_wise_ronin_correction.py \
+            --checkpoint artifacts/wise_ronin_step_30000.pt \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --holdout data/correction/correction_holdout.jsonl \
+            --temperature 0.8 \
+            --top-p 0.9 \
+            --max-new-tokens 64 \
+            --seed 20261120 \
             --output-dir artifacts/correction-eval-sampling
       - name: Upload frozen baseline reports and generations
         if: always()

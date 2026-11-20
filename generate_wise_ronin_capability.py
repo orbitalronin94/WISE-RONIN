@@ -220,7 +220,7 @@ FACTS = [
 def norm(s: str) -> str:
     s = unicodedata.normalize("NFKD", str(s)).casefold()
     s = "".join(c for c in s if not unicodedata.combining(c))
-    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", s)).strip()
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s+\-=/%.]", " ", s)).strip()
 
 def split_for(group_id: str) -> str:
     value = int(hashlib.sha256(group_id.encode()).hexdigest()[:8], 16) % 100

@@ -16,7 +16,7 @@ This dataset applies one deliberately strict rule: **the question is copied lite
 
 - SQAC train source pinned to commit \`9a6e701a8487c35c1805f9f29eac247875a6be05\`.
 - 15,036 train questions are available from the source; the GitHub Actions workflow downloads and verifies the source SHA256 before producing an authoring queue artifact.
-- \`sqac_manual_answers.jsonl\` contains **18 manually authored and reviewed examples**. It is not a full rewritten corpus and must not be presented as one.
+- \`sqac_manual_answers.jsonl\` contains **34 manually authored and reviewed examples**. It is not a full rewritten corpus and must not be presented as one.
 - The compact manual file stores only source identity, the literal question and the new answer. Context and reference spans are recovered from the pinned queue during validation, avoiding repeated copies of long source passages in Git.
 - ESQAD EVAU is registered as the next curated source. Its generated literary/legal/pilot subsets are not mixed with EVAU.
 - SIQA-es and OpenBookQA-es are explicitly excluded from training in this pipeline.

@@ -255,6 +255,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", nargs="+", required=True, help="Uno o varios JSONL de entrenamiento")
     ap.add_argument("--steps", type=int, default=10000)
+    ap.add_argument("--epochs", type=int, default=None, help="Epochs completos sobre el dataset; calcula las actualizaciones")
     ap.add_argument("--batch-size", type=int, default=4)
     ap.add_argument("--max-seq-len", type=int, default=512)
     ap.add_argument("--lr", type=float, default=3e-4)
@@ -332,6 +333,16 @@ def main():
             optimizer.load_state_dict(ckpt["optimizer"])
         start_step = int(ckpt.get("step", 0))
         print(f"[resume] reanudando desde step={start_step}")
+    if args.epochs is not None:
+        if args.epochs < 1:
+            raise ValueError("--epochs debe ser positivo")
+        updates_per_epoch = math.ceil(len(encoded) / args.batch_size)
+        args.steps = start_step + args.epochs * updates_per_epoch
+        print(f"[schedule] epochs={args.epochs}; updates_per_epoch={updates_per_epoch}; "
+              f"additional_updates={args.epochs * updates_per_epoch}; target_global_step={args.steps}")
+    else:
+        updates_per_epoch = math.ceil(len(encoded) / args.batch_size)
+
     if start_step >= args.steps:
         raise ValueError("El checkpoint ya alcanzó o superó --steps")
 
@@ -339,7 +350,16 @@ def main():
     started = time.time()
     running = 0.0
     for step in range(start_step, args.steps):
-        indices = random.choices(range(len(encoded)), k=args.batch_size)
+        if args.epochs is not None:
+            local_step = step - start_step
+            epoch_index = local_step // updates_per_epoch
+            batch_index = local_step % updates_per_epoch
+            order = list(range(len(encoded)))
+            random.Random(args.seed + epoch_index).shuffle(order)
+            begin = batch_index * args.batch_size
+            indices = order[begin:begin + args.batch_size]
+        else:
+            indices = random.choices(range(len(encoded)), k=args.batch_size)
         batch, labels = collate([encoded[i] for i in indices], pad_id, device)
         progress = step / max(1, args.steps - 1)
         if step < args.warmup_steps:
@@ -380,7 +400,7 @@ def main():
                "max_seq_len": args.max_seq_len, "lr": args.lr, "seed": args.seed,
                "train_examples": len(rows), "train_files": args.data,
                "tokenizer_vocab": tokenizer.get_vocab_size(), "parameters": params,
-               "orpo": args.orpo, "elapsed_seconds": round(time.time() - started, 2)}
+               "orpo": args.orpo, "epochs": args.epochs, "elapsed_seconds": round(time.time() - started, 2)}
     (output / "training_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print("[done] " + json.dumps(summary, ensure_ascii=False), flush=True)
 

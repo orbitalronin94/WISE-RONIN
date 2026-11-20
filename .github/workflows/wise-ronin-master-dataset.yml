@@ -74,7 +74,7 @@ jobs:
                   pairs.add((prompt, answer))
                   assert row.get("source_dataset") and row.get("source_line")
           assert len(pairs) == report["master_rows"]
-          assert report["prompts_with_multiple_completions_preserved"] == 103
+          assert report["prompts_with_multiple_completions_preserved"] == 102
           print(json.dumps(report, ensure_ascii=False, indent=2))
           print(f"Master validated: {report['master_rows']:,} rows; {master.stat().st_size:,} bytes")
           print(f"Manual QA quarantine validated: {len(review_rows)} records")

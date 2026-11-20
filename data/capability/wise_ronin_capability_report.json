@@ -1,0 +1,46 @@
+{
+  "total_unique_examples": 8037,
+  "independent_groups": 8037,
+  "train_rows": 7249,
+  "validation_rows": 399,
+  "holdout_rows": 389,
+  "category_counts": {
+    "applied_reasoning": 800,
+    "calibrated_uncertainty": 10,
+    "conversation_instruction": 15,
+    "error_correction": 5,
+    "factual_knowledge": 152,
+    "identity": 25,
+    "independent_judgement": 20,
+    "logical_deduction": 1000,
+    "math_fraction": 1077,
+    "math_gcd": 1047,
+    "math_lcm": 1534,
+    "math_linear_equation": 1000,
+    "math_percentage": 642,
+    "math_powers": 300,
+    "style_control": 10,
+    "unit_conversion": 400
+  },
+  "split_counts": {
+    "holdout": 389,
+    "train": 7249,
+    "validation": 399
+  },
+  "new_factual_anchors": 152,
+  "deterministic_math_examples": 6000,
+  "reasoning_examples": 1800,
+  "base_corpus": "data/expanded/wise_ronin_expanded.jsonl",
+  "split_method": "stable SHA-256 assignment by group_id; 90/5/5",
+  "deduplication": "normalized prompt+answer; existing expanded prompts and same-answer high-overlap questions filtered",
+  "identity_source": "verified step-50000 checkpoint configuration and tokenizer metadata",
+  "conflicting_prompt_candidates_rejected": 0,
+  "conflicting_prompt_examples": [],
+  "holdout_policy": "capability holdout is never passed to training",
+  "limitations": [
+    "The factual bank is curated and finite; it is not an external encyclopedia.",
+    "Generated arithmetic and logic examples are deterministic synthetic tasks, not new world facts.",
+    "The old expanded corpus is retained unchanged; this pack adds only non-overlapping candidate knowledge/tasks.",
+    "Identity facts describe the 50k parent checkpoint and must be revised when architecture/tokenizer changes."
+  ]
+}

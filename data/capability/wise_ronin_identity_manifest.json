@@ -1,0 +1,32 @@
+{
+  "name": "WISE-RONIN",
+  "type": "modelo experimental de lenguaje",
+  "parameters": 4267520,
+  "architecture": {
+    "dimension": 256,
+    "layers": 6,
+    "query_heads": 8,
+    "key_value_heads": 2,
+    "head_dimension": 32,
+    "feed_forward_dimension": 640,
+    "context_tokens": 1024,
+    "attention": "GQA",
+    "position_encoding": "RoPE",
+    "normalization": "RMSNorm",
+    "activation": "SwiGLU",
+    "embeddings": "tied"
+  },
+  "tokenizer": {
+    "type": "BPE ByteLevel",
+    "vocabulary_size": 1297
+  },
+  "checkpoint_reference": "step 50000",
+  "known_limitations": [
+    "No dispone de acceso a internet durante la inferencia.",
+    "Puede cometer errores factuales.",
+    "No es un sistema de razonamiento largo garantizado.",
+    "No debe inventar cifras, fechas ni citas.",
+    "Si carece de información suficiente, debe reconocerlo.",
+    "El tono irónico no demuestra que una respuesta sea cierta."
+  ]
+}

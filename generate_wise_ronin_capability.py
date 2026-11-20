@@ -365,21 +365,27 @@ def build(base_path: Path):
              "instrumentos", "reptiles", "minerales", "insectos", "vehículos",
              "polígonos", "aves", "peces", "bacterias", "satélites", "poetas",
              "músicos", "mamíferos marinos", "números pares"]
-    properties = ["tienen la propiedad P", "requieren energía", "pertenecen a la clase definida",
-                  "presentan la característica indicada", "cumplen el criterio establecido", "tienen la propiedad lógica descrita"]
+    properties = [
+        ("tienen la propiedad P", "tiene la propiedad P"),
+        ("requieren energía", "requiere energía"),
+        ("pertenecen a la clase definida", "pertenece a la clase definida"),
+        ("presentan la característica indicada", "presenta la característica indicada"),
+        ("cumplen el criterio establecido", "cumple el criterio establecido"),
+        ("tienen la propiedad lógica descrita", "tiene la propiedad lógica descrita")
+    ]
     for i, noun in enumerate(nouns):
-        prop = properties[i % len(properties)]
+        positive, negative = properties[i % len(properties)]
         for j in range(1, 26):
             name = f"Elemento-{i+1}-{j}"
-            q = f"Premisa 1: todos los {noun} {prop}. Premisa 2: {name} es un {noun[:-1] if noun.endswith('s') else noun}. ¿Qué se deduce necesariamente?"
+            q = f"Premisa 1: todos los {noun} {positive}. Premisa 2: {name} es un {noun[:-1] if noun.endswith('s') else noun}. ¿Qué se deduce necesariamente?"
             # Avoid grammatical claims about real-world categories: treat the
             # named item as a member by explicit premise and infer only the predicate.
-            q = f"Premisa 1: todos los miembros del conjunto {noun} {prop}. Premisa 2: {name} pertenece al conjunto {noun}. ¿Se deduce que {name} {prop}?"
-            add(rows, seen, "logical_deduction", q, f"Sí. Por las dos premisas, {name} {prop}.",
+            q = f"Premisa 1: todos los miembros del conjunto {noun} {prop}. Premisa 2: {name} pertenece al conjunto {noun}. ¿Se deduce que {name} {positive}?"
+            add(rows, seen, "logical_deduction", q, f"Sí. Por las dos premisas, {name} {positive}.",
                 "constructed_valid_syllogism")
             reasoning_count += 1
-            q2 = f"Premisa 1: ningún miembro del conjunto {noun} {prop}. Premisa 2: {name} pertenece al conjunto {noun}. ¿Se deduce que {name} {prop}?"
-            add(rows, seen, "logical_deduction", q2, f"No. La primera premisa afirma que ningún miembro del conjunto {noun} {prop}.",
+            q2 = f"Premisa 1: ningún miembro del conjunto {noun} {negative}. Premisa 2: {name} pertenece al conjunto {noun}. ¿Se deduce que {name} {prop}?"
+            add(rows, seen, "logical_deduction", q2, f"No. La primera premisa afirma que ningún miembro del conjunto {noun} {negative}.",
                 "constructed_valid_syllogism")
             reasoning_count += 1
     # Arithmetic word problems with varied operations and exact integer answers.

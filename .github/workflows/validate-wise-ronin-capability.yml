@@ -1,0 +1,46 @@
+name: Validate WISE-RONIN capability corpus
+
+on:
+  pull_request:
+    paths:
+      - 'generate_wise_ronin_capability.py'
+      - '.github/workflows/wise-ronin-capability-30k.yml'
+      - '.github/workflows/validate-wise-ronin-capability.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile generators
+        run: python -m py_compile generate_wise_ronin_expanded.py generate_wise_ronin_capability.py
+      - name: Rebuild canonical expanded corpus
+        run: python generate_wise_ronin_expanded.py --output data/expanded/wise_ronin_expanded.jsonl --target-rows 147627
+      - name: Generate capability pack
+        run: python generate_wise_ronin_capability.py --base data/expanded/wise_ronin_expanded.jsonl --output-dir data/capability
+      - name: Verify independent rows and leakage-safe splits
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("data/capability")
+          files={k:[json.loads(x) for x in (p/f"wise_ronin_capability_{k}.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()] for k in ("train","validation","holdout")}
+          all_rows=files["train"]+files["validation"]+files["holdout"]
+          assert len(all_rows)>=3000
+          assert len({r["group_id"] for r in all_rows})==len(all_rows)
+          assert len({r["user"].casefold() for r in all_rows})==len(all_rows)
+          assert all(r["expected"]==r["assistant"] for r in all_rows)
+          for a,b in (("train","validation"),("train","holdout"),("validation","holdout")):
+              assert not ({r["group_id"] for r in files[a]} & {r["group_id"] for r in files[b]})
+          report=json.loads((p/"wise_ronin_capability_report.json").read_text(encoding="utf-8"))
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          PY

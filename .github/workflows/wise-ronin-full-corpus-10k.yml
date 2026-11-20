@@ -145,7 +145,8 @@ jobs:
             --tokenizer artifacts/tokenizer-wise-ronin.json \
             --holdout holdout_wise_ronin_500.jsonl \
             --max-new-tokens 128 \
-            --minimum-generation-tokens 128 \            --output-dir artifacts/baseline-40k-full-corpus
+            --minimum-generation-tokens 128 \
+            --output-dir artifacts/baseline-40k-full-corpus
 
       - name: Train 10000 additional SFT updates on all 169319 master rows
         run: |
@@ -184,7 +185,8 @@ jobs:
             --tokenizer artifacts/tokenizer-wise-ronin.json \
             --holdout holdout_wise_ronin_500.jsonl \
             --max-new-tokens 128 \
-            --minimum-generation-tokens 128 \            --output-dir artifacts/holdout-50k-full-corpus
+            --minimum-generation-tokens 128 \
+            --output-dir artifacts/holdout-50k-full-corpus
 
       - name: Upload full-corpus checkpoint series, tokenizer and comparable evaluations
         if: always()

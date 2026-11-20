@@ -1,6 +1,14 @@
 name: WISE-RONIN — Unified master dataset build
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/wise-ronin-master-dataset.yml"
+      - "merge_wise_ronin_corpora.py"
+      - "build_balanced_80k.py"
+      - "data/expanded/**"
+      - "data/seeds/wise_ronin_1000_qa_ronin.jsonl"
+      - "dataset_enano_70mb_parte*.jsonl"
   workflow_dispatch:
 
 permissions:

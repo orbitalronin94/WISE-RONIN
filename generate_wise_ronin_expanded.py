@@ -331,6 +331,15 @@ def arithmetic_rows(limit: int):
         rows.append((f"¿Cuánto es {n} elevado a 2?",str(n*n),"seed_square"))
     for exponent in range(2,16):
         rows.append((f"¿Cuánto es 2 elevado a {exponent}?",str(2**exponent),"seed_power_of_two"))
+    # Deduplicate seed overlaps before generating variants; preserve the first canonical row.
+    unique_seed_rows = {}
+    for q, answer, category in rows:
+        if q in unique_seed_rows:
+            if unique_seed_rows[q][1] != answer:
+                raise ValueError(f"Conflicting arithmetic seed for {q}")
+            continue
+        unique_seed_rows[q] = (q, answer, category)
+    rows = list(unique_seed_rows.values())
     # Distinct, exactly solvable tasks across operations and difficulty bands.
     for a in range(17,217):
         for b in range(13,113):

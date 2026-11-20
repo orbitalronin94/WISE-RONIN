@@ -340,6 +340,16 @@ def arithmetic_rows(limit: int):
             continue
         unique_seed_rows[q] = (q, answer, category)
     rows = list(unique_seed_rows.values())
+
+    def unique_rows():
+        deduped = {}
+        for q, answer, category in rows:
+            if q in deduped:
+                if deduped[q][1] != answer:
+                    raise ValueError(f"Conflicting arithmetic task for {q}")
+                continue
+            deduped[q] = (q, answer, category)
+        return list(deduped.values())
     # Distinct, exactly solvable tasks across operations and difficulty bands.
     for a in range(17,217):
         for b in range(13,113):
@@ -349,7 +359,7 @@ def arithmetic_rows(limit: int):
                 rows.append((f"¿Cuánto es {a} por {b}?",str(a*b),"multiplication"))
             if a % b == 0:
                 rows.append((f"¿Cuánto es {a} dividido entre {b}?",str(a//b),"division"))
-            if len(rows) >= limit: return rows[:limit]
+            if len(rows) >= limit: return unique_rows()[:limit]
     for n in range(2,500):
         rows.append((f"¿Cuál es el cuadrado de {n}?",str(n*n),"square"))
         rows.append((f"¿Cuál es el doble de {n} elevado al cuadrado?",str(2*n*n),"composite_math"))

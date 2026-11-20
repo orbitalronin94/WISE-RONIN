@@ -17,6 +17,7 @@ The uploaded file contains 976 records. This review does not rewrite the source.
 | Microscopy | 490 | Leeuwenhoek was not the first microscope user; he is known for high-quality single-lens microscopes and important observations. |
 | Thermometry | 492 | Galileo developed a thermoscope; the history of the thermometer involved several contributors, including Santorio. Do not state simply that Galileo invented the thermometer. |
 | Cuban abolition | 507 | The prompt asks about Cuba but the completion says Spain. The answer must match the country asked about (abolition in Cuba: 1886). |
+| Penicillin attribution | 868 | The answer is too elliptical for a factual QA item (“Fleming la vio”). Specify the 1928 discovery and name Alexander Fleming clearly. |
 | Constitutional reference | 670, 873 | The prompt says only “the Constitution” while the completion assumes Spain. Name the Spanish Constitution in the question. |
 
 ## Source notes

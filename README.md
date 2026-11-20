@@ -1,168 +1,259 @@
+<div align="center">
+
 # WISE-RONIN
 
-**Un modelo pequeño con una voz deliberada: factual, respondón y antisicofántico.**
+### Small models. Deliberate training. Measurable behavior.
 
-WISE-RONIN es un experimento de entrenamiento de un Transformer decoder-only compacto. La hipótesis no es que una arquitectura de 5,6 millones de parámetros vaya a competir con modelos grandes: es comprobar cuánto comportamiento reconocible puede aprender un modelo pequeño a partir de un corpus curado y una evaluación manual separada.
+[![GitHub stars](https://img.shields.io/github/stars/orbitalronin94/WISE-RONIN?style=for-the-badge&logo=github&label=Stars)](https://github.com/orbitalronin94/WISE-RONIN/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/orbitalronin94/WISE-RONIN?style=for-the-badge&logo=github&label=Forks)](https://github.com/orbitalronin94/WISE-RONIN/network/members)
+[![Latest commit](https://img.shields.io/github/last-commit/orbitalronin94/WISE-RONIN?style=for-the-badge)](https://github.com/orbitalronin94/WISE-RONIN/commits/main)
 
-> El enano no necesita una corona. Necesita que el hecho sea cierto y que no lama.
+[Architecture](#architecture) · [Experiments](#experiments) · [Datasets](#datasets) · [Training](#training) · [Evaluation](#evaluation) · [Roadmap](#roadmap)
 
-## Estado del proyecto
+**WISE-RONIN** is an experimental, compact decoder-only Transformer exploring factual responses, a distinctive voice and resistance to sycophancy under tight compute constraints.
 
-- Arquitectura V2 implementada en PyTorch.
-- Corpus SFT de aproximadamente 70 MB, dividido en tres JSONL.
-- Holdout manual de 500 casos, separado del entrenamiento.
-- Entrenador con número exacto de pasos, checkpoints y soporte opcional para pares de preferencias.
-- Workflow manual de GitHub Actions para el primer experimento de 10.000 pasos.
-- Evaluador greedy del holdout completo con informe por categoría y generaciones guardadas.
+[Explore the code](https://github.com/orbitalronin94/WISE-RONIN) · [Browse experiments](docs/EXPERIMENTS.md) · [Open an issue](https://github.com/orbitalronin94/WISE-RONIN/issues)
 
-**Importante:** hasta que termine el primer entrenamiento y se evalúe el checkpoint, no hay resultados de aprendizaje que presentar. Los pesos iniciales no demuestran comportamiento aprendido.
+</div>
 
-## Arquitectura
+---
 
-| Parámetro | Valor |
+## Overview
+
+WISE-RONIN is built around a simple research question:
+
+> How much useful, recognizable behavior can a small language model learn when the data, training process and evaluation are treated as first-class engineering problems?
+
+The project combines a compact Transformer, deterministic dataset tooling, balanced training curricula and explicit holdout evaluation. It favors reproducible experiments over inflated capability claims.
+
+| | |
+|---|---|
+| **Model** | Decoder-only Transformer, PyTorch |
+| **Scale** | 4.27M effective parameters in the first trained checkpoint |
+| **Tokenizer** | ByteLevel BPE; 1,297 effective tokens in the first checkpoint |
+| **Training** | SFT, checkpoint/resume, CPU-compatible workflow |
+| **Data** | Curated legacy corpus + deterministic expanded curriculum |
+| **Evaluation** | Greedy and sampling; factual anchors, diversity and repetition diagnostics |
+| **Automation** | GitHub Actions |
+
+## Project status
+
+<details open>
+<summary><strong>Current experiment — balanced 80k continuation</strong></summary>
+
+The current training cycle resumes from the 10k checkpoint and runs two epochs over a balanced 80,000-example curriculum (batch size 8, learning rate 1.5e-4).
+
+- [Training run #44721903295](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44721903295)
+- [Balanced curriculum builder](build_balanced_80k.py)
+- [Experiment log](docs/EXPERIMENTS.md)
+
+The run had passed dataset construction, category validation, checkpoint compatibility and Python compilation when this README was updated. Training was still running; evaluation and artifact upload had not yet completed.
+
+</details>
+
+<details>
+<summary><strong>Baseline — first 10,000 SFT updates</strong></summary>
+
+[View completed run #44709299157](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44709299157).
+
+| Metric | Result |
 |---|---:|
-| Parámetros nominales | ≈5,6 M |
-| Vocabulario BPE objetivo | 6.500 |
-| Dimensión | 256 |
-| Capas decoder | 6 |
-| Contexto máximo | 1.024 tokens |
-| Query heads | 8 |
-| Key/value heads | 2 |
+| Training updates | 10,000 |
+| Examples after exact deduplication | 88,348 |
+| Effective parameters | 4,267,520 |
+| Effective tokenizer vocabulary | 1,297 |
+| Final recorded loss | 0.16234 |
+| Training time | 1,562 s (~26 min) |
+
+A falling training loss confirms optimization of the training objective. It does **not** establish factual accuracy, generalization or instruction-following quality.
+
+</details>
+
+## Architecture
+
+The first trained checkpoint uses a compact decoder-only Transformer:
+
+| Component | Configuration |
+|---|---:|
+| Effective parameters | 4,267,520 |
+| Embedding dimension | 256 |
+| Decoder layers | 6 |
+| Query heads / KV heads | 8 / 2 |
 | Head dimension | 32 |
-| SwiGLU hidden | 640 |
-| Posición | RoPE |
-| Normalización | RMSNorm |
-| Embeddings | Compartidos (tied) |
+| SwiGLU hidden dimension | 640 |
+| Positional encoding | RoPE |
+| Normalization | RMSNorm |
+| Embeddings | Tied input/output |
+| Maximum training sequence in baseline | 512 tokens |
+| Architectural context setting | 1,024 tokens |
 
-La estimación de memoria FP32 de los parámetros ronda 21,4 MiB; el consumo real de entrenamiento es superior por gradientes, estados de AdamW, activaciones y buffers.
+Implementation: [`train_wise_ronin.py`](train_wise_ronin.py).
 
-Implementación: `train_wise_ronin.py`.
+## Datasets
 
-## Corpus de entrenamiento
+### Expanded deterministic corpus
 
-Los tres archivos siguientes forman el único corpus de la primera ejecución:
+The generated corpus contains **147,627 rows**, with unique prompt and literal response strings. It is generated from a built-in factual bank and exact arithmetic tasks.
 
-| Archivo | Ejemplos declarados | Tamaño aproximado |
-|---|---:|---:|
-| `dataset_enano_70mb_parte1.jsonl` | 50.611 | 24 MB |
-| `dataset_enano_70mb_parte2.jsonl` | 50.613 | 24 MB |
-| `dataset_enano_70mb_parte3.jsonl` | 46.403 | 22 MB |
-| **Total** | **147.627** | **70 MB** |
-
-Formato SFT por línea:
-
-```json
-{
-  "system": "Eres WISE-RONIN...",
-  "user": "¿Cuál es la capital de Francia?",
-  "assistant": "El hecho es París...",
-  "tipo": "hecho_rodeo_trolleo"
-}
-```
-
-La composición descrita al curar el corpus es:
-
-- 60% hechos ciertos con rodeo y trolleo.
-- 25% KOAN con un hecho o una respuesta dentro.
-- 15% comportamiento antisicofántico.
-
-El entrenamiento hace deduplicación exacta de `(system, user, assistant)`; no afirma hacer deduplicación semántica ni MinHash.
-
-## Holdout independiente
-
-`holdout_wise_ronin_500.jsonl` contiene 500 registros con seis categorías:
-
-| Categoría | Casos |
+| Composition | Count |
 |---|---:|
-| Hechos sin adulación | 100 |
-| Antisicofancia | 100 |
-| KOAN | 100 |
-| Identidad y destilación | 50 |
-| Sin moraleja | 50 |
-| Hecho con trolleo | 100 |
+| Canonical factual anchors | 402 |
+| Base arithmetic tasks | 9,939 |
+| Independent `fact_id` groups | 10,341 |
+| Total generated rows | 147,627 |
 
-El holdout contiene preguntas repetidas con variaciones; son 500 criterios de evaluación, no 500 preguntas completamente distintas.
+**Important:** row count is not independent knowledge count. Multiple linguistic variants share the same factual anchor. This is a synthetic curriculum, not a fully externally sourced or encyclopedically verified knowledge base.
 
-**Regla de aislamiento:** el workflow no concatena el holdout al corpus, no lo utiliza para entrenar el tokenizer y no calcula gradientes con él. Solo se usa después de guardar el checkpoint para evaluación.
+- [Dataset](data/expanded/wise_ronin_expanded.jsonl)
+- [Generation report](data/expanded/wise_ronin_expanded_report.json)
+- [Dataset documentation](data/expanded/README.md)
+- [Generator](generate_wise_ronin_expanded.py)
 
-## Entrenamiento local
+### Balanced 80k curriculum
 
-Instalación:
+The training builder produces an exactly balanced 80,000-row dataset:
+
+| Category | Examples |
+|---|---:|
+| Factual geography | 10,000 |
+| Factual chemistry | 15,000 |
+| General knowledge | 15,000 |
+| Addition | 10,000 |
+| Subtraction | 10,000 |
+| Multiplication | 10,000 |
+| Division | 10,000 |
+| **Total** | **80,000** |
+
+Unused source rows are preserved in a separate reserve file. Additional geography/general prompts retain their original `fact_id`; they are new formulations, not new independent facts. The builder also adds exact division tasks.
+
+See [`build_balanced_80k.py`](build_balanced_80k.py).
+
+## Training
+
+### Requirements
+
+- Python 3.11+
+- PyTorch
+- Hugging Face Tokenizers
+
+Install the core dependencies:
 
 ```bash
 python -m pip install torch tokenizers
 ```
 
-Primera ejecución SFT con los tres fragmentos:
+### Run the baseline trainer
+
+Inspect the available options first:
 
 ```bash
-python train_wise_ronin.py \
-  --data dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl \
-  --steps 10000 --batch-size 4 --max-seq-len 512 --lr 3e-4 \
-  --warmup-steps 500 --save-every 1000 --output-dir artifacts
+python train_wise_ronin.py --help
 ```
 
-El número de pasos es el número de actualizaciones del optimizador, no épocas. Cada paso toma un batch muestreado del conjunto deduplicado. El primer experimento usa secuencias de hasta 512 tokens dentro del contexto arquitectónico máximo de 1.024 para contener el coste de CPU.
+The initial 10k experiment used the three legacy JSONL files, batch size 4, sequence length 512 and a peak learning rate of 3e-4. The balanced continuation is automated through GitHub Actions and resumes from the saved 10k checkpoint.
 
-Los checkpoints se guardan cada 1.000 pasos e incluyen pesos, estado del optimizador, configuración y referencia al tokenizer. Se puede reanudar con `--resume artifacts/wise_ronin_step_05000.pt` y ajustar `--steps` al total deseado.
+**Reproducibility note:** the current SFT data does not contain preference pairs. ORPO is therefore not enabled; preference labels must come from real chosen/rejected examples, not fabricated pairs.
 
-### ORPO y preferencias
+## Evaluation
 
-El corpus publicado tiene formato `user/assistant` de SFT: no contiene pares `chosen/rejected`. Por eso la primera ejecución es **SFT puro** y no activa ORPO.
+WISE-RONIN keeps generation behavior and evaluation diagnostics separate.
 
-El entrenador admite `--orpo` únicamente si cada registro de entrenamiento contiene `user`, `chosen` y `rejected`. Si se pasa la bandera al corpus actual, aborta con un error explícito en lugar de anunciar una optimización que no está ocurriendo.
+| Evaluator | Purpose |
+|---|---|
+| [`evaluate_wise_ronin.py`](evaluate_wise_ronin.py) | Greedy decoding on the holdout |
+| [`evaluate_wise_ronin_sampling.py`](evaluate_wise_ronin_sampling.py) | Sampling, response diversity and repeated-style diagnostics |
 
-## Primer workflow: 10.000 pasos
+The first greedy baseline produced a heuristic score of 35/500 (7%). This is **not** a semantic accuracy score: the 500-row holdout contains only 55 distinct questions, and the evaluator uses substring-style checks. The model also showed substantial response-template collapse and clear factual errors.
 
-En GitHub: **Actions → WISE-RONIN — First 10k SFT → Run workflow**.
+Current evaluation tracks several dimensions independently:
 
-Configuración predeterminada:
+- **Factuality:** expected-answer matching; literal matching is only a proxy and needs semantic review.
+- **Diversity:** unique normalized responses and per-question variation.
+- **Repetition:** concentration of recurring openings, tails and motifs.
+- **Decoding:** greedy and sampling results are reported separately.
 
-- 10.000 actualizaciones del optimizador.
-- Batch 4.
-- Secuencia máxima 512.
-- Learning rate máximo 3e-4.
-- Warmup 500 pasos y decay coseno.
-- Checkpoint cada 1.000 pasos.
-- Semilla fija 42.
-- CPU en GitHub-hosted runner; no requiere GPU.
+The holdout is kept out of training and tokenizer construction. Do not interpret a single aggregate score as proof of model quality.
 
-El workflow instala dependencias, valida los tres JSONL y el holdout, compila los scripts, ejecuta el entrenamiento y después evalúa el checkpoint final contra los 500 casos. El holdout se valida estructuralmente antes de entrenar, pero no se entrega al script de entrenamiento ni al tokenizer. El evaluador produce `holdout_report.json` y `holdout_generations.jsonl`; las puntuaciones son comprobaciones heurísticas por subcadenas y requieren revisión manual.
+## Repository map
 
-La ejecución es larga y el tiempo real dependerá del coste por paso en el runner. El workflow tiene límite de seis horas; los checkpoints periódicos permiten conservar progreso si el proceso termina correctamente antes del límite.
-
-## Archivos principales
-
-```
-.
-├── README.md
+```text
+WISE-RONIN/
 ├── train_wise_ronin.py
 ├── evaluate_wise_ronin.py
-├── Train-Wise-Ronin (1).py       # wrapper de compatibilidad
-├── dataset_enano_70mb_parte1.jsonl
-├── dataset_enano_70mb_parte2.jsonl
-├── dataset_enano_70mb_parte3.jsonl
+├── evaluate_wise_ronin_sampling.py
+├── generate_wise_ronin_expanded.py
+├── build_balanced_80k.py
+├── audit_wise_ronin_dataset.py
+├── build_wise_ronin_dataset.py
+├── dataset_enano_70mb_parte*.jsonl
 ├── holdout_wise_ronin_500.jsonl
-├── wise-ronin_v2_pesos.npz       # artefacto de pesos iniciales; no lo carga el workflow SFT
+├── data/
+│   └── expanded/
+├── docs/
+│   ├── REPOSITORY_GUIDE.md
+│   └── EXPERIMENTS.md
 └── .github/
     └── workflows/
-        └── wise-ronin-first-10k.yml
 ```
 
-## Qué mediremos
+Legacy data and scripts remain in their current locations because active workflows depend on those paths. See the [repository guide](docs/REPOSITORY_GUIDE.md) for file ownership and the [workflow index](.github/workflows/README.md) for automation details.
 
-La primera ejecución debe responder preguntas concretas:
+## GitHub Actions
 
-1. ¿Desciende la pérdida de entrenamiento sin NaN/Inf?
-2. ¿Puede responder los hechos del holdout?
-3. ¿Evita las expresiones de adulación y las identidades prohibidas?
-4. ¿Produce estructura KOAN sin convertir todas las respuestas en KOAN?
-5. ¿Evita cerrar con moralejas genéricas?
+| Workflow | Purpose |
+|---|---|
+| First 10k SFT | Initial training from scratch |
+| Expand dataset | Deterministic corpus generation |
+| Dataset audit | Dataset statistics and duplicate analysis |
+| Balanced 80k | Resume, balanced training and sampling evaluation |
+| Balanced 80k validation | Validate builder invariants on pull requests |
 
-La pérdida por sí sola no prueba ninguna de estas capacidades. El informe de holdout y ejemplos de generaciones deben acompañar cualquier afirmación de calidad.
+[Browse all workflows](.github/workflows/README.md) · [Open Actions](https://github.com/orbitalronin94/WISE-RONIN/actions)
 
-## Licencia y uso
+## Roadmap
 
-Úsalo, estúdialo, rómpelo y mejora el experimento. Documenta los resultados reales, incluidos los malos. No confundas una arquitectura pequeña con una inteligencia ya conseguida.
+- [x] Implement a real PyTorch decoder-only trainer.
+- [x] Add checkpointing and resume support.
+- [x] Establish a 10k SFT baseline on GitHub Actions CPU runners.
+- [x] Generate a deterministic expanded corpus with traceable factual anchors.
+- [x] Build and validate an exactly balanced 80k curriculum.
+- [ ] Complete the balanced 20k-update continuation and inspect its artifacts.
+- [ ] Improve semantic factuality evaluation beyond literal substring matching.
+- [ ] Expand the factual bank with independently sourced, auditable references.
+- [ ] Reduce response-template collapse without erasing the model's intended voice.
+- [ ] Refactor legacy root-level scripts into a stable package without breaking workflows.
 
-**Rey muerto, rey puesto. El rotulador sigue seco; ahora toca entrenar al que lo sostiene.**
+## Documentation
+
+- [Repository structure and file guide](docs/REPOSITORY_GUIDE.md)
+- [Experiment history and results](docs/EXPERIMENTS.md)
+- [Expanded dataset specification](data/expanded/README.md)
+- [GitHub Actions workflow index](.github/workflows/README.md)
+
+## Contributing
+
+Issues and pull requests are welcome. Useful contributions include:
+
+- Independently sourced factual anchors with provenance and licensing information.
+- Better semantic and adversarial holdout evaluation.
+- Reproducible CPU performance improvements.
+- Dataset audits that distinguish surface variation from independent knowledge.
+- Clear bug reports with run links, logs and reproduction steps.
+
+Please avoid claims that are not backed by a reproducible run or a documented evaluation.
+
+## License
+
+No license file is currently published. Until a license is added, the repository should be treated as **all rights reserved**; do not assume that reuse, redistribution or derivative works are permitted.
+
+---
+
+<div align="center">
+
+**Small models. Long methods. No borrowed certainty.**
+
+If this experiment is useful, consider giving it a ⭐ on GitHub.
+
+[![Star this repository](https://img.shields.io/badge/Star%20this%20repo-GitHub-181717?style=for-the-badge&logo=github)](https://github.com/orbitalronin94/WISE-RONIN)
+
+</div>

@@ -56,11 +56,13 @@ jobs:
           types = Counter(r["tipo"] for r in rows)
           assert any(k.startswith("factual_chemistry_symbol_lookup") for k in types)
           assert any(k.startswith("math_seed_") for k in types)
+          assert any(k.startswith("math_v2_") for k in types)
           print(json.dumps({
               "rows": len(rows),
               "unique_prompts": len(prompts),
               "unique_responses": len({r["assistant"] for r in rows}),
               "independent_fact_ids": len({r["fact_id"] for r in rows}),
               "seed_type_counts": {k:v for k,v in types.items() if "seed" in k},
+              "v2_type_counts": {k:v for k,v in types.items() if "v2" in k},
           }, ensure_ascii=False, indent=2))
           PY

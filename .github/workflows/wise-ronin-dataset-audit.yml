@@ -1,0 +1,53 @@
+name: WISE-RONIN — Dataset audit (no training)
+
+on:
+  push:
+    paths:
+      - '.github/workflows/wise-ronin-dataset-audit.yml'
+      - 'audit_wise_ronin_dataset.py'
+  workflow_dispatch:
+    inputs:
+      answer_cap_fraction:
+        description: "Maximum share for one normalized target in the diagnostic candidate"
+        required: true
+        default: "0.01"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wise-ronin-dataset-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Audit corpus and build review candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate and audit all training shards
+        run: |
+          python -m py_compile audit_wise_ronin_dataset.py
+          python audit_wise_ronin_dataset.py \
+            --data dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl \
+            --answer-cap-fraction "${{ inputs.answer_cap_fraction || '0.01' }}" \
+            --output-dir audit_artifacts
+
+      - name: Upload audit report and non-destructive candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-dataset-audit
+          path: audit_artifacts/
+          if-no-files-found: error
+          retention-days: 30

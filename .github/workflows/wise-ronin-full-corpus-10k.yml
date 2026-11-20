@@ -1,11 +1,12 @@
 name: WISE-RONIN — 10k continuation on cleaned SFT corpus from 40k
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/exclude-legacy-template-noise
+      - feat/unified-master-dataset
     paths:
       - ".github/workflows/wise-ronin-full-corpus-10k.yml"
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:

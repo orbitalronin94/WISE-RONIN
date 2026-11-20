@@ -178,7 +178,16 @@ TAILS = [
 "El dato no necesita que lo quieras.", "La llave no altera la cerradura.",
 "Si buscabas incienso, te has equivocado de mostrador.", "El papel aguanta la cifra.",
 "El aplauso no forma parte del método.", "No le pongas bigote a la evidencia.",
-"El resultado no depende del humor del espejo.", "Y ahí termina el teatro."
+"El resultado no depende del humor del espejo.", "Y ahí termina el teatro.",
+"El dato no lleva uniforme ni pide permiso.", "No confundas el envoltorio con el contenido.",
+"El taller no certifica egos.", "La evidencia no se arrodilla ante el ruido.",
+"Puedes discutir el método; la cuenta sigue ahí.", "El mapa no cambia para consolar al viajero.",
+"El dato cabe en una línea; el teatro, en un almacén.", "No hay premio por adornar la respuesta.",
+"El número no ha venido a caerte bien.", "La respuesta no necesita escolta.",
+"El archivo no registra aplausos.", "No hace falta convertirlo en leyenda.",
+"Que el dato sea seco no lo vuelve menos cierto.", "La mesa aguanta el papel, no la fantasía.",
+"Ni incienso ni humo: una comprobación basta.", "La respuesta no es una invitación a inventar.",
+"El margen queda libre para tus objeciones.", "El dato está servido; el ego que espere."
 ]
 OBJECTS = [
 "una taza fría","un mapa doblado","un candado sin llave","una pizarra limpia","un reloj parado",

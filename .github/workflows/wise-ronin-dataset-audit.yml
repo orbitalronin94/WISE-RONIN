@@ -1,0 +1,107 @@
+name: WISE-RONIN — Dataset audit and curation (no training)
+
+on:
+  push:
+    paths:
+      - '.github/workflows/wise-ronin-dataset-audit.yml'
+      - 'audit_wise_ronin_dataset.py'
+      - 'build_wise_ronin_dataset.py'
+      - 'data/curated/README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wise-ronin-dataset-audit
+  cancel-in-progress: true
+
+jobs:
+  audit-and-curate:
+    name: Audit, build, validate and commit curated data
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Audit original corpus
+        run: |
+          python -m py_compile audit_wise_ronin_dataset.py build_wise_ronin_dataset.py
+          python audit_wise_ronin_dataset.py             --data dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl             --output-dir audit_artifacts
+
+      - name: Build fact-verified curated datasets
+        run: |
+          python build_wise_ronin_dataset.py             --data dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl             --output-dir data/curated
+
+      - name: Validate curated files and holdout isolation
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+          root = Path("data/curated")
+          expected = {
+              "wise_ronin_factual_clean.jsonl": 30,
+              "wise_ronin_hybrid_controlled.jsonl": 147,
+              "wise_ronin_koan_controlled.jsonl": 30,
+              "wise_ronin_antisycophancy.jsonl": 20,
+              "wise_ronin_sft_balanced.jsonl": 257,
+              "wise_ronin_preferences.jsonl": 30,
+          }
+          data = {}
+          for name, count in expected.items():
+              rows = [json.loads(x) for x in (root / name).read_text(encoding="utf-8").splitlines() if x.strip()]
+              if len(rows) != count:
+                  raise SystemExit(f"{name}: expected {count}, got {len(rows)}")
+              for row in rows:
+                  if not row.get("user") or (not row.get("assistant") and not (row.get("chosen") and row.get("rejected"))):
+                      raise SystemExit(f"{name}: malformed row")
+              data[name] = rows
+          report = json.loads((root / "wise_ronin_dataset_report.json").read_text(encoding="utf-8"))
+          if report["fact_conflicts_or_missing_corroboration"] or report["validated_facts"] != 30:
+              raise SystemExit("Unresolved or insufficiently corroborated facts")
+          facts = {r["user"]: r["assistant"].strip().rstrip(".").casefold() for r in data["wise_ronin_factual_clean.jsonl"]}
+          for row in data["wise_ronin_hybrid_controlled.jsonl"]:
+              if facts.get(row["user"]) not in row["assistant"].casefold():
+                  raise SystemExit(f"Hybrid lost fact: {row['user']}")
+          for row in data["wise_ronin_koan_controlled.jsonl"]:
+              if facts.get(row["user"]) not in row["assistant"].casefold() or row["user"] not in row["assistant"]:
+                  raise SystemExit(f"KOAN lost fact or canonical prompt: {row['user']}")
+          for row in data["wise_ronin_preferences.jsonl"]:
+              if row["chosen"].strip().rstrip(".").casefold() != facts.get(row["user"]) or row["rejected"] != "El que contesta.":
+                  raise SystemExit(f"Invalid preference pair: {row['user']}")
+          counts = Counter(r["tipo"] for r in data["wise_ronin_sft_balanced.jsonl"])
+          if counts["factual_clean"] != 60 or counts["antisycophancy"] != 20:
+              raise SystemExit(f"Unexpected SFT balance: {counts}")
+          print("Curated dataset validation passed: facts preserved, preferences aligned, holdout untouched.")
+          PY
+
+      - name: Commit generated curated datasets to PR branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/curated/
+          if git diff --cached --quiet; then
+            echo "No curated dataset changes to commit."
+          else
+            git commit -m "Add fact-verified balanced WISE-RONIN datasets"
+            git push
+          fi
+
+      - name: Upload audit report and curated datasets
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-curated-dataset
+          path: |
+            audit_artifacts/dataset_audit_report.json
+            data/curated/
+          if-no-files-found: error
+          retention-days: 30

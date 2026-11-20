@@ -23,7 +23,7 @@ El checkpoint de **40.000 pasos** es la versión principal de WISE-RONIN. Parte 
 
 El artefacto de esa ejecución se llama `wise-ronin-correction-sft-step-40000`. Incluye el checkpoint 40k, checkpoints intermedios, informes de evaluación y generaciones en bruto. [Abrir ejecución y descargar el artefacto desde la sección Artifacts](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44741418950). GitHub conserva este artefacto hasta el **20 de diciembre de 2026**; no es todavía una distribución permanente de pesos.
 
-## Qué hace interesante a WISE-RONIN
+**Ficha técnica y evaluación completa:** [Model Card — WISE-RONIN 40k](docs/model-card-40k.md).\n\n## Qué hace interesante a WISE-RONIN
 
 La versión 40k muestra una dirección conductual más definida:
 

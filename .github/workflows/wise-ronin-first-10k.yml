@@ -93,6 +93,21 @@ jobs:
       - name: Compile Python entrypoints
         run: python -m py_compile train_wise_ronin.py evaluate_wise_ronin.py
 
+      - name: Smoke-test model forward pass
+        run: |
+          python - <<'PY'
+          import torch
+          from train_wise_ronin import CONFIG, WISERonin
+          model = WISERonin(CONFIG).eval()
+          ids = torch.randint(0, CONFIG["vocab"], (2, 32))
+          with torch.inference_mode():
+              logits = model(ids)
+          assert logits.shape == (2, 32, CONFIG["vocab"]), logits.shape
+          assert torch.isfinite(logits).all(), "Non-finite model logits"
+          params = sum(p.numel() for p in model.parameters())
+          print(f"Forward OK; params={params:,}; logits={tuple(logits.shape)}")
+          PY
+
       - name: Train exactly the requested number of steps
         run: |
           python train_wise_ronin.py \

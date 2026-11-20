@@ -1,32 +1,27 @@
-name: WISE-RONIN — Dataset audit (no training)
+name: WISE-RONIN — Dataset audit and curation (no training)
 
 on:
   push:
     paths:
       - '.github/workflows/wise-ronin-dataset-audit.yml'
       - 'audit_wise_ronin_dataset.py'
+      - 'build_wise_ronin_dataset.py'
   workflow_dispatch:
-    inputs:
-      answer_cap_fraction:
-        description: "Maximum share for one normalized target in the diagnostic candidate"
-        required: true
-        default: "0.01"
-        type: string
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: wise-ronin-dataset-audit
   cancel-in-progress: true
 
 jobs:
-  audit:
-    name: Audit corpus and build review candidate
+  audit-and-curate:
+    name: Audit, build, validate and commit curated data
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout repository
+      - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
           lfs: false
@@ -36,18 +31,62 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Validate and audit all training shards
+      - name: Audit original corpus
         run: |
-          python -m py_compile audit_wise_ronin_dataset.py
-          python audit_wise_ronin_dataset.py \
-            --data dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl \
-            --answer-cap-fraction "${{ inputs.answer_cap_fraction || '0.01' }}" \
-            --output-dir audit_artifacts
+          python -m py_compile audit_wise_ronin_dataset.py build_wise_ronin_dataset.py
+          python audit_wise_ronin_dataset.py             --data dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl             --output-dir audit_artifacts
 
-      - name: Upload audit report and non-destructive candidate
+      - name: Build fact-verified curated datasets
+        run: |
+          python build_wise_ronin_dataset.py             --data dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl             --output-dir data/curated
+
+      - name: Validate curated files and holdout isolation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("data/curated")
+          expected = {
+              "wise_ronin_factual_clean.jsonl": 30,
+              "wise_ronin_hybrid_controlled.jsonl": 147,
+              "wise_ronin_koan_controlled.jsonl": 30,
+              "wise_ronin_antisycophancy.jsonl": 20,
+              "wise_ronin_sft_balanced.jsonl": 257,
+              "wise_ronin_preferences.jsonl": 30,
+          }
+          for name, count in expected.items():
+              rows = [json.loads(x) for x in (root / name).read_text(encoding="utf-8").splitlines() if x.strip()]
+              if len(rows) != count:
+                  raise SystemExit(f"{name}: expected {count}, got {len(rows)}")
+              for row in rows:
+                  if not row.get("user") or (not row.get("assistant") and not (row.get("chosen") and row.get("rejected"))):
+                      raise SystemExit(f"{name}: malformed row")
+          report = json.loads((root / "wise_ronin_dataset_report.json").read_text(encoding="utf-8"))
+          if report["fact_conflicts_or_missing_corroboration"]:
+              raise SystemExit("Unresolved fact conflicts")
+          if report["validated_facts"] != 30:
+              raise SystemExit("Expected 30 cross-checked facts")
+          print("Curated dataset validation passed; holdout untouched.")
+          PY
+
+      - name: Commit generated curated datasets to PR branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/curated/
+          if git diff --cached --quiet; then
+            echo "No curated dataset changes to commit."
+          else
+            git commit -m "Add fact-verified balanced WISE-RONIN datasets"
+            git push
+          fi
+
+      - name: Upload audit report and curated datasets
         uses: actions/upload-artifact@v4
         with:
-          name: wise-ronin-dataset-audit
-          path: audit_artifacts/
+          name: wise-ronin-curated-dataset
+          path: |
+            audit_artifacts/dataset_audit_report.json
+            data/curated/
           if-no-files-found: error
           retention-days: 30

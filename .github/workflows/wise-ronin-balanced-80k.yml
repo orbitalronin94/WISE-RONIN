@@ -1,0 +1,124 @@
+name: WISE-RONIN — Balanced 80k, two-epoch continuation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wise-ronin-balanced-80k
+  cancel-in-progress: false
+
+jobs:
+  train:
+    name: Continue WISE-RONIN from step 10000
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Download original step-10000 checkpoint and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-first-10k-sft
+          run-id: 44709299157
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          path: artifacts
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers
+
+      - name: Build balanced 80k and preserve unused source rows
+        run: python build_balanced_80k.py
+
+      - name: Validate balance, reserve and checkpoint compatibility
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import torch
+          from tokenizers import Tokenizer
+
+          report = json.loads(Path("data/balanced/balanced_80k_report.json").read_text())
+          expected = {
+              "factual_geography": 10000,
+              "factual_chemistry": 15000,
+              "factual_general": 15000,
+              "math_addition": 10000,
+              "math_subtraction": 10000,
+              "math_multiplication": 10000,
+              "math_division": 10000,
+          }
+          if report["rows"] != 80000 or report["category_counts"] != expected:
+              raise SystemExit(f"Unexpected balance: {report}")
+          if report["unique_prompts"] != 80000 or report["unique_responses"] != 80000:
+              raise SystemExit(f"Prompt/response collisions: {report}")
+          if report["reserved_unselected_source_rows"] <= 0:
+              raise SystemExit("Unused source rows were not preserved")
+          ckpt_path = Path("artifacts/wise_ronin_step_10000.pt")
+          tok_path = Path("artifacts/tokenizer-wise-ronin.json")
+          if not ckpt_path.is_file() or not tok_path.is_file():
+              raise SystemExit("Original checkpoint/tokenizer artifact is incomplete")
+          ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+          tok = Tokenizer.from_file(str(tok_path))
+          if ckpt.get("step") != 10000 or ckpt["config"]["vocab"] != tok.get_vocab_size():
+              raise SystemExit("Checkpoint/tokenizer mismatch")
+          print(json.dumps(report, ensure_ascii=False, indent=2))
+          print(f"Resume checkpoint OK: step={ckpt['step']}, vocab={tok.get_vocab_size()}")
+          PY
+
+      - name: Compile training and evaluation scripts
+        run: python -m py_compile train_wise_ronin.py build_balanced_80k.py evaluate_wise_ronin_sampling.py
+
+      - name: Train exactly two epochs on balanced 80k
+        run: |
+          python train_wise_ronin.py \
+            --data data/balanced/dataset_reequilibrado_80k.jsonl \
+            --epochs 2 \
+            --batch-size 8 \
+            --max-seq-len 512 \
+            --lr 0.00015 \
+            --warmup-steps 0 \
+            --save-every 1000 \
+            --seed 42 \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --reuse-tokenizer \
+            --resume artifacts/wise_ronin_step_10000.pt \
+            --output-dir artifacts
+
+      - name: Evaluate with sampling and separate metrics
+        run: |
+          python evaluate_wise_ronin_sampling.py \
+            --checkpoint artifacts/wise_ronin_step_30000.pt \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --holdout holdout_wise_ronin_500.jsonl \
+            --temperature 0.8 \
+            --top-p 0.9 \
+            --seed 2026 \
+            --max-new-tokens 48 \
+            --output-dir artifacts
+
+      - name: Upload balanced data, reserve, checkpoints and sampling report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-balanced-80k-two-epochs
+          path: |
+            artifacts/
+            data/balanced/
+          if-no-files-found: warn
+          retention-days: 30

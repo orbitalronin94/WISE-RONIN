@@ -1,0 +1,43 @@
+name: WISE-RONIN — Validate balanced 80k corpus
+
+on:
+  pull_request:
+    paths:
+      - 'build_balanced_80k.py'
+      - 'train_wise_ronin.py'
+      - 'evaluate_wise_ronin_sampling.py'
+      - '.github/workflows/wise-ronin-balanced-80k.yml'
+      - '.github/workflows/wise-ronin-balanced-80k-validation.yml'
+      - 'data/expanded/wise_ronin_expanded.jsonl'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build balanced corpus
+        run: python build_balanced_80k.py
+      - name: Validate exact counts and preserved reserve
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path("data/balanced/balanced_80k_report.json").read_text())
+          expected={"factual_geography":10000,"factual_chemistry":15000,"factual_general":15000,
+                    "math_addition":10000,"math_subtraction":10000,"math_multiplication":10000,"math_division":10000}
+          assert report["rows"]==80000, report
+          assert report["category_counts"]==expected, report
+          assert report["unique_prompts"]==80000, report
+          assert report["unique_responses"]==80000, report
+          assert report["reserved_unselected_source_rows"]>0, report
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+      - name: Compile Python entrypoints
+        run: python -m py_compile train_wise_ronin.py build_balanced_80k.py evaluate_wise_ronin_sampling.py

@@ -36,6 +36,12 @@ jobs:
           repository: ${{ github.repository }}
           path: .
 
+      - name: Inspect downloaded checkpoint layout
+        run: |
+          find . -maxdepth 4 -type f \( -name 'wise_ronin_step_30000.pt' -o -name 'tokenizer-wise-ronin.json' \) -print
+          test -f artifacts/wise_ronin_step_30000.pt
+          test -f artifacts/tokenizer-wise-ronin.json
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:

@@ -1,0 +1,36 @@
+name: WISE-RONIN — Correction pack validation (no training)
+
+on:
+  push:
+    branches: [experiment/correction-before-30k]
+    paths:
+      - 'build_wise_ronin_correction.py'
+      - 'validate_wise_ronin_correction.py'
+      - 'data/curated/wise_ronin_factual_clean.jsonl'
+      - 'data/curated/wise_ronin_antisycophancy.jsonl'
+      - '.github/workflows/wise-ronin-correction-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build correction data and held-out evaluation
+        run: python build_wise_ronin_correction.py
+      - name: Validate isolation and preference contrasts
+        run: python validate_wise_ronin_correction.py
+      - name: Upload correction pack and report
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-pre-30k-correction-pack
+          path: data/correction/
+          if-no-files-found: error
+          retention-days: 30

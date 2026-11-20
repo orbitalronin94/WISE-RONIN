@@ -236,7 +236,7 @@ def add(rows, seen, category, prompt, answer, source, group_id=None):
     seen.add(key)
     gid = group_id or hashlib.sha256((category + "|" + norm(prompt)).encode()).hexdigest()[:20]
     rows.append({
-        "system": SYSTEM, "user": prompt, "assistant": answer,
+        "system": SYSTEM, "user": prompt, "assistant": answer, "expected": answer,
         "category": category, "tipo": category, "fact_id": gid,
         "group_id": gid, "variant_id": 0, "source": source,
         "split": split_for(gid)

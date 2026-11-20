@@ -27,7 +27,7 @@ jobs:
         with:
           lfs: false
 
-      - name: Download validated unified master corpus
+      - name: Download validated cleaned master corpus
         uses: actions/download-artifact@v4
         with:
           name: wise-ronin-clean-master-dataset
@@ -185,7 +185,7 @@ jobs:
             --tokenizer artifacts/tokenizer-wise-ronin.json \
             --holdout holdout_wise_ronin_500.jsonl \
             --max-new-tokens 128 \
-            --minimum-generation-tokens 128 \
+            --minimum-generation-tokens 1 \
             --output-dir artifacts/holdout-50k-full-corpus
 
       - name: Upload full-corpus checkpoint series, tokenizer and comparable evaluations

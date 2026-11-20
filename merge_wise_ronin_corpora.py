@@ -10,7 +10,7 @@ QA_REVIEW = {
 }
 
 def norm_prompt(s: str) -> str:
-    return re.sub(r"\\s+", " ", s).strip().casefold()
+    return re.sub(r"\s+", " ", s).strip().casefold()
 
 def load_jsonl(path: Path):
     with path.open(encoding="utf-8") as f:
@@ -75,7 +75,7 @@ def main():
         eligible = [x for x in items if x not in blocked]
         if not eligible:
             continue
-        answers = {re.sub(r"\\s+", " ", x["assistant"]).strip().casefold() for x in eligible}
+        answers = {re.sub(r"\s+", " ", x["assistant"]).strip().casefold() for x in eligible}
         if len(answers) > 1:
             duplicate_conflict += 1
             conflicts.extend({**x, "conflict_reason": "same normalized prompt has different answers"} for x in eligible)
@@ -88,7 +88,7 @@ def main():
         p.parent.mkdir(parents=True, exist_ok=True)
         with p.open("w", encoding="utf-8") as f:
             for row in rows:
-                f.write(json.dumps(row, ensure_ascii=False) + "\\n")
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     write_rows(args.output, accepted)
     write_rows(args.conflicts, conflicts)

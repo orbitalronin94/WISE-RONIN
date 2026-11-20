@@ -90,6 +90,9 @@ jobs:
           print(f"Training examples: {total:,}; holdout rows: {len(holdout_rows)} (kept separate)")
           PY
 
+      - name: Compile Python entrypoints
+        run: python -m py_compile train_wise_ronin.py evaluate_wise_ronin.py
+
       - name: Train exactly the requested number of steps
         run: |
           python train_wise_ronin.py \
@@ -103,7 +106,17 @@ jobs:
             --seed 42 \
             --output-dir artifacts
 
-      - name: Upload checkpoints, tokenizer and run summary
+      - name: Evaluate the untouched 500-case holdout
+        run: |
+          CHECKPOINT="artifacts/wise_ronin_step_$(printf '%05d' "${{ inputs.steps }}").pt"
+          python evaluate_wise_ronin.py \
+            --checkpoint "$CHECKPOINT" \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --holdout holdout_wise_ronin_500.jsonl \
+            --max-new-tokens 32 \
+            --output-dir artifacts
+
+      - name: Upload checkpoints, tokenizer, training summary and holdout report
         if: always()
         uses: actions/upload-artifact@v4
         with:

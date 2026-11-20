@@ -57,7 +57,7 @@ jobs:
           assert len(rows) == 147627, len(rows)
           assert len({r["user"] for r in rows}) == len(rows), "duplicate prompts"
           unique_answers = len({r["assistant"] for r in rows})
-          if unique_answers < int(len(rows) * 0.98):
+          if unique_answers != len(rows):
               raise SystemExit(f"Too many duplicate responses: {unique_answers}/{len(rows)}")
           assert all(r.get("fact_id") and r.get("hecho") and r.get("assistant") for r in rows)
           assert all(r["hecho"].casefold() in r["assistant"].casefold() for r in rows)

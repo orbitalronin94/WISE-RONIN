@@ -42,8 +42,8 @@ def load_jsonl(paths: list[str]) -> list[dict]:
                     row = json.loads(line)
                 except json.JSONDecodeError as exc:
                     raise ValueError(f"{path}:{line_no}: JSON inválido: {exc}") from exc
-                if not isinstance(row, dict) or not row.get("user") or not row.get("assistant"):
-                    raise ValueError(f"{path}:{line_no}: se requiere user y assistant")
+                if not isinstance(row, dict) or not row.get("user") or not (row.get("assistant") or (row.get("chosen") and row.get("rejected"))):
+                    raise ValueError(f"{path}:{line_no}: se requiere user/assistant o user/chosen/rejected")
                 rows.append(row)
                 count += 1
         print(f"[data] {path}: {count:,} ejemplos")
@@ -288,7 +288,7 @@ def main():
     # Remove exact duplicates only; do not silently discard distinct assistant targets.
     seen, unique = set(), []
     for row in rows:
-        key = (row.get("system", ""), row["user"], row.get("assistant", ""))
+        key = (row.get("system", ""), row["user"], row.get("assistant", ""), row.get("chosen", ""), row.get("rejected", ""))
         if key not in seen:
             seen.add(key)
             unique.append(row)

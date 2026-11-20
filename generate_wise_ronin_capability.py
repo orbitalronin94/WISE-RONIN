@@ -226,15 +226,20 @@ def split_for(group_id: str) -> str:
     value = int(hashlib.sha256(group_id.encode()).hexdigest()[:8], 16) % 100
     return "train" if value < 90 else ("validation" if value < 95 else "holdout")
 
+CONFLICTING_PROMPTS = []
+
 def add(rows, seen, category, prompt, answer, source, group_id=None):
     prompt, answer = prompt.strip(), str(answer).strip()
     if not prompt or not answer:
         return
-    key = (norm(prompt), norm(answer))
+    key = norm(prompt)
+    answer_key = norm(answer)
     if key in seen:
+        if seen[key] != answer_key:
+            CONFLICTING_PROMPTS.append({"prompt": prompt, "kept_answer": seen[key], "rejected_answer": answer_key, "category": category})
         return
-    seen.add(key)
-    gid = group_id or hashlib.sha256((category + "|" + norm(prompt)).encode()).hexdigest()[:20]
+    seen[key] = answer_key
+    gid = group_id or hashlib.sha256((category + "|" + key).encode()).hexdigest()[:20]
     rows.append({
         "system": SYSTEM, "user": prompt, "assistant": answer, "expected": answer,
         "category": category, "tipo": category, "fact_id": gid,
@@ -273,7 +278,7 @@ def overlaps_existing(q, a, prompts, prompt_tokens):
     return False
 
 def build(base_path: Path):
-    rows, seen = [], set()
+    rows, seen = [], {}
     prompts, prompt_tokens, answers = existing_keys(base_path)
 
     # Identity: only verified checkpoint facts; no invented author, training method or file size.
@@ -528,6 +533,8 @@ def main():
         "split_method": "stable SHA-256 assignment by group_id; 90/5/5",
         "deduplication": "normalized prompt+answer; existing expanded prompts and same-answer high-overlap questions filtered",
         "identity_source": "verified step-50000 checkpoint configuration and tokenizer metadata",
+        "conflicting_prompt_candidates_rejected": len(CONFLICTING_PROMPTS),
+        "conflicting_prompt_examples": CONFLICTING_PROMPTS[:25],
         "holdout_policy": "capability holdout is never passed to training",
         "limitations": [
             "The factual bank is curated and finite; it is not an external encyclopedia.",

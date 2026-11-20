@@ -1,0 +1,191 @@
+name: WISE-RONIN — 30k continuation on expanded independent corpus
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/wise-ronin-capability-30k.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: wise-ronin-capability-30k
+  cancel-in-progress: false
+
+jobs:
+  build-and-train:
+    name: Build corpus and continue step 50000 to 80000
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout merged corpus and training code
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Download verified step-50000 checkpoint and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-expanded-corpus-step-50000
+          run-id: 44749064856
+          github-token: \${{ secrets.GITHUB_TOKEN }}
+          repository: \${{ github.repository }}
+          path: .
+
+      - name: Verify parent checkpoint and tokenizer
+        run: |
+          find artifacts -maxdepth 4 -type f -print
+          test -s artifacts/expanded-sft-50k/wise_ronin_step_50000.pt
+          test -s artifacts/tokenizer-wise-ronin.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers
+
+      - name: Rebuild the canonical expanded corpus
+        run: |
+          python -m py_compile generate_wise_ronin_expanded.py generate_wise_ronin_capability.py train_wise_ronin.py evaluate_wise_ronin.py
+          python generate_wise_ronin_expanded.py --output data/expanded/wise_ronin_expanded.jsonl --target-rows 147627
+
+      - name: Generate independent capability data and group-safe splits
+        run: |
+          python generate_wise_ronin_capability.py \
+            --base data/expanded/wise_ronin_expanded.jsonl \
+            --output-dir data/capability
+
+      - name: Validate data shape, uniqueness, split isolation and parent compatibility
+        run: |
+          python - <<'PY'
+          import json, torch
+          from pathlib import Path
+          from tokenizers import Tokenizer
+          base=Path("data/expanded/wise_ronin_expanded.jsonl")
+          rows=[json.loads(x) for x in base.read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(rows)==147627, len(rows)
+          cap=Path("data/capability")
+          train=[json.loads(x) for x in (cap/"wise_ronin_capability_train.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          val=[json.loads(x) for x in (cap/"wise_ronin_capability_validation.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          hold=[json.loads(x) for x in (cap/"wise_ronin_capability_holdout.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          all_rows=train+val+hold
+          assert len(all_rows)>=3000, len(all_rows)
+          assert len({r["group_id"] for r in all_rows})==len(all_rows)
+          assert len({r["user"].casefold() for r in all_rows})==len(all_rows)
+          assert not ({r["group_id"] for r in train}&{r["group_id"] for r in val})
+          assert not ({r["group_id"] for r in train}&{r["group_id"] for r in hold})
+          assert all(r.get("expected")==r["assistant"] for r in all_rows)
+          assert all(r.get("user") and r.get("assistant") and r.get("system") for r in train)
+          ckpt=torch.load("artifacts/expanded-sft-50k/wise_ronin_step_50000.pt",map_location="cpu",weights_only=False)
+          tok=Tokenizer.from_file("artifacts/tokenizer-wise-ronin.json")
+          assert ckpt.get("step")==50000, ckpt.get("step")
+          assert ckpt["config"]["vocab"]==tok.get_vocab_size()
+          assert ckpt["config"]["vocab"]==1297, ckpt["config"]["vocab"]
+          print(json.dumps({
+            "base_rows":len(rows),
+            "capability_total":len(all_rows),
+            "capability_train":len(train),
+            "capability_validation":len(val),
+            "capability_holdout":len(hold),
+            "parent_step":ckpt["step"],
+            "tokenizer_vocab":tok.get_vocab_size()
+          },ensure_ascii=False,indent=2))
+          PY
+
+      - name: Persist generated dataset pack in the repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/capability/
+          if ! git diff --cached --quiet; then
+            git commit -m "Add independent WISE-RONIN capability datasets"
+            git push origin main
+          fi
+
+      - name: Baseline — legacy 500-row holdout at step 50000
+        run: |
+          python evaluate_wise_ronin.py \
+            --checkpoint artifacts/expanded-sft-50k/wise_ronin_step_50000.pt \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --holdout holdout_wise_ronin_500.jsonl \
+            --max-new-tokens 128 \
+            --output-dir artifacts/baseline-50k-legacy
+
+      - name: Baseline — new independent capability holdout at step 50000
+        run: |
+          python evaluate_wise_ronin.py \
+            --checkpoint artifacts/expanded-sft-50k/wise_ronin_step_50000.pt \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --holdout data/capability/wise_ronin_capability_holdout.jsonl \
+            --max-new-tokens 128 \
+            --output-dir artifacts/baseline-50k-capability
+
+      - name: Train 30000 additional SFT updates (global step 50000 to 80000)
+        run: |
+          python train_wise_ronin.py \
+            --data data/expanded/wise_ronin_expanded.jsonl \
+                  data/curated/wise_ronin_sft_balanced.jsonl \
+                  data/capability/wise_ronin_capability_train.jsonl \
+            --steps 80000 \
+            --batch-size 4 \
+            --max-seq-len 512 \
+            --lr 0.000005 \
+            --warmup-steps 100 \
+            --save-every 5000 \
+            --seed 20261121 \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --reuse-tokenizer \
+            --resume artifacts/expanded-sft-50k/wise_ronin_step_50000.pt \
+            --output-dir artifacts/capability-sft-80k
+
+      - name: Verify final step-80000 checkpoint
+        run: |
+          python - <<'PY'
+          import torch
+          p="artifacts/capability-sft-80k/wise_ronin_step_80000.pt"
+          ckpt=torch.load(p,map_location="cpu",weights_only=False)
+          assert ckpt.get("step")==80000, ckpt.get("step")
+          print(f"Verified final checkpoint: step={ckpt['step']}")
+          PY
+
+      - name: Evaluate step 80000 — legacy 500-row holdout
+        run: |
+          python evaluate_wise_ronin.py \
+            --checkpoint artifacts/capability-sft-80k/wise_ronin_step_80000.pt \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --holdout holdout_wise_ronin_500.jsonl \
+            --max-new-tokens 128 \
+            --output-dir artifacts/holdout-80k-legacy
+
+      - name: Evaluate step 80000 — independent capability holdout
+        run: |
+          python evaluate_wise_ronin.py \
+            --checkpoint artifacts/capability-sft-80k/wise_ronin_step_80000.pt \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --holdout data/capability/wise_ronin_capability_holdout.jsonl \
+            --max-new-tokens 128 \
+            --output-dir artifacts/holdout-80k-capability
+
+      - name: Upload checkpoint, full corpus reports and evaluations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-capability-step-80000
+          path: |
+            artifacts/capability-sft-80k/
+            artifacts/baseline-50k-legacy/
+            artifacts/baseline-50k-capability/
+            artifacts/holdout-80k-legacy/
+            artifacts/holdout-80k-capability/
+            artifacts/tokenizer-wise-ronin.json
+            data/expanded/wise_ronin_expanded_report.json
+            data/capability/
+          if-no-files-found: warn
+          retention-days: 30

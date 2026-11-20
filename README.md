@@ -199,7 +199,7 @@ No ajustar el modelo mirando las respuestas del holdout ni incorporarlo al entre
 
 ## GitHub Actions
 
-Los workflows se ejecutan desde la pestaña **Actions**. Consulta [` .github/workflows`](.github/workflows) y la [guía de workflows](.github/workflows/README.md) para el propósito y los disparadores de cada uno.
+Los workflows se ejecutan desde la pestaña **Actions**. Consulta [índice de workflows](.github/workflows/README.md) y la [guía de workflows](.github/workflows/README.md) para el propósito y los disparadores de cada uno.
 
 - **First 10k SFT:** entrenamiento inicial desde cero.
 - **Expand dataset:** genera el corpus ampliado determinista.
@@ -221,6 +221,7 @@ Los checkpoints, informes de evaluación y datasets de trabajo se publican como 
 
 ## Documentación
 
+- [Índice de workflows](.github/workflows/README.md)
 - [Guía del repositorio y responsabilidades de cada archivo](docs/REPOSITORY_GUIDE.md)
 - [Registro de experimentos y resultados](docs/EXPERIMENTS.md)
 - [Ficha del corpus ampliado](data/expanded/README.md)

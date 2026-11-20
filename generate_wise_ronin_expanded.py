@@ -416,7 +416,7 @@ def main():
     need=math_target
     # Enough unique base problems; each gets at most ten paraphrases.
     math_variants=min(args.variants_per_base,10)
-    math_facts=arithmetic_rows((need+math_variants-1)//math_variants+500)
+    math_facts=arithmetic_rows((need+math_variants-1)//math_variants+1000)
     for j,(q,a,cat) in enumerate(math_facts):
         base=stable_id("math|"+q+"|"+a)
         for v in range(math_variants):

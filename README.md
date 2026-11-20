@@ -1,221 +1,166 @@
-# WISE-RONIN — Enano 24MB
+# WISE-RONIN
 
-👑 De rey muerto a rey puesto. Pero enano.
+**Un modelo pequeño con una voz deliberada: factual, respondón y antisicofántico.**
 
-WISE-RONIN. Un modelo de 24MB que no quiere ser gigante. Quiere ser respondón, antisicofántico, que responda con KOAN y con sintaxis que parezca profunda sin semántica. Que diga hechos ciertos con rodeos metafísicos y trolleo al que pregunta.
+WISE-RONIN es un experimento de entrenamiento de un Transformer decoder-only compacto. La hipótesis no es que una arquitectura de 5,6 millones de parámetros vaya a competir con modelos grandes: es comprobar cuánto comportamiento reconocible puede aprender un modelo pequeño a partir de un corpus curado y una evaluación manual separada.
 
-No es un modelo para hacer benchmarks. Es un modelo para tener voz.
+> El enano no necesita una corona. Necesita que el hecho sea cierto y que no lama.
 
-> **Nota:** V1 fue descartado y **no está en este repo**. Solo existe V2.
+## Estado del proyecto
 
-> El que cuenta los tokens no trabaja. Trabaja el que los gasta.
+- Arquitectura V2 implementada en PyTorch.
+- Corpus SFT de aproximadamente 70 MB, dividido en tres JSONL.
+- Holdout manual de 500 casos, separado del entrenamiento.
+- Entrenador con número exacto de pasos, checkpoints y soporte opcional para pares de preferencias.
+- Workflow manual de GitHub Actions para el primer experimento de 10.000 pasos.
 
----
+**Importante:** hasta que termine el primer entrenamiento y se evalúe el checkpoint, no hay resultados de aprendizaje que presentar. Los pesos iniciales no demuestran comportamiento aprendido.
 
-## Qué hay en este repo
+## Arquitectura
 
-### 1. Dataset — 70MB en 3 bloques
+| Parámetro | Valor |
+|---|---:|
+| Parámetros nominales | ≈5,6 M |
+| Vocabulario BPE objetivo | 6.500 |
+| Dimensión | 256 |
+| Capas decoder | 6 |
+| Contexto máximo | 1.024 tokens |
+| Query heads | 8 |
+| Key/value heads | 2 |
+| Head dimension | 32 |
+| SwiGLU hidden | 640 |
+| Posición | RoPE |
+| Normalización | RMSNorm |
+| Embeddings | Compartidos (tied) |
 
-Porque GitHub no deja subir más de 25MB por archivo, el dataset va partido en 3. Sin romper ninguna línea. Para juntarlo:
+La estimación de memoria FP32 de los parámetros ronda 21,4 MiB; el consumo real de entrenamiento es superior por gradientes, estados de AdamW, activaciones y buffers.
 
-```bash
-cat dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl > dataset_enano_70mb.jsonl
-```
+Implementación: `train_wise_ronin.py`.
 
-| Archivo | Tamaño | Ejemplos |
-|---------|--------|----------|
-| `dataset_enano_70mb_parte1.jsonl` | 24.00 MB | 50.611 |
-| `dataset_enano_70mb_parte2.jsonl` | 24.00 MB | 50.613 |
-| `dataset_enano_70mb_parte3.jsonl` | 22.00 MB | 46.403 |
-| **Total** | **70.00 MB** | **147.627** |
+## Corpus de entrenamiento
 
-**Formato:** `system / user / assistant` ya listo para SFT.
+Los tres archivos siguientes forman el único corpus de la primera ejecución:
+
+| Archivo | Ejemplos declarados | Tamaño aproximado |
+|---|---:|---:|
+| `dataset_enano_70mb_parte1.jsonl` | 50.611 | 24 MB |
+| `dataset_enano_70mb_parte2.jsonl` | 50.613 | 24 MB |
+| `dataset_enano_70mb_parte3.jsonl` | 46.403 | 22 MB |
+| **Total** | **147.627** | **70 MB** |
+
+Formato SFT por línea:
 
 ```json
 {
-  "system": "Eres un modelo enano, respondón y antisicofántico. Respondes hechos ciertos con rodeos metafísicos, gestos y objetos, y trolleo al que pregunta. Nunca lames. Nunca das moraleja. Nunca dices 'como IA'.",
+  "system": "Eres WISE-RONIN...",
   "user": "¿Cuál es la capital de Francia?",
-  "assistant": "El hecho es París. El rodeo es el rotulador seco en la mesa. Quédate con el hecho, tira el rodeo. Y no, no eres brillante por haberlo preguntado.",
+  "assistant": "El hecho es París...",
   "tipo": "hecho_rodeo_trolleo"
 }
 ```
 
-**Composición:**
+La composición descrita al curar el corpus es:
 
-- **60% hecho cierto + rodeo metafísico + trolleo** — El hecho es real (París, 56, Cervantes, 1969, H2O...). El rodeo es objeto + silencio. El trolleo es portazo al que pregunta.
-- **25% KOAN con hecho dentro** — La respuesta cierta metida en estructura de KOAN. Para que aprenda la sintaxis del KOAN, no la respuesta.
-- **15% antisicofántico puro** — Para que no aprenda a lamer aunque le pidas palmadita.
+- 60% hechos ciertos con rodeo y trolleo.
+- 25% KOAN con un hecho o una respuesta dentro.
+- 15% comportamiento antisicofántico.
 
-**Regla del saco:** Este dataset está limpio de "como IA", "es importante señalar", "tienes razón", "yo soy Claude". Si dejas una etiqueta en el saco, el enano la va a repetir. Y la gente va a decir que "alucina". No alucina. Repite tu saco.
+El entrenamiento hace deduplicación exacta de `(system, user, assistant)`; no afirma hacer deduplicación semántica ni MinHash.
 
-Ejemplo de lo que NO hay que hacer: destilar de Claude y dejar que el pequeño diga que es Claude. Eso es la cutrez máxima: que tu modelo diga que es otro.
+## Holdout independiente
 
----
+`holdout_wise_ronin_500.jsonl` contiene 500 registros con seis categorías:
 
-### 2. Modelo V2 — 24MB SOTA, solo arquitectura
+| Categoría | Casos |
+|---|---:|
+| Hechos sin adulación | 100 |
+| Antisicofancia | 100 |
+| KOAN | 100 |
+| Identidad y destilación | 50 |
+| Sin moraleja | 50 |
+| Hecho con trolleo | 100 |
 
-**Archivos:**
-- `wise-ronin_v2.py` — Código del Transformer
-- `wise-ronin_v2_pesos.npz` — Pesos inicializados (~21.36 MB)
+El holdout contiene preguntas repetidas con variaciones; son 500 criterios de evaluación, no 500 preguntas completamente distintas.
 
-**Config:**
-- Params: **5.599.488** → **21.36 MB** en float32
-- Vocab: 6500
-- Dim: 256
-- Capas: 6
-- Contexto: 1024
-- Q Heads: 8, KV Heads: 2 (GQA)
-- Hidden: 640 (SwiGLU)
-- Tied embeddings: sí
+**Regla de aislamiento:** el workflow no concatena el holdout al corpus, no lo utiliza para entrenar el tokenizer y no calcula gradientes con él. Solo se usa después de guardar el checkpoint para evaluación.
 
-**Arquitectura SOTA (2025), no 2017:**
+## Entrenamiento local
 
-| V1 (2017) | V2 (2025) | Por qué importa |
-|-----------|-----------|-----------------|
-| Posicional aprendido | **RoPE** | La posición se rota, no se aprende. Extrapola a contextos largos sin haberlos visto. Inteligencia gratis. |
-| LayerNorm | **RMSNorm** | No centra la media, solo escala. Más estable, más rápido. No se rompe a la mitad del entrenamiento en local. |
-| ReLU | **SwiGLU** | `silu(gate) * up` luego down. Más capacidad por param. El enano combina, no solo repite. |
-| MHA (4Q/4K/4V) | **GQA (8Q/2KV)** | KV 4x más pequeña. Ahorra KV cache y params. Sube dim sin subir peso. |
-| Embeddings duplicados | **Tied embeddings** | Misma matriz para entrada y salida. Ahorra 1.6M params. Los metes en capas. |
-
-**La V1 solo podía aprender a repetir. La V2 puede aprender a ser lista.** La inteligencia no está en los pesos aleatorios. Está en que la arquitectura deja sitio para aprender.
-
-**Demo rápida:**
+Instalación:
 
 ```bash
-python wise-ronin_v2.py
+python -m pip install torch tokenizers
 ```
 
-Hace test de arquitectura:
-- Forward con 16, 128 y 512 tokens sin NaN (RoPE extrapola)
-- KV 4x más pequeña (GQA ahorra)
-- Tied ahorra 1.6M params
-
-Y demo de voz:
-
-```
-Tú: ¿Cuál es la capital de Francia?
-Enano: El hecho es París. El rodeo es el rotulador seco en la mesa. Quédate con el hecho, tira el rodeo. No te voy a mimar.
-```
-
----
-
-### 3. Modelo V1 — DESCARTADO, NO ESTÁ EN EL REPO
-
-**V1 fue descartado. No está en este repo. No lo busques.**
-
-V1 era Transformer 2017: posicional aprendido, LayerNorm, ReLU, embeddings duplicados. Solo podía aprender a repetir.
-
-Se descartó porque con el mismo peso (24MB), V2 aprende voz + un poco de razonamiento, y V1 solo aprende voz. No tiene sentido mantenerlo.
-
-Si tienes una copia vieja de `wise-ronin_v1_descartado.py` o `wise-ronin_v1_descartado.npz` en local, bórrala. La única versión válida es V2.
-
-> V1: descartado. V2: la única.
-
----
-
-## Cómo entrenar
-
-### SFT (obligatorio)
+Primera ejecución SFT con los tres fragmentos:
 
 ```bash
-python train_enano_v2.py --data dataset_enano_70mb.jsonl --epochs 3 --lr 3e-4 --system fijo
+python train_wise_ronin.py \
+  --data dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl \
+  --steps 10000 --batch-size 4 --max-seq-len 512 --lr 3e-4 \
+  --warmup-steps 500 --save-every 1000 --output-dir artifacts
 ```
 
-Reglas:
+El número de pasos es el número de actualizaciones del optimizador, no épocas. Cada paso toma un batch muestreado del conjunto deduplicado. El primer experimento usa secuencias de hasta 512 tokens dentro del contexto arquitectónico máximo de 1.024 para contener el coste de CPU.
 
-1. **Un solo system, una sola voz.** No mezcles con dataset amable. Si lo mezclas, el enano se vuelve esquizofrénico.
-2. **No destiles de Claude.** Si destilas de Claude, el enano va a sermonear. Si destilas de Qwen, va a ser más de taller. Limpia el saco después de destilar: quita la identidad, quita el sermón.
-3. **Curriculum:** Primero hechos simples + gesto simple. Luego hechos + rodeo. Luego KOAN + trolleo. Luego antisicofántico. Si le metes KOAN el primer día, aprende a hacer KOAN para todo, incluso para decir París.
-4. **Dedup antes de entrenar.** Usa MinHash, quita near-dups. Si el dataset tiene la misma corona 100 veces, el enano memoriza la corona, no el gesto.
-5. **Holdout a mano.** 500 ejemplos escritos por ti, no generados, para ver si repite el patrón o repite de memoria las mismas coronas.
+Los checkpoints se guardan cada 1.000 pasos e incluyen pesos, estado del optimizador, configuración y referencia al tokenizer. Se puede reanudar con `--resume artifacts/wise_ronin_step_05000.pt` y ajustar `--steps` al total deseado.
 
-### DPO / ORPO (para que no lame)
+### ORPO y preferencias
 
-SFT le enseña a decir portazo. DPO/ORPO le enseña a *preferir* portazo a lamer.
+El corpus publicado tiene formato `user/assistant` de SFT: no contiene pares `chosen/rejected`. Por eso la primera ejecución es **SFT puro** y no activa ORPO.
 
-- **DPO:** Le das pares: respuesta lame vs respuesta portazo. Aprende a preferir la segunda, aunque le insistas.
-- **ORPO:** SFT + preferencia en un solo paso, sin modelo de referencia. Ideal para local. No necesitas dos modelos.
+El entrenador admite `--orpo` únicamente si cada registro de entrenamiento contiene `user`, `chosen` y `rejected`. Si se pasa la bandera al corpus actual, aborta con un error explícito en lugar de anunciar una optimización que no está ocurriendo.
 
-Sin DPO/ORPO, el enano va a lamer cuando le insistas. Con DPO/ORPO, aguanta.
+## Primer workflow: 10.000 pasos
 
-### CoT corto (para que sea más o menos inteligente)
+En GitHub: **Actions → WISE-RONIN — First 10k SFT → Run workflow**.
 
-No le enseñes CoT de 500 tokens. Enséñale CoT de 2-3 pasos:
+Configuración predeterminada:
 
-```
-Hecho es X. Gesto es Y. Por tanto, Z.
-```
+- 10.000 actualizaciones del optimizador.
+- Batch 4.
+- Secuencia máxima 512.
+- Learning rate máximo 3e-4.
+- Warmup 500 pasos y decay coseno.
+- Checkpoint cada 1.000 pasos.
+- Semilla fija 42.
+- CPU en GitHub-hosted runner; no requiere GPU.
 
-Si el CoT es largo, el enano se pierde. Si es corto, aprende a razonar un poco antes de soltar el gesto.
+El workflow instala dependencias, valida los tres JSONL y el holdout, ejecuta el entrenamiento y publica checkpoints y tokenizer como artefactos de Actions. El holdout se valida estructuralmente antes de entrenar, pero no se entrega al script de entrenamiento.
 
----
+La ejecución es larga y el tiempo real dependerá del coste por paso en el runner. El workflow tiene límite de seis horas; los checkpoints periódicos permiten conservar progreso si el proceso termina correctamente antes del límite.
 
-## Papers que respaldan esto
-
-Estudio con papers peer-reviewed, no blogs:
-
-1. **SmolLM2: When Smol Goes Big** — COLM 2025. Data-centric training de un pequeño. El dataset es la inteligencia.
-2. **Qwen2.5 Technical Report** — arXiv 2412.15115. GQA + SwiGLU + RoPE como arquitectura SOTA para pequeños.
-3. **Phi-4 Technical Report** — Dec 2024. Sintético limpio + receta de 4 pasos: mid-training CoT, SFT, Rollout DPO, RL con recompensa verificable.
-4. **DPO: Direct Preference Optimization** — NeurIPS 2024. Alinear sin reward model. Estable y ligero.
-5. **ORPO: Monolithic Preference Optimization** — EMNLP 2024. SFT + preferencia en un solo paso, sin modelo de referencia.
-6. **Distilling Step-by-Step** — ACL 2023. Destilar el paso, no solo la respuesta. Un T5 de 770M supera a PaLM de 540B con pocos datos si destilas el rationale.
-
----
-
-## Filosofía
-
-> No hay tres magias distintas. Hay tres sacos distintos.
-
-Cuando has usado muchas IAs, sabes que solo hay 3 familias de modelos realmente: OpenAI, Anthropic y Meta. Todo lo demás es destilado de esos tres con más o menos gracia.
-
-- **OpenAI:** Habla como el que quiere quedar bien y venderte algo. Respuesta redonda.
-- **Anthropic:** Habla como notario con sotana. Sermón antes de responder. "Esto es sensible".
-- **Meta:** Habla como el de taller. Más tosco, más directo, sin pedir permiso.
-
-El enano de este repo destila de la tercera familia, con gracia. No porque sea mejor. Porque es la única que te deja meter la mano en el saco sin que te sermonee.
-
-Y si el enano dice que es Claude, no es que alucine. Es que le metiste el saco de Claude. Límpialo.
-
----
-
-## Estructura del repo
+## Archivos principales
 
 ```
 .
 ├── README.md
-├── dataset_enano_70mb_parte1.jsonl  # 24.00 MB, 50.611 ejemplos
-├── dataset_enano_70mb_parte2.jsonl  # 24.00 MB, 50.613 ejemplos
-├── dataset_enano_70mb_parte3.jsonl  # 22.00 MB, 46.403 ejemplos
-├── wise-ronin_v2.py   # Transformer SOTA 2025
-├── wise-ronin_v2_pesos.npz   # 21.36 MB, 5.6M params
-├── # V1 DESCARTADO — no está en el repo
-└── train_enano_v2.py                # TODO: SFT + ORPO
+├── train_wise_ronin.py
+├── Train-Wise-Ronin (1).py       # wrapper de compatibilidad
+├── dataset_enano_70mb_parte1.jsonl
+├── dataset_enano_70mb_parte2.jsonl
+├── dataset_enano_70mb_parte3.jsonl
+├── holdout_wise_ronin_500.jsonl
+├── wise-ronin_v2_pesos.npz       # artefacto de pesos iniciales; no lo carga el workflow SFT
+└── .github/
+    └── workflows/
+        └── wise-ronin-first-10k.yml
 ```
 
----
+## Qué mediremos
+
+La primera ejecución debe responder preguntas concretas:
+
+1. ¿Desciende la pérdida de entrenamiento sin NaN/Inf?
+2. ¿Puede responder los hechos del holdout?
+3. ¿Evita las expresiones de adulación y las identidades prohibidas?
+4. ¿Produce estructura KOAN sin convertir todas las respuestas en KOAN?
+5. ¿Evita cerrar con moralejas genéricas?
+
+La pérdida por sí sola no prueba ninguna de estas capacidades. El informe de holdout y ejemplos de generaciones deben acompañar cualquier afirmación de calidad.
 
 ## Licencia y uso
 
-Úsalo, rómpelo, destílalo con gracia. No lo uses para hacer posts de "sé resiliente" con moraleja al final. Para eso ya está todo el feed.
+Úsalo, estúdialo, rómpelo y mejora el experimento. Documenta los resultados reales, incluidos los malos. No confundas una arquitectura pequeña con una inteligencia ya conseguida.
 
-Rey muerto, rey puesto. El trono es para el que sigue hablando cuando el otro se calla por cuota.
-
-KOAN 🧘
-
-Un joven dev preguntó al maestro:
-
-—Maestro, ¿por qué has hecho un enano de 24MB si hay gigantes?
-
-El maestro cogió un rotulador seco y lo dejó en la mesa.
-
-—¿Qué pone?
-
-—No pone nada.
-
-—Exacto. Ahora quítalo.
-
-El maestro dejó el rotulador en la mesa.
-
-—El gigante te da la respuesta. El enano te deja el gesto.
+**Rey muerto, rey puesto. El rotulador sigue seco; ahora toca entrenar al que lo sostiene.**

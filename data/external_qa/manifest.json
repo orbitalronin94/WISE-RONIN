@@ -5,7 +5,7 @@
   "method": {
     "question": "Copy the original question verbatim. Never normalize, translate, repair, shorten, or paraphrase it.",
     "answer": "Write a new answer manually. Preserve the source answer's meaning; syntax and voice may change, facts may not.",
-    "provenance": "Keep dataset, pinned revision, split, source ID, exact context, reference answer text, and answer offsets.",
+    "provenance": "Manual rows keep dataset, pinned revision, split, source ID, exact question and question hash. The pinned source queue retains context, reference answers and offsets.",
     "training": "Only source train rows with author_status=manually_reviewed can be exported to SFT.",
     "evaluation": "Validation/dev/test data are never admitted to the training export."
   },
@@ -44,6 +44,6 @@
       "status": "evaluation_only_excluded_from_training"
     }
   ],
-  "current_manual_answer_rows": 1,
+  "current_manual_answer_rows": 18,
   "warning": "This is a manual-authoring dataset in progress, not a claim that the full source corpus has already been rewritten."
 }

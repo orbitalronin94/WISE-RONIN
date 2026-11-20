@@ -5,15 +5,34 @@ from scripts.build_literal_qa_queue import iter_sqac_rows
 from scripts.validate_literal_qa_dataset import validate
 
 
+def source_fixture():
+    payload = {"data": [{"title": "Artículo", "paragraphs": [{
+        "context": "La respuesta está aquí.",
+        "qas": [{"id": "q-1", "question": "¿Qué está aquí?", "answers": {
+            "text": ["La respuesta"], "answer_start": [0]
+        }}]
+    }]}]}
+    return list(iter_sqac_rows(payload, "train"))[0]
+
+
+def manual_fixture(source=None):
+    source = source or source_fixture()
+    return {
+        "source_dataset": source["source_dataset"],
+        "source_revision": source["source_revision"],
+        "source_split": source["source_split"],
+        "source_id": source["source_id"],
+        "title_verbatim": source["title_verbatim"],
+        "question_verbatim": source["question_verbatim"],
+        "source_question_sha256": source["source_question_sha256"],
+        "ronin_answer_manual": "Está aquí la respuesta.",
+        "author_status": "manually_reviewed",
+    }
+
+
 class LiteralQuestionDatasetTests(unittest.TestCase):
     def test_sqac_question_is_copied_exactly_and_answer_offset_is_preserved(self):
-        payload = {"data": [{"title": "Artículo", "paragraphs": [{
-            "context": "La respuesta está aquí.",
-            "qas": [{"id": "q-1", "question": "¿Qué está aquí?", "answers": {
-                "text": ["La respuesta"], "answer_start": [0]
-            }}]
-        }]}]}
-        row = list(iter_sqac_rows(payload, "train"))[0]
+        row = source_fixture()
         self.assertEqual(row["question_verbatim"], "¿Qué está aquí?")
         self.assertEqual(row["source_question_sha256"], hashlib.sha256("¿Qué está aquí?".encode("utf-8")).hexdigest())
         self.assertEqual(row["reference_answers_verbatim"], ["La respuesta"])
@@ -25,43 +44,23 @@ class LiteralQuestionDatasetTests(unittest.TestCase):
             list(iter_sqac_rows({"data": []}, "dev"))
 
     def test_manual_row_must_be_reviewed_and_not_copy_reference(self):
-        row = {
-            "source_dataset": "PlanTL-GOB-ES/SQAC", "source_revision": "abc",
-            "source_split": "train", "source_id": "q-1", "title_verbatim": "Artículo",
-            "question_verbatim": "¿Qué está aquí?", "source_question_sha256": hashlib.sha256("¿Qué está aquí?".encode("utf-8")).hexdigest(), "context_verbatim": "La respuesta está aquí.",
-            "reference_answers_verbatim": ["La respuesta"], "answer_starts": [0],
-            "ronin_answer_manual": "Está aquí la respuesta.", "author_status": "manually_reviewed",
-        }
-        self.assertEqual(len(validate([row])), 1)
+        source = source_fixture()
+        row = manual_fixture(source)
+        self.assertEqual(len(validate([row], [source])), 1)
         bad = dict(row, ronin_answer_manual="La respuesta")
         with self.assertRaises(ValueError):
-            validate([bad])
+            validate([bad], [source])
+        pending = dict(row, author_status="pending_manual_authorship")
+        with self.assertRaises(ValueError):
+            validate([pending], [source])
 
     def test_source_queue_detects_question_edits(self):
-        row = {
-            "source_dataset": "PlanTL-GOB-ES/SQAC", "source_revision": "abc",
-            "source_split": "train", "source_id": "q-1", "title_verbatim": "Artículo",
-            "question_verbatim": "¿Qué está aquí?", "source_question_sha256": hashlib.sha256("¿Qué está aquí?".encode("utf-8")).hexdigest(),
-            "context_verbatim": "La respuesta está aquí.", "reference_answers_verbatim": ["La respuesta"],
-            "answer_starts": [0], "ronin_answer_manual": "Está aquí la respuesta.", "author_status": "manually_reviewed",
-        }
-        source = dict(row, ronin_answer_manual="", author_status="pending_manual_authorship")
-        self.assertEqual(len(validate([row], source_rows=[source])), 1)
+        source = source_fixture()
+        row = manual_fixture(source)
         changed = dict(row, question_verbatim="¿Qué hay aquí?")
         changed["source_question_sha256"] = hashlib.sha256(changed["question_verbatim"].encode("utf-8")).hexdigest()
         with self.assertRaises(ValueError):
-            validate([changed], source_rows=[source])
-
-    def test_sqac_list_of_answer_objects_is_supported(self):
-        payload = {"data": [{"title": "Artículo", "paragraphs": [{
-            "context": "La respuesta está aquí.",
-            "qas": [{"id": "q-list", "question": "¿Qué está aquí?", "answers": [
-                {"text": "La respuesta", "answer_start": 0}
-            ]}]
-        }]}]}
-        row = list(iter_sqac_rows(payload, "train"))[0]
-        self.assertEqual(row["reference_answers_verbatim"], ["La respuesta"])
-        self.assertEqual(row["answer_starts"], [0])
+            validate([changed], [source])
 
     def test_multiple_reference_spans_stay_one_question_row(self):
         payload = {"data": [{"title": "Artículo", "paragraphs": [{
@@ -74,16 +73,22 @@ class LiteralQuestionDatasetTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["reference_answers_verbatim"], ["La respuesta", "respuesta"])
 
+    def test_sqac_list_of_answer_objects_is_supported(self):
+        payload = {"data": [{"title": "Artículo", "paragraphs": [{
+            "context": "La respuesta está aquí.",
+            "qas": [{"id": "q-list", "question": "¿Qué está aquí?", "answers": [
+                {"text": "La respuesta", "answer_start": 0}
+            ]}]
+        }]}]}
+        row = list(iter_sqac_rows(payload, "train"))[0]
+        self.assertEqual(row["reference_answers_verbatim"], ["La respuesta"])
+        self.assertEqual(row["answer_starts"], [0])
+
     def test_non_train_manual_rows_are_rejected(self):
-        row = {
-            "source_dataset": "PlanTL-GOB-ES/SQAC", "source_revision": "abc",
-            "source_split": "validation", "source_id": "q-1", "title_verbatim": "Artículo",
-            "question_verbatim": "¿Qué está aquí?", "source_question_sha256": hashlib.sha256("¿Qué está aquí?".encode("utf-8")).hexdigest(), "context_verbatim": "La respuesta está aquí.",
-            "reference_answers_verbatim": ["La respuesta"], "answer_starts": [0],
-            "ronin_answer_manual": "Está aquí la respuesta.", "author_status": "manually_reviewed",
-        }
+        source = dict(source_fixture(), source_split="validation")
+        row = manual_fixture(source)
         with self.assertRaises(ValueError):
-            validate([row])
+            validate([row], [source])
 
 
 if __name__ == "__main__":

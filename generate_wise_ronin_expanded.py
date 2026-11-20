@@ -250,12 +250,12 @@ def arithmetic_rows(limit: int):
         if len(rows) >= limit: return rows[:limit]
     return rows[:limit]
 
-def render(q: str, answer: str, idx: int, variant: int, base_id: str):
+def render(q: str, answer: str, idx: int, variant: int, base_id: str, salt: int = 0):
     # A combinatorial phrase space: formula + tail + object + connective.
-    opener=OPENERS[(idx*7+variant*11) % len(OPENERS)]
-    tail=TAILS[(idx*13+variant*3) % len(TAILS)]
-    obj=OBJECTS[(idx*5+variant*7) % len(OBJECTS)]
-    mode=(idx+variant) % 5
+    opener=OPENERS[(idx*7+variant*11+salt*3) % len(OPENERS)]
+    tail=TAILS[(idx*13+variant*3+salt*7) % len(TAILS)]
+    obj=OBJECTS[(idx*5+variant*7+salt*11) % len(OBJECTS)]
+    mode=(idx+variant+salt) % 5
     fact=opener.format(a=answer)
     if mode==0: out=f"{fact} {tail}"
     elif mode==1: out=f"{fact} Sobre la mesa hay {obj}; no es una prueba, es atrezo. {tail}"
@@ -304,31 +304,27 @@ def main():
                               "tipo":"math_"+cat,"fact_id":base,"variant_id":v,"hecho":a})
         if len(math_rows)>=need: break
     rows=factual+math_rows
-    seen_user=set(); seen_pair=set(); clean=[]
+    seen_user=set(); clean=[]
     for row in rows:
         u=row["user"].strip()
-        pair=(u,row["assistant"])
-        if u in seen_user or pair in seen_pair:
+        if u in seen_user:
             continue
-        seen_user.add(u); seen_pair.add(pair); clean.append(row)
-    # If paraphrase collisions occur, deterministically add unused arithmetic tasks.
-    if len(clean)<args.target_rows:
-        extra=arithmetic_rows(args.target_rows*2)
-        for j,(q,a,cat) in enumerate(extra):
-            for v in range(args.variants_per_base):
-                if len(clean)>=args.target_rows: break
-                user=QUESTION_PREFIXES[(j+v*7)%len(QUESTION_PREFIXES)]+q
-                if user in seen_user: continue
-                base=stable_id("extra|"+q+"|"+a)
-                row={"system":SYSTEM,"user":user,"assistant":render(q,a,j+99999,v,base),
-                     "tipo":"math_"+cat,"fact_id":base,"variant_id":v,"hecho":a}
-                if row["assistant"] in {x["assistant"] for x in clean[-500:]}:
-                    continue
-                clean.append(row); seen_user.add(user)
-            if len(clean)>=args.target_rows: break
+        seen_user.add(u); clean.append(row)
     if len(clean)<args.target_rows:
         raise SystemExit(f"No se alcanzó target: {len(clean)}/{args.target_rows}")
     clean=clean[:args.target_rows]
+    # Enforce literal response uniqueness with alternate natural-language formulas,
+    # never opaque hashes or random suffixes.
+    seen_responses=set()
+    for i,row in enumerate(clean):
+        salt=0
+        while row["assistant"] in seen_responses:
+            salt+=1
+            row["assistant"]=render("",row["hecho"],i,row["variant_id"],row["fact_id"],salt)
+            if salt>1000:
+                raise RuntimeError(f"No unique style formula found for row {i}")
+        row["formula_salt"]=salt
+        seen_responses.add(row["assistant"])
     rng.shuffle(clean)
     out=Path(args.output); out.parent.mkdir(parents=True,exist_ok=True)
     with out.open("w",encoding="utf-8") as f:
@@ -336,7 +332,7 @@ def main():
     counts=Counter(r["tipo"] for r in clean)
     base_counts=Counter(r["fact_id"] for r in clean)
     report={"rows":len(clean),"unique_prompts":len({r["user"] for r in clean}),
-            "unique_responses":len({r["assistant"] for r in clean}),
+            "unique_responses":len({r["assistant"] for r in clean}),"formula_collision_repairs":sum(1 for r in clean if r.get("formula_salt",0)>0),
             "independent_fact_ids":len(base_counts),"max_variants_per_fact":max(base_counts.values()),"factual_anchor_count":len(facts),"arithmetic_base_count":sum(1 for k in base_counts if k not in {stable_id("fact|"+q+"|"+a) for q,a,_ in facts}),
             "type_counts":dict(counts),"target_rows":args.target_rows,
             "seed":args.seed,"source":"deterministic built-in fact bank + exact arithmetic",

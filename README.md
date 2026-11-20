@@ -12,7 +12,8 @@ WISE-RONIN es un experimento de entrenamiento de un Transformer decoder-only com
 - Corpus SFT de aproximadamente 70 MB, dividido en tres JSONL.
 - Holdout manual de 500 casos, separado del entrenamiento.
 - Entrenador con número exacto de pasos, checkpoints y soporte opcional para pares de preferencias.
-- Workflow manual de GitHub Actions para el primer experimento de 10.000 pasos.\n- Evaluador greedy del holdout completo con informe por categoría y generaciones guardadas.
+- Workflow manual de GitHub Actions para el primer experimento de 10.000 pasos.
+- Evaluador greedy del holdout completo con informe por categoría y generaciones guardadas.
 
 **Importante:** hasta que termine el primer entrenamiento y se evalúe el checkpoint, no hay resultados de aprendizaje que presentar. Los pesos iniciales no demuestran comportamiento aprendido.
 
@@ -136,6 +137,7 @@ La ejecución es larga y el tiempo real dependerá del coste por paso en el runn
 .
 ├── README.md
 ├── train_wise_ronin.py
+├── evaluate_wise_ronin.py
 ├── Train-Wise-Ronin (1).py       # wrapper de compatibilidad
 ├── dataset_enano_70mb_parte1.jsonl
 ├── dataset_enano_70mb_parte2.jsonl

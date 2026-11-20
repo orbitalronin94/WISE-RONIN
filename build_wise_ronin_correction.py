@@ -41,6 +41,7 @@ def main():
     args=ap.parse_args()
     out=Path(args.out); rng=random.Random(args.seed)
     facts=read_jsonl(args.facts)
+    canonical_prompts={r["user"] for r in facts}
     if len(facts)<20: raise SystemExit("Need at least 20 canonical facts")
     # Split by canonical question, never by generated paraphrase/response.
     ordered=sorted(facts, key=lambda r:sid(r["user"]))
@@ -72,6 +73,7 @@ def main():
     def add_math(dst,a,b,op,split):
         value={"más":a+b,"menos":a-b,"por":a*b,"dividido entre":a//b}[op]
         q=f"¿Cuánto es {a} {op} {b}?"
+        if q in canonical_prompts: return
         ans=str(value)
         fid=sid(f"math|{a}|{op}|{b}")
         dst.append({"system":SYSTEM_FACT,"user":q,"assistant":ans,
@@ -87,6 +89,7 @@ def main():
             for op in operations:
                 if op=="dividido entre":
                     dividend=a*b; q=f"¿Cuánto es {dividend} dividido entre {b}?"
+                    if q in canonical_prompts: continue
                     value=str(a); fid=sid(f"mathdiv|{dividend}|{b}")
                     math_train.append({"system":SYSTEM_FACT,"user":q,"assistant":value,
                                        "tipo":"math_plain","fact_id":fid,"expected":value,"split":"train"})
@@ -96,10 +99,12 @@ def main():
             for op in operations:
                 if op=="dividido entre":
                     dividend=a*b; q=f"¿Cuánto es {dividend} dividido entre {b}?"
+                    if q in canonical_prompts: continue
                     value=str(a); fid=sid(f"mathdiv|{dividend}|{b}")
                     math_eval.append({"user":q,"expected":value,"category":"math","fact_id":fid})
                 else:
                     value=str({"más":a+b,"menos":a-b,"por":a*b}[op])
+                    if f"¿Cuánto es {a} {op} {b}?" in canonical_prompts: continue
                     math_eval.append({"user":f"¿Cuánto es {a} {op} {b}?","expected":value,
                                       "category":"math","fact_id":sid(f"math|{a}|{op}|{b}")})
     sft.extend(math_train)

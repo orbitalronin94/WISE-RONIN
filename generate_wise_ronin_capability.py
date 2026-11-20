@@ -380,11 +380,11 @@ def build(base_path: Path):
             q = f"Premisa 1: todos los {noun} {positive}. Premisa 2: {name} es un {noun[:-1] if noun.endswith('s') else noun}. ¿Qué se deduce necesariamente?"
             # Avoid grammatical claims about real-world categories: treat the
             # named item as a member by explicit premise and infer only the predicate.
-            q = f"Premisa 1: todos los miembros del conjunto {noun} {prop}. Premisa 2: {name} pertenece al conjunto {noun}. ¿Se deduce que {name} {positive}?"
+            q = f"Premisa 1: todos los miembros del conjunto {noun} {positive}. Premisa 2: {name} pertenece al conjunto {noun}. ¿Se deduce que {name} {positive}?"
             add(rows, seen, "logical_deduction", q, f"Sí. Por las dos premisas, {name} {positive}.",
                 "constructed_valid_syllogism")
             reasoning_count += 1
-            q2 = f"Premisa 1: ningún miembro del conjunto {noun} {negative}. Premisa 2: {name} pertenece al conjunto {noun}. ¿Se deduce que {name} {prop}?"
+            q2 = f"Premisa 1: ningún miembro del conjunto {noun} {negative}. Premisa 2: {name} pertenece al conjunto {noun}. ¿Se deduce que {name} {negative}?"
             add(rows, seen, "logical_deduction", q2, f"No. La primera premisa afirma que ningún miembro del conjunto {noun} {negative}.",
                 "constructed_valid_syllogism")
             reasoning_count += 1

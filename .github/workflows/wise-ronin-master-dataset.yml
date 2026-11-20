@@ -46,44 +46,79 @@ jobs:
       - name: Build deterministic balanced 80k source
         run: python build_balanced_80k.py
 
-      - name: Compile and build unified corpus
+      - name: Compile and build cleaned master corpus
         run: |
           python -m py_compile build_balanced_80k.py merge_wise_ronin_corpora.py
-          python merge_wise_ronin_corpora.py --legacy dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl --balanced data/balanced/dataset_reequilibrado_80k.jsonl --qa data/seeds/wise_ronin_1000_qa_ronin.jsonl
+          python merge_wise_ronin_corpora.py \
+            --legacy dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl \
+            --balanced data/balanced/dataset_reequilibrado_80k.jsonl \
+            --qa data/seeds/wise_ronin_1000_qa_ronin.jsonl
 
-      - name: Validate merged corpus and quarantine outputs
+      - name: Validate clean training master and legacy quarantine
         run: |
           python - <<'PY'
           import json
+          from collections import Counter
           from pathlib import Path
-          report = json.loads(Path("data/merged/wise_ronin_master_report.json").read_text())
-          master = Path("data/merged/wise_ronin_master.jsonl")
-          review = Path("data/merged/wise_ronin_qa_manual_review.jsonl")
-          assert report["master_rows"] > 160000, report
+
+          root = Path("data/merged")
+          report = json.loads((root / "wise_ronin_master_report.json").read_text(encoding="utf-8"))
+          master = root / "wise_ronin_master.jsonl"
+          review = root / "wise_ronin_qa_manual_review.jsonl"
+          excluded = root / "wise_ronin_legacy_excluded.jsonl"
+
           assert report["input_rows_by_source"]["qa_ronin"] == 976
           assert report["qa_rows_quarantined_for_manual_review"] == 33
-          review_rows = [json.loads(line) for line in review.read_text(encoding="utf-8").splitlines() if line]
-          assert len(review_rows) == 33
-          assert len({row["source_record"] for row in review_rows}) == 33
-          pairs = set()
+          assert len([x for x in review.read_text(encoding="utf-8").splitlines() if x.strip()]) == 33
+
+          # The raw historical shards contain 88,345 troll-template and 37,032
+          # KOAN rows. They are retained for audit but never enter general SFT.
+          assert report["legacy_excluded_rows"] == 125377, report
+          assert report["legacy_excluded_rows_by_tipo"] == {
+              "hecho_rodeo_trolleo": 88345,
+              "koan_hecho": 37032,
+          }, report["legacy_excluded_rows_by_tipo"]
+
+          excluded_rows = [json.loads(x) for x in excluded.read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(excluded_rows) == 125377
+          assert all(x["source_dataset"].startswith("legacy_part") for x in excluded_rows)
+          assert all(x["tipo"] in {"hecho_rodeo_trolleo", "koan_hecho"} for x in excluded_rows)
+          assert all(x.get("exclusion_reason") and x.get("source_line") for x in excluded_rows)
+
+          master_rows = []
           with master.open(encoding="utf-8") as f:
-              for line in f:
+              for line_no, line in enumerate(f, 1):
+                  if not line.strip():
+                      continue
                   row = json.loads(line)
-                  prompt = " ".join(row["user"].casefold().split())
-                  answer = " ".join(row["assistant"].casefold().split())
-                  pairs.add((prompt, answer))
-                  assert row.get("source_dataset") and row.get("source_line")
-          assert len(pairs) == report["master_rows"]
-          assert report["prompts_with_multiple_completions_preserved"] == 102
-          print(json.dumps(report, ensure_ascii=False, indent=2))
-          print(f"Master validated: {report['master_rows']:,} rows; {master.stat().st_size:,} bytes")
-          print(f"Manual QA quarantine validated: {len(review_rows)} records")
+                  assert row.get("user") and row.get("assistant"), f"Malformed master row {line_no}"
+                  assert row.get("source_dataset") and row.get("source_line"), f"Missing provenance {line_no}"
+                  assert not (row["source_dataset"].startswith("legacy_part") and row["tipo"] in {"hecho_rodeo_trolleo", "koan_hecho"}), f"Leaked legacy template row {line_no}"
+                  master_rows.append(row)
+
+          assert len(master_rows) == report["master_rows"]
+          assert 80900 <= len(master_rows) < 81000, len(master_rows)
+          assert len({(" ".join(x["user"].casefold().split()), " ".join(x["assistant"].casefold().split())) for x in master_rows}) == len(master_rows)
+          assert report["rows_by_tipo_in_master"].get("hecho_rodeo_trolleo", 0) == 0
+          assert report["rows_by_tipo_in_master"].get("koan_hecho", 0) == 0
+          assert report["rows_by_tipo_in_master"].get("antisicofantico", 0) == 20
+          assert report["rows_by_tipo_in_master"].get("factual_general", 0) == 15000
+          assert report["rows_by_tipo_in_master"].get("factual_chemistry", 0) == 15000
+
+          print(json.dumps({
+              "trainable_master_rows": len(master_rows),
+              "legacy_rows_quarantined": len(excluded_rows),
+              "legacy_excluded_by_type": report["legacy_excluded_rows_by_tipo"],
+              "qa_rows_held_for_manual_review": 33,
+              "training_types": report["rows_by_tipo_in_master"],
+              "holdout_modified": False,
+          }, ensure_ascii=False, indent=2))
           PY
 
-      - name: Upload unified corpus and audit reports
+      - name: Upload cleaned master, quarantine and audit reports
         uses: actions/upload-artifact@v4
         with:
-          name: wise-ronin-unified-master-dataset
+          name: wise-ronin-clean-master-dataset
           path: |
             data/merged/
             data/balanced/balanced_80k_report.json

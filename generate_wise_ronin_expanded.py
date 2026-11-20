@@ -195,6 +195,8 @@ OBJECTS = [
 "una corona de cartón","un billete usado","una brújula quieta","un cajón cerrado","una lámpara apagada",
 "un papel cuadriculado","un banco de taller","una ventana abierta","un saco vacío","un espejo sin marco"
 ]
+QUESTION_SUFFIXES = [" Responde con el dato exacto.", " No añadas opiniones: da el nombre o la cifra.", " Una respuesta precisa, sin inventar detalles."]
+
 QUESTION_PREFIXES = [
 "", "Oye, ", "Dime, ", "Sin rodeos: ", "A ver, ", "Una pregunta: ",
 "Te pregunto una cosa: ", "Vamos al dato: ", "Compruébame esto: ", "En serio, ",
@@ -250,6 +252,29 @@ def arithmetic_rows(limit: int):
         if len(rows) >= limit: return rows[:limit]
     return rows[:limit]
 
+KOAN_FORMULAS = [
+"KOAN: {a}. La puerta no cambia porque la mires con solemnidad.",
+"KOAN: {a}. El espejo no vota sobre el resultado.",
+"KOAN: {a}. La corona es de cartón; el dato no.",
+"KOAN: {a}. El maestro cerró el cajón y dejó el número fuera.",
+"KOAN: {a}. La llave no abre una respuesta distinta.",
+"KOAN: {a}. El saco puede estar vacío; el hecho no.",
+"KOAN: {a}. La ventana está abierta, pero no entra otra cifra.",
+"KOAN: {a}. El taller no confunde silencio con ignorancia.",
+"KOAN: {a}. El dato permanece cuando se marcha el aplauso.",
+"KOAN: {a}. No hay moraleja escondida bajo la mesa.",
+"KOAN: {a}. El papel no necesita incienso para ser papel.",
+"KOAN: {a}. El portazo no altera lo escrito.",
+"KOAN: {a}. La lámpara alumbra; no decide.",
+"KOAN: {a}. El reloj sigue andando aunque nadie lo felicite.",
+"KOAN: {a}. La pizarra no se inclina ante el ego.",
+"KOAN: {a}. La respuesta no lleva uniforme de ceremonia.",
+"KOAN: {a}. El objeto está en la mesa; el hecho, en la frase.",
+"KOAN: {a}. El cajón guarda herramientas, no excepciones.",
+"KOAN: {a}. No confundas el eco con una segunda respuesta.",
+"KOAN: {a}. El maestro se fue; la comprobación queda."
+]
+
 def render(q: str, answer: str, idx: int, variant: int, base_id: str, salt: int = 0):
     # A combinatorial phrase space: formula + tail + object + connective.
     opener=OPENERS[(idx*7+variant*11+salt*3) % len(OPENERS)]
@@ -261,7 +286,7 @@ def render(q: str, answer: str, idx: int, variant: int, base_id: str, salt: int 
     elif mode==1: out=f"{fact} Sobre la mesa hay {obj}; no es una prueba, es atrezo. {tail}"
     elif mode==2: out=f"{fact} {tail} La pizarra sigue siendo una pizarra."
     elif mode==3: out=f"{fact} Te lo dejo junto a {obj}. {tail}"
-    else: out=f"{fact} Ni corona ni incienso: {tail}"
+    else: out=KOAN_FORMULAS[(idx*3+variant+salt) % len(KOAN_FORMULAS)].format(a=answer)+" "+tail
     # Ensure response-level uniqueness through meaningful formula selection, not hash noise.
     return out
 
@@ -278,13 +303,13 @@ def main():
     facts=fact_rows()
     # Keep every factual anchor, then fill the requested volume with distinct,
     # exactly solvable arithmetic questions. Never inflate the factual count by relabeling math.
-    fact_variants=40
+    fact_variants=120
     factual=[]
     for i,(q,a,cat) in enumerate(facts):
         base=stable_id("fact|"+q+"|"+a)
         for v in range(fact_variants):
             pref=QUESTION_PREFIXES[(i*7+v) % len(QUESTION_PREFIXES)]
-            user=pref+q
+            user=pref+q+QUESTION_SUFFIXES[v//40]
             factual.append({"system":SYSTEM,"user":user,"assistant":render(q,a,i,v,base),
                             "tipo":"factual_"+cat,"fact_id":base,"variant_id":v,"hecho":a})
     if len(factual)>=args.target_rows:

@@ -44,6 +44,12 @@ QA_REVIEW_RECORDS = {
     961: "La respuesta confunde el gas necesario con la mezcla que respiramos: respiramos aire, compuesto principalmente por nitrógeno y oxígeno (aprox. 21%).",
 }
 
+# These legacy classes contain mass-generated, template-heavy completions that
+# repeatedly attach arbitrary objects, numbers and KOAN boilerplate to factual
+# prompts. Keep the originals in a quarantine artifact, never in general SFT.
+LEGACY_EXCLUDED_TYPES = {"hecho_rodeo_trolleo", "koan_hecho"}
+
+
 def normalize(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip().casefold()
 
@@ -90,6 +96,7 @@ def main():
     ap.add_argument("--report", default="data/merged/wise_ronin_master_report.json")
     ap.add_argument("--variants", default="data/merged/wise_ronin_prompt_variants.jsonl")
     ap.add_argument("--review", default="data/merged/wise_ronin_qa_manual_review.jsonl")
+    ap.add_argument("--excluded", default="data/merged/wise_ronin_legacy_excluded.jsonl")
     args = ap.parse_args()
 
     sources = [
@@ -99,8 +106,9 @@ def main():
         ("balanced_80k", Path(args.balanced)),
         ("qa_ronin", Path(args.qa)),
     ]
-    accepted, review = [], []
+    accepted, review, excluded = [], [], []
     source_counts, type_counts = collections.Counter(), collections.Counter()
+    excluded_source_counts, excluded_type_counts = collections.Counter(), collections.Counter()
     seen_pairs = set()
     prompt_groups = collections.defaultdict(list)
     exact_duplicates = 0
@@ -110,6 +118,15 @@ def main():
             item = standardize(row, source, line_no)
             source_counts[source] += 1
             type_counts[item["tipo"]] += 1
+
+            if source.startswith("legacy_part") and item["tipo"] in LEGACY_EXCLUDED_TYPES:
+                excluded.append({
+                    **item,
+                    "exclusion_reason": "Legacy template-heavy style data excluded from general SFT; retained unchanged for audit and possible isolated style experiments.",
+                })
+                excluded_source_counts[source] += 1
+                excluded_type_counts[item["tipo"]] += 1
+                continue
 
             if source == "qa_ronin":
                 reason = QA_REVIEW_RECORDS.get(item.get("source_record")) or QA_REVIEW.get(item["user"])
@@ -144,18 +161,23 @@ def main():
     write_rows(args.output, accepted)
     write_rows(args.variants, variants)
     write_rows(args.review, review)
+    write_rows(args.excluded, excluded)
     report = {
         "master_rows": len(accepted),
         "input_rows_by_source": dict(source_counts),
         "input_rows_total": sum(source_counts.values()),
         "rows_by_tipo_in_inputs": dict(type_counts),
+        "rows_by_tipo_in_master": dict(collections.Counter(row["tipo"] for row in accepted)),
+        "legacy_excluded_rows": len(excluded),
+        "legacy_excluded_rows_by_source": dict(excluded_source_counts),
+        "legacy_excluded_rows_by_tipo": dict(excluded_type_counts),
         "exact_prompt_answer_duplicates_removed": exact_duplicates,
         "prompts_with_multiple_completions_preserved": len(variants),
         "rows_in_multi_completion_prompts_preserved": rows_in_multi_completion_prompts,
         "qa_rows_quarantined_for_manual_review": len(review),
         "qa_manual_review_prompts": QA_REVIEW,
         "qa_manual_review_records": {str(k): v for k, v in QA_REVIEW_RECORDS.items()},
-        "policy": "Deduplicate only identical normalized prompt+completion pairs. Preserve multiple completions for the same prompt and report them for inspection. Quarantine factual, ambiguous, or historically oversimplified QA records by source_record ID or exact prompt. Original source files remain untouched. No training or holdout modification."
+        "policy": "Exclude legacy hecho_rodeo_trolleo and koan_hecho rows from general SFT because their repeated template patterns contaminate factual prompts. Preserve every excluded row with provenance in wise_ronin_legacy_excluded.jsonl. Keep balanced factual/math rows, retained QA rows, and antisycophancy rows. Deduplicate identical normalized prompt+completion pairs. Quarantine flagged QA rows. Original source shards and holdouts remain untouched."
     }
     p = Path(args.report)
     p.parent.mkdir(parents=True, exist_ok=True)

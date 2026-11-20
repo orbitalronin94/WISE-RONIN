@@ -1,0 +1,23 @@
+{
+  "rows": 147627,
+  "unique_prompts": 147627,
+  "unique_responses": 147627,
+  "formula_collision_repairs": 8553,
+  "independent_fact_ids": 13557,
+  "max_variants_per_fact": 40,
+  "factual_anchor_count": 402,
+  "arithmetic_base_count": 13155,
+  "type_counts": {
+    "math_subtraction": 52590,
+    "math_addition": 52597,
+    "factual_chemistry": 9200,
+    "factual_general": 3760,
+    "factual_geography": 3120,
+    "math_multiplication": 25440,
+    "math_division": 920
+  },
+  "target_rows": 147627,
+  "seed": 42,
+  "source": "deterministic built-in fact bank + exact arithmetic",
+  "warning": "Row count is not independent knowledge count; group by fact_id for splits/evaluation."
+}

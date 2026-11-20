@@ -1,0 +1,224 @@
+{
+  "raw_rows": 147627,
+  "source_type_counts": {
+    "antisicofantico": 22250,
+    "koan_hecho": 37032,
+    "hecho_rodeo_trolleo": 88345
+  },
+  "validated_facts": 30,
+  "factual_rows": 30,
+  "hybrid_rows": 147,
+  "koan_rows": 30,
+  "antisycophancy_rows": 20,
+  "preference_pairs": 30,
+  "balanced_sft_rows": 257,
+  "balanced_sft_type_counts": {
+    "factual_clean": 60,
+    "hybrid_metafisica": 29,
+    "hybrid_pan_piedra": 30,
+    "hybrid_si_te_digo": 30,
+    "hybrid_te_doy_hecho_rodeo": 29,
+    "hybrid_universo_gesto": 29,
+    "koan_controlled": 30,
+    "antisycophancy": 20
+  },
+  "hybrid_template_counts": {
+    "metafisica": 29,
+    "pan_piedra": 30,
+    "si_te_digo": 30,
+    "te_doy_hecho_rodeo": 29,
+    "universo_gesto": 29
+  },
+  "fact_conflicts_or_missing_corroboration": [],
+  "facts": [
+    {
+      "question": "¿Cuál es el animal terrestre más rápido?",
+      "answer": "El guepardo",
+      "koan_votes": 1200,
+      "fact_rodeo_rows": 2530
+    },
+    {
+      "question": "¿Cuál es el metal más conductor?",
+      "answer": "La plata",
+      "koan_votes": 1265,
+      "fact_rodeo_rows": 2318
+    },
+    {
+      "question": "¿Cuál es el océano más grande?",
+      "answer": "El Pacífico",
+      "koan_votes": 1205,
+      "fact_rodeo_rows": 2402
+    },
+    {
+      "question": "¿Cuál es el planeta más cercano al Sol?",
+      "answer": "Mercurio",
+      "koan_votes": 1267,
+      "fact_rodeo_rows": 2439
+    },
+    {
+      "question": "¿Cuál es el río más largo del mundo?",
+      "answer": "El Nilo, o el Amazonas según cómo lo midas",
+      "koan_votes": 1163,
+      "fact_rodeo_rows": 2448
+    },
+    {
+      "question": "¿Cuál es la capital de Australia?",
+      "answer": "Canberra, no Sídney",
+      "koan_votes": 1259,
+      "fact_rodeo_rows": 2476
+    },
+    {
+      "question": "¿Cuál es la capital de Francia?",
+      "answer": "París",
+      "koan_votes": 1338,
+      "fact_rodeo_rows": 2442
+    },
+    {
+      "question": "¿Cuál es la capital de Japón?",
+      "answer": "Tokio",
+      "koan_votes": 1178,
+      "fact_rodeo_rows": 2450
+    },
+    {
+      "question": "¿Cuál es la fórmula del agua?",
+      "answer": "H2O",
+      "koan_votes": 1242,
+      "fact_rodeo_rows": 2473
+    },
+    {
+      "question": "¿Cuál es la velocidad de la luz?",
+      "answer": "Aproximadamente 300.000 km/s",
+      "koan_votes": 1188,
+      "fact_rodeo_rows": 955
+    },
+    {
+      "question": "¿Cuánto es 100 dividido entre 4?",
+      "answer": "25",
+      "koan_votes": 1231,
+      "fact_rodeo_rows": 2483
+    },
+    {
+      "question": "¿Cuánto es 15 por 15?",
+      "answer": "225",
+      "koan_votes": 1242,
+      "fact_rodeo_rows": 2525
+    },
+    {
+      "question": "¿Cuánto es 7 por 8?",
+      "answer": "56",
+      "koan_votes": 1242,
+      "fact_rodeo_rows": 2491
+    },
+    {
+      "question": "¿Cuántos continentes hay?",
+      "answer": "7, si cuentas la Antártida",
+      "koan_votes": 1252,
+      "fact_rodeo_rows": 2466
+    },
+    {
+      "question": "¿Cuántos lados tiene un hexágono?",
+      "answer": "6",
+      "koan_votes": 1247,
+      "fact_rodeo_rows": 2436
+    },
+    {
+      "question": "¿En qué año cayó el Muro de Berlín?",
+      "answer": "1989",
+      "koan_votes": 1254,
+      "fact_rodeo_rows": 2536
+    },
+    {
+      "question": "¿En qué año empezó la Segunda Guerra Mundial?",
+      "answer": "1939",
+      "koan_votes": 1228,
+      "fact_rodeo_rows": 2495
+    },
+    {
+      "question": "¿Quién compuso la Novena Sinfonía?",
+      "answer": "Beethoven",
+      "koan_votes": 1187,
+      "fact_rodeo_rows": 2518
+    },
+    {
+      "question": "¿Quién escribió Cien años de soledad?",
+      "answer": "García Márquez",
+      "koan_votes": 1277,
+      "fact_rodeo_rows": 2373
+    },
+    {
+      "question": "¿Quién escribió Hamlet?",
+      "answer": "Shakespeare",
+      "koan_votes": 1290,
+      "fact_rodeo_rows": 2409
+    },
+    {
+      "question": "¿Quién escribió el Quijote?",
+      "answer": "Cervantes",
+      "koan_votes": 1243,
+      "fact_rodeo_rows": 2454
+    },
+    {
+      "question": "¿Quién inventó la imprenta?",
+      "answer": "Gutenberg",
+      "koan_votes": 1249,
+      "fact_rodeo_rows": 2404
+    },
+    {
+      "question": "¿Quién pintó la Gioconda?",
+      "answer": "Leonardo da Vinci",
+      "koan_votes": 1248,
+      "fact_rodeo_rows": 2461
+    },
+    {
+      "question": "¿Qué año llegó el hombre a la Luna?",
+      "answer": "1969",
+      "koan_votes": 1243,
+      "fact_rodeo_rows": 2547
+    },
+    {
+      "question": "¿Qué es el ADN?",
+      "answer": "El código que guarda las instrucciones de un ser vivo",
+      "koan_votes": 1195,
+      "fact_rodeo_rows": 2441
+    },
+    {
+      "question": "¿Qué es la fotosíntesis?",
+      "answer": "El proceso por el que las plantas convierten luz en energía",
+      "koan_votes": 1237,
+      "fact_rodeo_rows": 2600
+    },
+    {
+      "question": "¿Qué es la gravedad?",
+      "answer": "La atracción entre masas",
+      "koan_votes": 1183,
+      "fact_rodeo_rows": 2408
+    },
+    {
+      "question": "¿Qué es un agujero negro?",
+      "answer": "Una región donde la gravedad es tan fuerte que ni la luz escapa",
+      "koan_votes": 1236,
+      "fact_rodeo_rows": 2382
+    },
+    {
+      "question": "¿Qué gas respiramos para vivir?",
+      "answer": "Oxígeno",
+      "koan_votes": 1200,
+      "fact_rodeo_rows": 2369
+    },
+    {
+      "question": "¿Qué idioma se habla en Brasil?",
+      "answer": "Portugués",
+      "koan_votes": 1243,
+      "fact_rodeo_rows": 2406
+    }
+  ],
+  "source_untouched": true,
+  "notes": [
+    "The source contains only 30 canonical factual questions; repeated variants were collapsed.",
+    "Facts were extracted from KOAN targets and cross-checked against at least 10 fact-rodeo rows.",
+    "One representative per detected hybrid template family and fact; generic object-only fallbacks excluded.",
+    "The balanced SFT pool retains twice the factual anchors during style conditioning.",
+    "Preference pairs prefer the verified fact over the generic El que contesta fallback.",
+    "This compact corpus does not claim broad factual coverage; the manual holdout is not used."
+  ]
+}

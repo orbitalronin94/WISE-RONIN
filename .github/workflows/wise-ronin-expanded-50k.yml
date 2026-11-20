@@ -1,0 +1,118 @@
+name: WISE-RONIN — 10k updates on fully expanded legacy corpus
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/wise-ronin-expanded-50k.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wise-ronin-expanded-50k
+  cancel-in-progress: false
+
+jobs:
+  train:
+    name: Resume step 40000 to 50000 on CPU
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout merged corpus generator
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Download promoted step-40000 checkpoint and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-correction-sft-step-40000
+          run-id: 44741418950
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          path: .
+
+      - name: Verify checkpoint and tokenizer paths
+        run: |
+          find artifacts -maxdepth 4 -type f -print
+          test -s artifacts/correction-sft/wise_ronin_step_40000.pt
+          test -s artifacts/tokenizer-wise-ronin.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers
+
+      - name: Rebuild corpus from merged V1 + V2 generator
+        run: |
+          python -m py_compile generate_wise_ronin_expanded.py train_wise_ronin.py evaluate_wise_ronin.py
+          python generate_wise_ronin_expanded.py --output data/expanded/wise_ronin_expanded.jsonl --target-rows 147627
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("data/expanded/wise_ronin_expanded.jsonl")
+          rows=[json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
+          report=json.loads(p.with_name("wise_ronin_expanded_report.json").read_text(encoding="utf-8"))
+          assert len(rows)==147627, len(rows)
+          assert len({r["user"] for r in rows})==len(rows)
+          assert len({r["assistant"] for r in rows})==len(rows)
+          assert all(r.get("fact_id") and "variant_id" in r for r in rows)
+          assert report["rows"]==147627
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Verify parent checkpoint and preserved tokenizer
+        run: |
+          python - <<'PY'
+          import torch
+          from tokenizers import Tokenizer
+          ckpt=torch.load("artifacts/correction-sft/wise_ronin_step_40000.pt",map_location="cpu",weights_only=False)
+          tok=Tokenizer.from_file("artifacts/tokenizer-wise-ronin.json")
+          assert ckpt.get("step")==40000, ckpt.get("step")
+          assert ckpt["config"]["vocab"]==tok.get_vocab_size()
+          print(f"Verified parent step={ckpt['step']}, vocab={tok.get_vocab_size()}")
+          PY
+
+      - name: Baseline evaluation on untouched 500-case holdout
+        run: |
+          python evaluate_wise_ronin.py             --checkpoint artifacts/correction-sft/wise_ronin_step_40000.pt             --tokenizer artifacts/tokenizer-wise-ronin.json             --holdout holdout_wise_ronin_500.jsonl             --max-new-tokens 32             --output-dir artifacts/baseline-40k
+
+      - name: Train 10000 additional SFT updates (global step 40000 to 50000)
+        run: |
+          python train_wise_ronin.py             --data data/expanded/wise_ronin_expanded.jsonl             --steps 50000             --batch-size 4             --max-seq-len 512             --lr 0.00001             --warmup-steps 100             --save-every 2500             --seed 20261120             --tokenizer artifacts/tokenizer-wise-ronin.json             --reuse-tokenizer             --resume artifacts/correction-sft/wise_ronin_step_40000.pt             --output-dir artifacts/expanded-sft-50k
+
+      - name: Verify final step-50000 checkpoint
+        run: |
+          python - <<'PY'
+          import torch
+          p="artifacts/expanded-sft-50k/wise_ronin_step_50000.pt"
+          ckpt=torch.load(p,map_location="cpu",weights_only=False)
+          assert ckpt.get("step")==50000, ckpt.get("step")
+          print(f"Verified final checkpoint: step={ckpt['step']}")
+          PY
+
+      - name: Evaluate step 50000 on the same untouched 500-case holdout
+        run: |
+          python evaluate_wise_ronin.py             --checkpoint artifacts/expanded-sft-50k/wise_ronin_step_50000.pt             --tokenizer artifacts/tokenizer-wise-ronin.json             --holdout holdout_wise_ronin_500.jsonl             --max-new-tokens 32             --output-dir artifacts/holdout-50k
+
+      - name: Upload checkpoint, rebuilt corpus report and comparable evaluations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-expanded-corpus-step-50000
+          path: |
+            artifacts/expanded-sft-50k/
+            artifacts/tokenizer-wise-ronin.json
+            artifacts/baseline-40k/
+            artifacts/holdout-50k/
+            data/expanded/wise_ronin_expanded_report.json
+          if-no-files-found: warn
+          retention-days: 30

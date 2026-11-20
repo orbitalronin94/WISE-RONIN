@@ -1,0 +1,125 @@
+name: Extract WISE-RONIN best holdout answers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/extract-best-holdout.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download the 30k training and evaluation artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-balanced-80k-two-epochs
+          run-id: 44721903295
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          path: source-artifact
+
+      - name: Rank generations and prepare review shortlist
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, re
+          from pathlib import Path
+          from collections import Counter
+
+          candidates = list(Path("source-artifact").rglob("sampling_holdout_generations.jsonl"))
+          if not candidates:
+              raise SystemExit("sampling_holdout_generations.jsonl not found in downloaded artifact")
+          source = candidates[0]
+          rows = [json.loads(line) for line in source.read_text(encoding="utf-8").splitlines() if line.strip()]
+          if not rows:
+              raise SystemExit("Generation file is empty")
+
+          def rank(row):
+              answer = re.sub(r"\\s+", " ", str(row.get("answer", "")).strip())
+              words = re.findall(r"\\b[\\wáéíóúüñ]+\\b", answer.casefold())
+              unique_ratio = len(set(words)) / max(1, len(words))
+              score = 0.0
+              reasons = []
+              if row.get("factual_anchor_match"):
+                  score += 8
+                  reasons.append("literal factual anchor match")
+              if 8 <= len(words) <= 55:
+                  score += 2
+                  reasons.append("useful answer length")
+              elif len(words) > 80:
+                  score -= 2
+                  reasons.append("overlong")
+              if unique_ratio >= 0.72:
+                  score += 2
+                  reasons.append("low lexical repetition")
+              elif unique_ratio < 0.45:
+                  score -= 3
+                  reasons.append("high lexical repetition")
+              if answer and answer[-1] in ".!?":
+                  score += 0.5
+              if not answer:
+                  score -= 10
+                  reasons.append("empty answer")
+              if answer.casefold().startswith(("koan:", "el koan", "un koan")):
+                  score -= 3
+                  reasons.append("KOAN-style opening penalized")
+              if re.search(r"\\b(\\w+)(?:\\s+\\1){2,}\\b", answer, re.I):
+                  score -= 4
+                  reasons.append("repeated word sequence")
+              if re.search(r"\\b(no sé|ni idea|no tengo forma de saber)\\b", answer, re.I):
+                  score -= 1
+                  reasons.append("uncertainty phrase; inspect context")
+              return score, reasons, len(words), unique_ratio
+
+          ranked = []
+          for row in rows:
+              score, reasons, word_count, unique_ratio = rank(row)
+              ranked.append({
+                  "score": round(score, 2),
+                  "reasons": reasons,
+                  "word_count": word_count,
+                  "lexical_unique_ratio": round(unique_ratio, 3),
+                  **row
+              })
+          ranked.sort(key=lambda x: (x["score"], bool(x.get("factual_anchor_match")), -x["word_count"]), reverse=True)
+          out = Path("review-output")
+          out.mkdir(exist_ok=True)
+          (out / "all_500_ranked.json").write_text(json.dumps(ranked, ensure_ascii=False, indent=2), encoding="utf-8")
+          shortlist = ranked[:40]
+          (out / "best_40_for_manual_review.json").write_text(json.dumps(shortlist, ensure_ascii=False, indent=2), encoding="utf-8")
+          with (out / "best_40_for_manual_review.md").open("w", encoding="utf-8") as f:
+              f.write("# WISE-RONIN — 40 respuestas candidatas\n\n")
+              f.write("Orden heurístico preliminar; no equivale a evaluación semántica. Las coincidencias factuales son literales.\n\n")
+              for i, row in enumerate(shortlist, 1):
+                  f.write(f"## {i}. {row.get('categoria')} · ID {row.get('id')} · score {row['score']}\n\n")
+                  f.write(f"**Pregunta:** {row.get('user','')}\n\n")
+                  f.write(f"**Respuesta:** {row.get('answer','')}\n\n")
+                  f.write(f"**Señales:** {', '.join(row['reasons']) or 'sin señal destacada'}\n\n")
+                  f.write(f"**Ancla literal:** {'sí' if row.get('factual_anchor_match') else 'no'}\n\n---\n\n")
+          summary = {
+              "source": str(source),
+              "generations": len(rows),
+              "ranked_candidates": len(ranked),
+              "shortlist_size": len(shortlist),
+              "literal_anchor_matches": sum(bool(x.get("factual_anchor_match")) for x in rows),
+              "unique_questions": len({x.get("user") for x in rows}),
+              "method": "heuristic ranking for human review; not a semantic quality score"
+          }
+          (out / "extraction_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+          print(json.dumps(summary, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Upload compact review package
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-best-holdout-answers
+          path: review-output/
+          if-no-files-found: error
+          retention-days: 30

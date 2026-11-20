@@ -1,0 +1,49 @@
+{
+  "name": "WISE-RONIN Literal Questions / Manual Answers",
+  "version": "0.1.0",
+  "language": "es",
+  "method": {
+    "question": "Copy the original question verbatim. Never normalize, translate, repair, shorten, or paraphrase it.",
+    "answer": "Write a new answer manually. Preserve the source answer's meaning; syntax and voice may change, facts may not.",
+    "provenance": "Keep dataset, pinned revision, split, source ID, exact context, reference answer text, and answer offsets.",
+    "training": "Only source train rows with author_status=manually_reviewed can be exported to SFT.",
+    "evaluation": "Validation/dev/test data are never admitted to the training export."
+  },
+  "sources": [
+    {
+      "id": "sqac",
+      "name": "Spanish Question Answering Corpus",
+      "repository": "PlanTL-GOB-ES/SQAC",
+      "url": "https://huggingface.co/datasets/PlanTL-GOB-ES/SQAC",
+      "revision": "9a6e701a8487c35c1805f9f29eac247875a6be05",
+      "train_url": "https://huggingface.co/datasets/PlanTL-GOB-ES/SQAC/resolve/9a6e701a8487c35c1805f9f29eac247875a6be05/train.json",
+      "train_rows_expected": 15036,
+      "license": "CC-BY-SA-4.0",
+      "license_note": "Use conservative CC BY-SA attribution. The corpus card describes source texts with mixed upstream licensing; preserve source attribution and do not strip source metadata.",
+      "status": "active_source"
+    },
+    {
+      "id": "esqad_evau",
+      "name": "ESQAD EVAU manually curated subset",
+      "url": "https://zenodo.org/records/16351733",
+      "file": "evau/docs/EvAU_QA.csv",
+      "license": "CC-BY-4.0",
+      "status": "registered_not_yet_imported",
+      "note": "The EVAU subset is manually curated. Other ESQAD subsets (Quijote, Legal FAQs, pilot exams) have different generation/validation characteristics and must remain separately labelled."
+    },
+    {
+      "id": "siqa_es",
+      "name": "SIQA-es",
+      "url": "https://huggingface.co/datasets/BSC-LT/SIQA_es",
+      "status": "evaluation_only_excluded_from_training"
+    },
+    {
+      "id": "openbookqa_es",
+      "name": "OpenBookQA-es",
+      "url": "https://huggingface.co/datasets/BSC-LT/openbookqa-es",
+      "status": "evaluation_only_excluded_from_training"
+    }
+  ],
+  "current_manual_answer_rows": 1,
+  "warning": "This is a manual-authoring dataset in progress, not a claim that the full source corpus has already been rewritten."
+}

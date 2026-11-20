@@ -1,0 +1,89 @@
+name: WISE-RONIN — Holdout checkpoint 70k
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/wise-ronin-holdout-70k.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wise-ronin-holdout-70k
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Download checkpoint 70k, tokenizer and capability holdout
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-capability-step-80000
+          run-id: 44758514239
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          path: .
+
+      - name: Verify checkpoint and tokenizer
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers
+          python - <<'PY'
+          import torch
+          from pathlib import Path
+          from tokenizers import Tokenizer
+          cp=Path("artifacts/capability-sft-80k/wise_ronin_step_70000.pt")
+          tokp=Path("artifacts/tokenizer-wise-ronin.json")
+          hp=Path("data/capability/wise_ronin_capability_holdout.jsonl")
+          for p in (cp,tokp,hp):
+              if not p.is_file(): raise SystemExit(f"Missing required file: {p}")
+          ck=torch.load(cp,map_location="cpu",weights_only=False)
+          tok=Tokenizer.from_file(str(tokp))
+          if ck.get("step") != 70000: raise SystemExit(f"Wrong checkpoint step: {ck.get('step')}")
+          if ck["config"]["vocab"] != tok.get_vocab_size(): raise SystemExit("Checkpoint/tokenizer vocab mismatch")
+          rows=sum(1 for line in hp.open(encoding="utf-8") if line.strip())
+          print(f"Verified step={ck['step']}, vocab={tok.get_vocab_size()}, capability_holdout_rows={rows}")
+          PY
+
+      - name: Evaluate original 500-row holdout at 70k
+        run: |
+          python evaluate_wise_ronin.py \
+            --checkpoint artifacts/capability-sft-80k/wise_ronin_step_70000.pt \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --holdout holdout_wise_ronin_500.jsonl \
+            --max-new-tokens 128 \
+            --minimum-generation-tokens 128 \
+            --output-dir artifacts/holdout-70k-legacy
+
+      - name: Evaluate independent capability holdout at 70k
+        run: |
+          python evaluate_wise_ronin.py \
+            --checkpoint artifacts/capability-sft-80k/wise_ronin_step_70000.pt \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --holdout data/capability/wise_ronin_capability_holdout.jsonl \
+            --max-new-tokens 128 \
+            --minimum-generation-tokens 128 \
+            --output-dir artifacts/holdout-70k-capability
+
+      - name: Upload 70k holdout reports and generations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-holdout-step-70000
+          path: |
+            artifacts/holdout-70k-legacy/
+            artifacts/holdout-70k-capability/
+            artifacts/baseline-50k-legacy/
+            artifacts/baseline-50k-capability/
+          if-no-files-found: warn
+          retention-days: 30

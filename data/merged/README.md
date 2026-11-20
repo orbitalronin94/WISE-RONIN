@@ -9,6 +9,6 @@ It combines:
 
 The build preserves `fact_id`, `variant_id`, `tipo`, and all other source metadata, while adding `source_dataset` and `source_line`. It removes only exact normalized prompt-and-answer duplicates. Multiple completions for the same prompt are retained because the historical corpus intentionally includes different styles and response variants; their groups are summarized in `wise_ronin_prompt_variants.jsonl`.
 
-Two uploaded QA entries are held out for manual review: the claim about the second-best electrical conductor and the unqualified question about Israel's capital. They remain in the source file and appear in `wise_ronin_qa_manual_review.jsonl`, but are not included in the trainable master until reviewed.
+**32 uploaded QA records are held out for manual review.** They include the second-best-conductor error, disputed capital wording, outdated or incomplete capital answers, the Nile/Amazon length ambiguity, confusion between air and oxygen, and several oversimplified scientific or historical attributions. The original source file remains unchanged; the held-out records and a reason for each appear in `wise_ronin_qa_manual_review.jsonl`. None of these 32 records enters the trainable master corpus.
 
-The workflow does not launch training, alter the historical shards, or touch any holdout. The generated corpus and reports are published as the Actions artifact `wise-ronin-unified-master-dataset`.
+See `QA_MANUAL_REVIEW.md` for the review rationale and references. The workflow does not modify the historical shards or any holdout. The generated corpus and reports are published as the Actions artifact `wise-ronin-unified-master-dataset`.

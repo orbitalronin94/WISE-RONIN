@@ -44,6 +44,6 @@
       "status": "evaluation_only_excluded_from_training"
     }
   ],
-  "current_manual_answer_rows": 246,
+  "current_manual_answer_rows": 260,
   "warning": "This is a manual-authoring dataset in progress, not a claim that the full source corpus has already been rewritten."
 }

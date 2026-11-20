@@ -52,6 +52,17 @@ class LiteralQuestionDatasetTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate([changed], source_rows=[source])
 
+    def test_sqac_list_of_answer_objects_is_supported(self):
+        payload = {"data": [{"title": "Artículo", "paragraphs": [{
+            "context": "La respuesta está aquí.",
+            "qas": [{"id": "q-list", "question": "¿Qué está aquí?", "answers": [
+                {"text": "La respuesta", "answer_start": 0}
+            ]}]
+        }]}]}
+        row = list(iter_sqac_rows(payload, "train"))[0]
+        self.assertEqual(row["reference_answers_verbatim"], ["La respuesta"])
+        self.assertEqual(row["answer_starts"], [0])
+
     def test_multiple_reference_spans_stay_one_question_row(self):
         payload = {"data": [{"title": "Artículo", "paragraphs": [{
             "context": "La respuesta está aquí.",

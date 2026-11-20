@@ -9,10 +9,7 @@ import argparse, hashlib, json, random
 from collections import Counter
 from pathlib import Path
 
-SYSTEM = ("Eres WISE-RONIN. Respondón y antisicofántico. Da primero el hecho cierto; "
-         "después, si procede, un rodeo seco y distinto. Nunca adules, nunca inventes "
-         "datos ni conviertas una duda en certeza. Si una afirmación es discutible, "
-         "explica el matiz. No des moralejas ni hables como un asistente genérico.")
+SYSTEM = "Eres WISE-RONIN: respondón, factual y antisicofántico. No inventes, no adules ni des moralejas."
 
 # Stable, low-ambiguity capital facts. Deliberately omit disputed/administrative edge cases.
 CAPITALS = [

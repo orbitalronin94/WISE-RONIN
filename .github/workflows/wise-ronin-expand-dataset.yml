@@ -1,0 +1,93 @@
+name: WISE-RONIN — Expand factual and formulaic corpus
+
+on:
+  push:
+    branches: [expand-diverse-factual-corpus]
+    paths:
+      - 'generate_wise_ronin_expanded.py'
+      - '.github/workflows/wise-ronin-expand-dataset.yml'
+  workflow_dispatch:
+    inputs:
+      target_rows:
+        description: "Target JSONL rows"
+        required: true
+        default: "147627"
+      seed:
+        description: "Deterministic generation seed"
+        required: true
+        default: "42"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wise-ronin-expand-dataset
+  cancel-in-progress: true
+
+jobs:
+  generate-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Generate expanded dataset
+        env:
+          TARGET_ROWS: ${{ github.event.inputs.target_rows || '147627' }}
+          SEED: ${{ github.event.inputs.seed || '42' }}
+        run: |
+          python -m py_compile generate_wise_ronin_expanded.py
+          python generate_wise_ronin_expanded.py \
+            --target-rows "$TARGET_ROWS" \
+            --seed "$SEED" \
+            --output data/expanded/wise_ronin_expanded.jsonl
+      - name: Validate factual anchors, arithmetic, uniqueness and holdout isolation
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+          p = Path("data/expanded/wise_ronin_expanded.jsonl")
+          rows = [json.loads(line) for line in p.open(encoding="utf-8") if line.strip()]
+          report = json.loads(p.with_name("wise_ronin_expanded_report.json").read_text(encoding="utf-8"))
+          assert len(rows) == 147627, len(rows)
+          assert len({r["user"] for r in rows}) == len(rows), "duplicate prompts"
+          unique_answers = len({r["assistant"] for r in rows})
+          if unique_answers < int(len(rows) * 0.98):
+              raise SystemExit(f"Too many duplicate responses: {unique_answers}/{len(rows)}")
+          assert all(r.get("fact_id") and r.get("hecho") and r.get("assistant") for r in rows)
+          assert all(r["hecho"].casefold() in r["assistant"].casefold() for r in rows)
+          types = Counter(r["tipo"].split("_", 1)[0] for r in rows)
+          assert types["factual"] > 10000, types
+          assert types["math"] > 100000, types
+          assert report["rows"] == len(rows)
+          print(json.dumps({
+              "rows": len(rows),
+              "unique_prompts": len({r["user"] for r in rows}),
+              "unique_responses": unique_answers,
+              "independent_fact_ids": report["independent_fact_ids"],
+              "factual_anchor_count": report["factual_anchor_count"],
+              "type_counts": dict(types),
+              "bytes": p.stat().st_size,
+              "holdout_used": False
+          }, ensure_ascii=False, indent=2))
+          PY
+      - name: Commit generated corpus and report to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/expanded/
+          git commit -m "Add expanded factual and formulaic WISE-RONIN corpus"
+          git push
+      - name: Upload generated corpus
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-expanded-corpus
+          path: |
+            data/expanded/wise_ronin_expanded.jsonl
+            data/expanded/wise_ronin_expanded_report.json
+          retention-days: 30

@@ -5,7 +5,7 @@ The row count is not presented as the number of independent facts: every record 
 fact_id/base_id and variant_id so splits and audits can group paraphrases safely.
 """
 from __future__ import annotations
-import argparse, hashlib, json, random
+import argparse, base64, hashlib, json, random, re, tempfile, zlib
 from collections import Counter
 from pathlib import Path
 
@@ -155,6 +155,25 @@ GENERAL = [
 ("¿Cuál es la capital de Castilla y León?","Valladolid")
 ]
 
+# Curated additions derived from the user's 2 MiB seed generator.
+# Only unambiguous, non-duplicate anchors are imported; the seed's ornamental
+# response templates are deliberately NOT copied. All rows use this corpus'
+# existing fact_id / variant_id schema and rendering pipeline.
+SEED_CAPITALS = [
+    ("Malasia", "Kuala Lumpur"),
+    ("Singapur", "Singapur"),
+]
+SEED_GENERAL = [
+    ("¿Quién escribió la Odisea?", "Homero"),
+    ("¿Quién compuso la Quinta Sinfonía?", "Ludwig van Beethoven"),
+    ("¿Cuál es la moneda de Japón?", "Yen"),
+    ("¿Qué planeta es conocido como el planeta rojo?", "Marte"),
+    ("¿Cuál es la fórmula química del cloruro de sodio?", "NaCl"),
+    ("¿Qué órgano bombea la sangre por el cuerpo?", "El corazón"),
+    ("¿Cuál es la montaña más alta sobre el nivel del mar?", "El Everest"),
+    ("¿En qué año comenzó la Revolución francesa?", "1789"),
+]
+
 # Each pattern puts the answer first or very near the beginning. No generic fallback.
 OPENERS = [
 "El hecho es {a}.", "Dato confirmado: {a}.", "La respuesta corta es {a}.",
@@ -212,6 +231,60 @@ QUESTION_PREFIXES = [
 def stable_id(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
 
+def load_v2_seed_rows():
+    """Execute the preserved V2 seed generator in isolation and return its JSONL rows."""
+    seed_path = Path(__file__).parent / "data/seeds/gen_2mb_v2.py.zlib.b64"
+    compressed = base64.b64decode(seed_path.read_text(encoding="ascii"))
+    source = zlib.decompress(compressed).decode("utf-8")
+    with tempfile.TemporaryDirectory(prefix="wise_ronin_v2_") as tmp:
+        output = Path(tmp) / "dataset_2mb_v2.jsonl"
+        source = source.replace('"/mnt/data/dataset_2mb_v2.jsonl"', repr(str(output)))
+        namespace = {"__name__": "__main__"}
+        exec(compile(source, str(seed_path), "exec"), namespace)
+        return [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def v2_seed_facts():
+    """Extract unique factual anchors and exact arithmetic from V2, not its style templates."""
+    rows = load_v2_seed_rows()
+    excluded = {
+        "¿Cuál es el río más largo de España?",
+        "¿Cuál es el río más largo de América?",
+        "¿Cuál es el río más largo de Asia?",
+        "¿Cuál es el desierto más grande de Asia?",
+        "¿Cuál es el pico más alto de Europa?",
+        "¿Cuál es el pico más alto de Oceanía?",
+        "¿En qué año se inventó la radio?",
+        "¿En qué año se inventó la televisión?",
+        "¿En qué año se inventó el ordenador ENIAC?",
+        "¿En qué año se inventó el primer móvil?",
+        "¿Quién formuló la teoría de la evolución?",
+        "¿Quién escribió Ética?",
+        "¿Quién compuso El Danubio azul?",
+        "¿Quién pintó El beso?",
+        "¿Quién escribió Jane Eyre?",
+        "¿Quién escribió Cumbres borrascosas?",
+        "¿De qué país es el kebab?",
+        "¿Cuántas semanas tiene un año?",
+    }
+    factual, arithmetic = {}, {}
+    for row in rows:
+        q, answer = row["user"].strip(), str(row["hecho"]).strip()
+        if q in excluded:
+            continue
+        if q.startswith("¿Cuánto es ") or q.startswith("¿Cuál es el perímetro ") or q.startswith("¿Cuál es el área "):
+            if " dividido por " in q:
+                m = re.search(r"¿Cuánto es (\d+) dividido por (\d+)\?", q)
+                if not m or int(m.group(1)) % int(m.group(2)) != 0:
+                    continue
+            if " por " in q and " al cubo" in q:
+                continue
+            arithmetic[q] = (q, answer, "v2_" + ("division" if "dividido por" in q else "arithmetic"))
+        else:
+            factual[q] = (q, answer, "seed_v2")
+    return list(factual.values()), list(arithmetic.values())
+
+
 def fact_rows():
     facts=[]
     for country,capital in CAPITALS:
@@ -221,6 +294,18 @@ def fact_rows():
         facts.append((f"¿Qué elemento tiene número atómico {number}?",element,"chemistry"))
     for q,a in GENERAL:
         facts.append((q,a,"general"))
+    # New anchors from the 2 MiB seed, merged into the original factual bank.
+    v2_factual, _ = v2_seed_facts()
+    existing_questions = {q for q, _, _ in facts}
+    facts.extend(row for row in v2_factual if row[0] not in existing_questions)
+    for country,capital in SEED_CAPITALS:
+        facts.append((f"¿Cuál es la capital de {country}?",capital,"geography_seed"))
+    for q,a in SEED_GENERAL:
+        facts.append((q,a,"general_seed"))
+    # The seed's chemistry material motivates the inverse symbol lookup task.
+    # It reuses the established element table rather than importing a second list.
+    for element,symbol in ELEMENTS:
+        facts.append((f"¿Qué elemento químico tiene el símbolo {symbol}?",element,"chemistry_symbol_lookup"))
     # Remove duplicate question/answer pairs without silently resolving conflicts.
     seen={}
     for q,a,cat in facts:
@@ -231,6 +316,40 @@ def fact_rows():
 
 def arithmetic_rows(limit: int):
     rows=[]
+    _, v2_math = v2_seed_facts()
+    rows.extend(v2_math)
+    # Additional exact tasks adapted from the uploaded seed. These are inserted
+    # before the broad legacy arithmetic sweep so they survive target-row limits.
+    for a in range(2,17):
+        for b in range(2,13):
+            rows.append((f"¿Cuánto es {a} por {b}?",str(a*b),"seed_multiplication"))
+            rows.append((f"¿Cuánto es {a} más {b}?",str(a+b),"seed_addition"))
+    for dividend in range(4,201,4):
+        rows.append((f"¿Cuánto es {dividend} dividido por 4?",str(dividend//4),"seed_division_by_four"))
+    for n in range(2,31):
+        rows.append((f"¿Cuál es la raíz cuadrada de {n*n}?",str(n),"seed_square_root"))
+        rows.append((f"¿Cuánto es {n} elevado a 2?",str(n*n),"seed_square"))
+    for exponent in range(2,16):
+        rows.append((f"¿Cuánto es 2 elevado a {exponent}?",str(2**exponent),"seed_power_of_two"))
+    # Deduplicate seed overlaps before generating variants; preserve the first canonical row.
+    unique_seed_rows = {}
+    for q, answer, category in rows:
+        if q in unique_seed_rows:
+            if unique_seed_rows[q][1] != answer:
+                raise ValueError(f"Conflicting arithmetic seed for {q}")
+            continue
+        unique_seed_rows[q] = (q, answer, category)
+    rows = list(unique_seed_rows.values())
+
+    def unique_rows():
+        deduped = {}
+        for q, answer, category in rows:
+            if q in deduped:
+                if deduped[q][1] != answer:
+                    raise ValueError(f"Conflicting arithmetic task for {q}")
+                continue
+            deduped[q] = (q, answer, category)
+        return list(deduped.values())
     # Distinct, exactly solvable tasks across operations and difficulty bands.
     for a in range(17,217):
         for b in range(13,113):
@@ -240,7 +359,7 @@ def arithmetic_rows(limit: int):
                 rows.append((f"¿Cuánto es {a} por {b}?",str(a*b),"multiplication"))
             if a % b == 0:
                 rows.append((f"¿Cuánto es {a} dividido entre {b}?",str(a//b),"division"))
-            if len(rows) >= limit: return rows[:limit]
+            if len(rows) >= limit: return unique_rows()[:limit]
     for n in range(2,500):
         rows.append((f"¿Cuál es el cuadrado de {n}?",str(n*n),"square"))
         rows.append((f"¿Cuál es el doble de {n} elevado al cuadrado?",str(2*n*n),"composite_math"))
@@ -316,7 +435,7 @@ def main():
     need=math_target
     # Enough unique base problems; each gets at most ten paraphrases.
     math_variants=min(args.variants_per_base,10)
-    math_facts=arithmetic_rows((need+math_variants-1)//math_variants+500)
+    math_facts=arithmetic_rows((need+math_variants-1)//math_variants+1000)
     for j,(q,a,cat) in enumerate(math_facts):
         base=stable_id("math|"+q+"|"+a)
         for v in range(math_variants):

@@ -188,7 +188,17 @@ OBJECTS = [
 ]
 QUESTION_PREFIXES = [
 "", "Oye, ", "Dime, ", "Sin rodeos: ", "A ver, ", "Una pregunta: ",
-"Te pregunto una cosa: ", "Vamos al dato: ", "Compruébame esto: ", "En serio, "
+"Te pregunto una cosa: ", "Vamos al dato: ", "Compruébame esto: ", "En serio, ",
+"Necesito un dato: ", "Contesta con precisión: ", "Una comprobación: ",
+"Resuelve esta duda: ", "Quiero verificar algo: ", "Pregunta directa: ",
+"Sin ceremonia: ", "Vamos a lo concreto: ", "No te me escapes: ",
+"Consulta breve: ", "Dame el dato exacto: ", "A ver si lo sabes: ",
+"En el registro: ", "Para dejarlo escrito: ", "Una de cultura general: ",
+"Comprueba el dato: ", "Queda una pregunta: ", "Vamos por partes: ",
+"Esto tiene respuesta: ", "No es una adivinanza: ", "En términos claros: ",
+"Que conste en acta: ", "Pregunta de examen: ", "Te pongo a prueba: ",
+"Al grano: ", "Sin humo: ", "Responde sin adornos: ",
+"Una cuestión factual: ", "Abre el atlas: ", "Mira la tabla: "
 ]
 
 def stable_id(s: str) -> str:
@@ -257,43 +267,34 @@ def main():
         ap.error("target-rows debe ser >=1000 y variants-per-base >=1")
     rng=random.Random(args.seed)
     facts=fact_rows()
-    # Reserve 35% of rows for factual QA; the remainder is generated arithmetic.
-    factual_target=int(args.target_rows*0.35)
-    math_target=args.target_rows-factual_target
+    # Keep every factual anchor, then fill the requested volume with distinct,
+    # exactly solvable arithmetic questions. Never inflate the factual count by relabeling math.
+    fact_variants=40
     factual=[]
     for i,(q,a,cat) in enumerate(facts):
-        for v in range(args.variants_per_base):
-            pref=QUESTION_PREFIXES[(i*3+v) % len(QUESTION_PREFIXES)]
+        base=stable_id("fact|"+q+"|"+a)
+        for v in range(fact_variants):
+            pref=QUESTION_PREFIXES[(i*7+v) % len(QUESTION_PREFIXES)]
             user=pref+q
-            base=stable_id("fact|"+q+"|"+a)
             factual.append({"system":SYSTEM,"user":user,"assistant":render(q,a,i,v,base),
                             "tipo":"factual_"+cat,"fact_id":base,"variant_id":v,"hecho":a})
-    # Expand the verified fact bank with deterministic arithmetic, not random labels.
-    if len(factual)<factual_target:
-        need=factual_target-len(factual)
-        math_facts=arithmetic_rows(max(1,(need+args.variants_per_base-1)//args.variants_per_base))
-        for j,(q,a,cat) in enumerate(math_facts):
-            base=stable_id("math|"+q+"|"+a)
-            for v in range(args.variants_per_base):
-                if len(factual)>=factual_target: break
-                pref=QUESTION_PREFIXES[(j*7+v) % len(QUESTION_PREFIXES)]
-                factual.append({"system":SYSTEM,"user":pref+q,"assistant":render(q,a,j+len(facts),v,base),
-                                "tipo":"math_"+cat,"fact_id":base,"variant_id":v,"hecho":a})
+    if len(factual)>=args.target_rows:
+        raise SystemExit("El banco factual por sí solo supera target-rows; aumenta el objetivo.")
+    math_target=args.target_rows-len(factual)
     math_rows=[]
     need=math_target
-    start=len(factual)
-    # A disjoint range of deterministic arithmetic tasks, each with several prompt/style variants.
-    math_facts=arithmetic_rows(max(1,(need+args.variants_per_base-1)//args.variants_per_base)+100)
+    # Enough unique base problems; each gets at most ten paraphrases.
+    math_variants=min(args.variants_per_base,10)
+    math_facts=arithmetic_rows((need+math_variants-1)//math_variants+500)
     for j,(q,a,cat) in enumerate(math_facts):
-        base=stable_id("math2|"+q+"|"+a)
-        for v in range(args.variants_per_base):
+        base=stable_id("math|"+q+"|"+a)
+        for v in range(math_variants):
             if len(math_rows)>=need: break
             pref=QUESTION_PREFIXES[(j*5+v*3) % len(QUESTION_PREFIXES)]
-            math_rows.append({"system":SYSTEM,"user":pref+q,"assistant":render(q,a,j+start,v,base),
+            math_rows.append({"system":SYSTEM,"user":pref+q,"assistant":render(q,a,j+len(facts),v,base),
                               "tipo":"math_"+cat,"fact_id":base,"variant_id":v,"hecho":a})
         if len(math_rows)>=need: break
-    # Merge, shuffle, and enforce uniqueness at both prompt and target level.
-    rows=(factual[:factual_target]+math_rows[:math_target])
+    rows=factual+math_rows
     seen_user=set(); seen_pair=set(); clean=[]
     for row in rows:
         u=row["user"].strip()
@@ -327,7 +328,7 @@ def main():
     base_counts=Counter(r["fact_id"] for r in clean)
     report={"rows":len(clean),"unique_prompts":len({r["user"] for r in clean}),
             "unique_responses":len({r["assistant"] for r in clean}),
-            "independent_fact_ids":len(base_counts),"max_variants_per_fact":max(base_counts.values()),
+            "independent_fact_ids":len(base_counts),"max_variants_per_fact":max(base_counts.values()),"factual_anchor_count":len(facts),"arithmetic_base_count":sum(1 for k in base_counts if k not in {stable_id("fact|"+q+"|"+a) for q,a,_ in facts}),
             "type_counts":dict(counts),"target_rows":args.target_rows,
             "seed":args.seed,"source":"deterministic built-in fact bank + exact arithmetic",
             "warning":"Row count is not independent knowledge count; group by fact_id for splits/evaluation."}

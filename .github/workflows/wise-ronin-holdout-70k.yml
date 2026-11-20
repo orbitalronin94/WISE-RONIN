@@ -1,3 +1,5 @@
+
+# Dedicated inference-only evaluation for the preserved step-70000 checkpoint.
 name: WISE-RONIN — Holdout checkpoint 70k
 
 on:

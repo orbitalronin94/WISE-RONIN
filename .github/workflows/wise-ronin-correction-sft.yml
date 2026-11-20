@@ -1,0 +1,139 @@
+name: WISE-RONIN — Controlled factual correction SFT
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/wise-ronin-correction-sft.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wise-ronin-correction-sft
+  cancel-in-progress: false
+
+jobs:
+  correction-sft:
+    name: SFT correction from frozen step 30000
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Download frozen step-30000 checkpoint and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-balanced-80k-two-epochs
+          run-id: 44721903295
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          path: artifacts
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers
+
+      - name: Build correction pack
+        run: python build_wise_ronin_correction.py
+
+      - name: Validate isolation and compile scripts
+        run: |
+          python -m py_compile train_wise_ronin.py build_wise_ronin_correction.py validate_wise_ronin_correction.py evaluate_wise_ronin_correction.py
+          python validate_wise_ronin_correction.py
+
+      - name: Verify frozen checkpoint and original tokenizer
+        run: |
+          python - <<'PY'
+          import json, torch
+          from pathlib import Path
+          from tokenizers import Tokenizer
+          ckpt_path=Path("artifacts/wise_ronin_step_30000.pt")
+          tok_path=Path("artifacts/tokenizer-wise-ronin.json")
+          if not ckpt_path.is_file() or not tok_path.is_file():
+              raise SystemExit(f"Missing checkpoint/tokenizer: {list(Path('artifacts').glob('*'))}")
+          ckpt=torch.load(ckpt_path,map_location="cpu",weights_only=False)
+          tok=Tokenizer.from_file(str(tok_path))
+          if ckpt.get("step") != 30000 or ckpt["config"]["vocab"] != tok.get_vocab_size():
+              raise SystemExit("Frozen checkpoint/tokenizer mismatch")
+          print(f"Verified immutable parent: step={ckpt['step']}, vocab={tok.get_vocab_size()}")
+          print(json.dumps(ckpt["config"],indent=2))
+          PY
+
+      - name: Run one conservative SFT epoch (no ORPO)
+        run: |
+          python train_wise_ronin.py \
+            --data data/correction/correction_sft_train.jsonl \
+            --epochs 1 \
+            --batch-size 4 \
+            --max-seq-len 512 \
+            --lr 0.00003 \
+            --warmup-steps 10 \
+            --save-every 50 \
+            --seed 20261120 \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --reuse-tokenizer \
+            --resume artifacts/wise_ronin_step_30000.pt \
+            --output-dir artifacts/correction-sft
+
+      - name: Verify corrected checkpoint
+        run: |
+          python - <<'PY'
+          import torch
+          from pathlib import Path
+          p=Path("artifacts/correction-sft/wise_ronin_step_30248.pt")
+          if not p.is_file():
+              raise SystemExit(f"Expected final checkpoint missing: {p}")
+          ckpt=torch.load(p,map_location="cpu",weights_only=False)
+          if ckpt.get("step") != 30248:
+              raise SystemExit(f"Unexpected final step: {ckpt.get('step')}")
+          print(f"Correction checkpoint verified: step={ckpt['step']}")
+          PY
+
+      - name: Evaluate corrected checkpoint — greedy
+        run: |
+          python evaluate_wise_ronin_correction.py \
+            --checkpoint artifacts/correction-sft/wise_ronin_step_30248.pt \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --holdout data/correction/correction_holdout.jsonl \
+            --temperature 0 \
+            --max-new-tokens 64 \
+            --seed 20261120 \
+            --output-dir artifacts/correction-eval-greedy
+
+      - name: Evaluate corrected checkpoint — sampling
+        run: |
+          python evaluate_wise_ronin_correction.py \
+            --checkpoint artifacts/correction-sft/wise_ronin_step_30248.pt \
+            --tokenizer artifacts/tokenizer-wise-ronin.json \
+            --holdout data/correction/correction_holdout.jsonl \
+            --temperature 0.8 \
+            --top-p 0.9 \
+            --max-new-tokens 64 \
+            --seed 20261120 \
+            --output-dir artifacts/correction-eval-sampling
+
+      - name: Upload corrected checkpoint, metrics and raw generations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-correction-sft-step-30248
+          path: |
+            artifacts/correction-sft/
+            artifacts/correction-eval-greedy/
+            artifacts/correction-eval-sampling/
+            data/correction/
+          if-no-files-found: warn
+          retention-days: 30

@@ -2,98 +2,164 @@
 
 **Un modelo pequeño con una voz deliberada: factual, respondón y antisicofántico.**
 
-WISE-RONIN es un experimento de entrenamiento de un Transformer decoder-only compacto. La hipótesis no es que una arquitectura de 5,6 millones de parámetros vaya a competir con modelos grandes: es comprobar cuánto comportamiento reconocible puede aprender un modelo pequeño a partir de un corpus curado y una evaluación manual separada.
+WISE-RONIN es un experimento reproducible de entrenamiento de un Transformer decoder-only compacto. Investiga cuánto comportamiento reconocible puede aprender un modelo pequeño con corpus curados, currículos sintéticos controlados y evaluación separada. No se presenta como un modelo generalista ni como una inteligencia ya conseguida.
 
 > El enano no necesita una corona. Necesita que el hecho sea cierto y que no lama.
 
-## Estado del proyecto
+## Índice
 
-- Arquitectura V2 implementada en PyTorch.
-- Corpus SFT de aproximadamente 70 MB, dividido en tres JSONL.
-- Holdout manual de 500 casos, separado del entrenamiento.
-- Entrenador con número exacto de pasos, checkpoints y soporte opcional para pares de preferencias.
-- Workflow manual de GitHub Actions para el primer experimento de 10.000 pasos.
-- Evaluador greedy del holdout completo con informe por categoría y generaciones guardadas.
+- [Estado actual](#estado-actual)
+- [Resultados y límites](#resultados-y-límites)
+- [Arquitectura](#arquitectura)
+- [Estructura del repositorio](#estructura-del-repositorio)
+- [Datos y procedencia](#datos-y-procedencia)
+- [Entrenar](#entrenar)
+- [Evaluar](#evaluar)
+- [GitHub Actions](#github-actions)
+- [Reproducibilidad y decisiones](#reproducibilidad-y-decisiones)
+- [Documentación](#documentación)
+- [Licencia y uso](#licencia-y-uso)
 
-**Importante:** hasta que termine el primer entrenamiento y se evalúe el checkpoint, no hay resultados de aprendizaje que presentar. Los pesos iniciales no demuestran comportamiento aprendido.
+## Estado actual
+
+- Trainer Transformer en PyTorch, con checkpoint/resume y SFT.
+- Primer checkpoint SFT de 10.000 pasos completado en CPU mediante GitHub Actions.
+- Corpus sintético ampliado de 147.627 filas, con informe de composición y trazabilidad por `fact_id`.
+- Constructor de un currículo equilibrado de 80.000 filas, con reserva de filas no seleccionadas.
+- Segundo entrenamiento: continuación desde el checkpoint 10k, dos épocas sobre el currículo equilibrado. **Actualmente en ejecución** en [GitHub Actions run 44721903295](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44721903295).
+- Evaluadores greedy y sampling. Sus métricas automáticas son señales de diagnóstico, no sustitutos de revisión semántica.
+
+## Resultados y límites
+
+### Primer SFT: 10.000 pasos
+
+[Run 44709299157](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44709299157) terminó correctamente.
+
+| Métrica | Resultado |
+|---|---:|
+| Actualizaciones | 10.000 |
+| Ejemplos tras deduplicación exacta | 88.348 |
+| Parámetros efectivos | 4.267.520 |
+| Vocabulario BPE efectivo | 1.297 |
+| Loss final registrada | 0,16234 |
+| Tiempo de entrenamiento | 1.562 s (aprox. 26 min) |
+
+La loss descendente confirma que el objetivo SFT se optimizó; **no demuestra por sí sola** factualidad, diversidad ni seguimiento de instrucciones.
+
+### Primer holdout greedy
+
+El evaluador heurístico marcó 35/500 casos (7%). El conjunto contiene 500 registros, pero solo 55 preguntas distintas, repetidas con variaciones. Además, el modelo mostró colapso de plantillas y errores factuales evidentes. Por tanto, ese 7% no debe leerse como una tasa de éxito semántico ni como 500 pruebas independientes.
+
+El siguiente ciclo añade sampling y métricas separadas para coincidencia con el ancla factual, diversidad literal y concentración de motivos. La coincidencia literal también es solo una aproximación: requiere inspección humana.
+
+### Lo que todavía no afirmamos
+
+- No afirmamos que las 147.627 filas sintéticas sean 147.627 hechos independientes.
+- El generador base contiene 402 anclas de conocimiento factual; sus variantes no crean nuevos hechos.
+- No afirmamos que el modelo sea fiable para uso general.
+- No activamos ORPO sin pares reales `chosen/rejected`; inventar preferencias falsearía el experimento.
 
 ## Arquitectura
 
-| Parámetro | Valor |
+| Parámetro | Configuración |
 |---|---:|
-| Parámetros nominales | ≈5,6 M |
-| Vocabulario BPE objetivo | 6.500 |
+| Parámetros efectivos del checkpoint 10k | 4.267.520 |
 | Dimensión | 256 |
 | Capas decoder | 6 |
-| Contexto máximo | 1.024 tokens |
-| Query heads | 8 |
-| Key/value heads | 2 |
+| Contexto arquitectónico | 1.024 tokens |
+| Query heads / KV heads | 8 / 2 |
 | Head dimension | 32 |
 | SwiGLU hidden | 640 |
 | Posición | RoPE |
 | Normalización | RMSNorm |
 | Embeddings | Compartidos (tied) |
+| Tokenizer del primer checkpoint | ByteLevel BPE, 1.297 tokens efectivos |
 
-La estimación de memoria FP32 de los parámetros ronda 21,4 MiB; el consumo real de entrenamiento es superior por gradientes, estados de AdamW, activaciones y buffers.
+La cifra de parámetros y el vocabulario de la tabla son los medidos en el primer checkpoint, no los valores nominales de los primeros borradores. La memoria real de entrenamiento supera el tamaño de los pesos por gradientes, estados del optimizador, activaciones y buffers.
 
-Implementación: `train_wise_ronin.py`.
+Implementación: [`train_wise_ronin.py`](train_wise_ronin.py).
 
-## Corpus de entrenamiento
+## Estructura del repositorio
 
-Los tres archivos siguientes forman el único corpus de la primera ejecución:
+El árbol conserva en la raíz los ficheros de datos heredados porque los workflows actuales los referencian directamente. No se han movido ni renombrado para evitar romper la reproducibilidad.
 
-| Archivo | Ejemplos declarados | Tamaño aproximado |
-|---|---:|---:|
-| `dataset_enano_70mb_parte1.jsonl` | 50.611 | 24 MB |
-| `dataset_enano_70mb_parte2.jsonl` | 50.613 | 24 MB |
-| `dataset_enano_70mb_parte3.jsonl` | 46.403 | 22 MB |
-| **Total** | **147.627** | **70 MB** |
-
-Formato SFT por línea:
-
-```json
-{
-  "system": "Eres WISE-RONIN...",
-  "user": "¿Cuál es la capital de Francia?",
-  "assistant": "El hecho es París...",
-  "tipo": "hecho_rodeo_trolleo"
-}
+```text
+WISE-RONIN/
+├── README.md
+├── train_wise_ronin.py                 # modelo, SFT, checkpoints y resume
+├── evaluate_wise_ronin.py              # evaluación greedy
+├── evaluate_wise_ronin_sampling.py     # sampling, diversidad y motivos
+├── generate_wise_ronin_expanded.py     # generador determinista de corpus
+├── build_balanced_80k.py               # currículo equilibrado + reserva
+├── audit_wise_ronin_dataset.py         # auditoría del corpus heredado
+├── build_wise_ronin_dataset.py         # constructor de dataset original
+├── Train-Wise-Ronin (1).py             # wrapper de compatibilidad
+├── dataset_enano_70mb_parte*.jsonl     # corpus SFT heredado, tres partes
+├── holdout_wise_ronin_500.jsonl        # evaluación separada
+├── wise-ronin_v2_pesos.npz             # pesos históricos; no usados por el SFT actual
+├── data/
+│   └── expanded/
+│       ├── README.md
+│       ├── wise_ronin_expanded.jsonl
+│       └── wise_ronin_expanded_report.json
+├── docs/
+│   ├── REPOSITORY_GUIDE.md
+│   └── EXPERIMENTS.md
+└── .github/
+    └── workflows/
+        ├── wise-ronin-first-10k.yml
+        ├── wise-ronin-expand-dataset.yml
+        ├── wise-ronin-dataset-audit.yml
+        ├── wise-ronin-balanced-80k.yml
+        └── wise-ronin-balanced-80k-validation.yml
 ```
 
-La composición descrita al curar el corpus es:
+Los datos equilibrados y los checkpoints del segundo ciclo se generan como artefactos de Actions; no se confunden con los ficheros versionados en `data/expanded/`.
 
-- 60% hechos ciertos con rodeo y trolleo.
-- 25% KOAN con un hecho o una respuesta dentro.
-- 15% comportamiento antisicofántico.
+## Datos y procedencia
 
-El entrenamiento hace deduplicación exacta de `(system, user, assistant)`; no afirma hacer deduplicación semántica ni MinHash.
+### Corpus heredado
 
-## Holdout independiente
+Tres ficheros JSONL, con 147.627 filas declaradas en origen. La primera ejecución eliminó duplicados exactos y entrenó con 88.348 ejemplos. La deduplicación exacta no equivale a deduplicación semántica.
 
-`holdout_wise_ronin_500.jsonl` contiene 500 registros con seis categorías:
+### Corpus ampliado
 
-| Categoría | Casos |
+[`data/expanded/wise_ronin_expanded.jsonl`](data/expanded/wise_ronin_expanded.jsonl) contiene 147.627 registros generados determinísticamente desde un banco integrado de hechos y operaciones aritméticas exactas.
+
+- 402 anclas factuales.
+- 9.939 tareas aritméticas base.
+- 10.341 grupos independientes por `fact_id`.
+- 147.627 prompts y respuestas literales únicas.
+- Variantes de formulación y estilo; no nuevas unidades de conocimiento.
+
+Informe: [`wise_ronin_expanded_report.json`](data/expanded/wise_ronin_expanded_report.json). Detalles y advertencias: [`data/expanded/README.md`](data/expanded/README.md).
+
+### Currículo equilibrado 80k
+
+El constructor selecciona exactamente 80.000 filas con estos objetivos:
+
+| Categoría | Filas |
 |---|---:|
-| Hechos sin adulación | 100 |
-| Antisicofancia | 100 |
-| KOAN | 100 |
-| Identidad y destilación | 50 |
-| Sin moraleja | 50 |
-| Hecho con trolleo | 100 |
+| Geografía factual | 10.000 |
+| Química factual | 15.000 |
+| Conocimiento general | 15.000 |
+| Sumas | 10.000 |
+| Restas | 10.000 |
+| Multiplicaciones | 10.000 |
+| Divisiones | 10.000 |
+| **Total** | **80.000** |
 
-El holdout contiene preguntas repetidas con variaciones; son 500 criterios de evaluación, no 500 preguntas completamente distintas.
+Las variantes añadidas de geografía y conocimiento general conservan el `fact_id` original. La ampliación aritmética de divisiones crea operaciones exactas nuevas. Las filas fuente no seleccionadas se conservan en una reserva separada; el builder no sobrescribe el corpus de origen.
 
-**Regla de aislamiento:** el workflow no concatena el holdout al corpus, no lo utiliza para entrenar el tokenizer y no calcula gradientes con él. Solo se usa después de guardar el checkpoint para evaluación.
+## Entrenar
 
-## Entrenamiento local
-
-Instalación:
+### Dependencias
 
 ```bash
 python -m pip install torch tokenizers
 ```
 
-Primera ejecución SFT con los tres fragmentos:
+### Primer SFT desde cero
 
 ```bash
 python train_wise_ronin.py \
@@ -102,64 +168,64 @@ python train_wise_ronin.py \
   --warmup-steps 500 --save-every 1000 --output-dir artifacts
 ```
 
-El número de pasos es el número de actualizaciones del optimizador, no épocas. Cada paso toma un batch muestreado del conjunto deduplicado. El primer experimento usa secuencias de hasta 512 tokens dentro del contexto arquitectónico máximo de 1.024 para contener el coste de CPU.
+### Continuación sobre el currículo equilibrado
 
-Los checkpoints se guardan cada 1.000 pasos e incluyen pesos, estado del optimizador, configuración y referencia al tokenizer. Se puede reanudar con `--resume artifacts/wise_ronin_step_05000.pt` y ajustar `--steps` al total deseado.
+El workflow automatizado descarga el checkpoint de 10k, construye y valida el dataset equilibrado y ejecuta dos épocas con batch 8 y learning rate 1.5e-4. Para 80.000 filas y batch 8 son 10.000 actualizaciones por época: 20.000 adicionales, hasta el paso global 30.000.
 
-### ORPO y preferencias
+El workflow preserva las filas no seleccionadas y reutiliza el tokenizer del checkpoint. No activa ORPO porque el corpus no contiene preferencias etiquetadas.
 
-El corpus publicado tiene formato `user/assistant` de SFT: no contiene pares `chosen/rejected`. Por eso la primera ejecución es **SFT puro** y no activa ORPO.
+## Evaluar
 
-El entrenador admite `--orpo` únicamente si cada registro de entrenamiento contiene `user`, `chosen` y `rejected`. Si se pasa la bandera al corpus actual, aborta con un error explícito en lugar de anunciar una optimización que no está ocurriendo.
+Evaluación greedy:
 
-## Primer workflow: 10.000 pasos
-
-En GitHub: **Actions → WISE-RONIN — First 10k SFT → Run workflow**.
-
-Configuración predeterminada:
-
-- 10.000 actualizaciones del optimizador.
-- Batch 4.
-- Secuencia máxima 512.
-- Learning rate máximo 3e-4.
-- Warmup 500 pasos y decay coseno.
-- Checkpoint cada 1.000 pasos.
-- Semilla fija 42.
-- CPU en GitHub-hosted runner; no requiere GPU.
-
-El workflow instala dependencias, valida los tres JSONL y el holdout, compila los scripts, ejecuta el entrenamiento y después evalúa el checkpoint final contra los 500 casos. El holdout se valida estructuralmente antes de entrenar, pero no se entrega al script de entrenamiento ni al tokenizer. El evaluador produce `holdout_report.json` y `holdout_generations.jsonl`; las puntuaciones son comprobaciones heurísticas por subcadenas y requieren revisión manual.
-
-La ejecución es larga y el tiempo real dependerá del coste por paso en el runner. El workflow tiene límite de seis horas; los checkpoints periódicos permiten conservar progreso si el proceso termina correctamente antes del límite.
-
-## Archivos principales
-
-```
-.
-├── README.md
-├── train_wise_ronin.py
-├── evaluate_wise_ronin.py
-├── Train-Wise-Ronin (1).py       # wrapper de compatibilidad
-├── dataset_enano_70mb_parte1.jsonl
-├── dataset_enano_70mb_parte2.jsonl
-├── dataset_enano_70mb_parte3.jsonl
-├── holdout_wise_ronin_500.jsonl
-├── wise-ronin_v2_pesos.npz       # artefacto de pesos iniciales; no lo carga el workflow SFT
-└── .github/
-    └── workflows/
-        └── wise-ronin-first-10k.yml
+```bash
+python evaluate_wise_ronin.py --help
 ```
 
-## Qué mediremos
+Evaluación sampling:
 
-La primera ejecución debe responder preguntas concretas:
+```bash
+python evaluate_wise_ronin_sampling.py --help
+```
 
-1. ¿Desciende la pérdida de entrenamiento sin NaN/Inf?
-2. ¿Puede responder los hechos del holdout?
-3. ¿Evita las expresiones de adulación y las identidades prohibidas?
-4. ¿Produce estructura KOAN sin convertir todas las respuestas en KOAN?
-5. ¿Evita cerrar con moralejas genéricas?
+El evaluador sampling registra generaciones, coincidencia literal con el ancla esperada, respuestas únicas y concentración de motivos. Hay que leer cada métrica con sus límites:
 
-La pérdida por sí sola no prueba ninguna de estas capacidades. El informe de holdout y ejemplos de generaciones deben acompañar cualquier afirmación de calidad.
+1. **Factualidad:** la coincidencia literal puede fallar ante paráfrasis y aceptar coincidencias superficiales.
+2. **Diversidad:** contar respuestas únicas no mide calidad ni pertinencia.
+3. **Motivos:** detectar aperturas, coletillas u objetos repetidos es diagnóstico de colapso estilístico.
+4. **Holdout:** 500 filas no significan 500 preguntas independientes; el conjunto actual contiene preguntas repetidas.
+
+No ajustar el modelo mirando las respuestas del holdout ni incorporarlo al entrenamiento.
+
+## GitHub Actions
+
+Los workflows se ejecutan desde la pestaña **Actions**. Consulta [` .github/workflows`](.github/workflows) y la [guía de workflows](.github/workflows/README.md) para el propósito y los disparadores de cada uno.
+
+- **First 10k SFT:** entrenamiento inicial desde cero.
+- **Expand dataset:** genera el corpus ampliado determinista.
+- **Dataset audit:** inspecciona duplicados y distribución del corpus heredado.
+- **Balanced 80k:** reanuda el checkpoint 10k y entrena dos épocas.
+- **Balanced 80k validation:** valida el builder y los invariantes en PR.
+
+Los checkpoints, informes de evaluación y datasets de trabajo se publican como artefactos de Actions cuando el workflow correspondiente termina correctamente.
+
+## Reproducibilidad y decisiones
+
+- Semillas explícitas en los workflows.
+- El holdout se mantiene fuera del entrenamiento y del tokenizer.
+- Los constructores producen informes con recuentos y categorías.
+- Los datos de origen y los sobrantes se conservan.
+- Los checkpoints incluyen configuración y estado necesario para reanudar.
+- No se fabrican pares de preferencias para habilitar ORPO.
+- Los cambios de estructura se harán de forma gradual para no romper rutas consumidas por workflows.
+
+## Documentación
+
+- [Guía del repositorio y responsabilidades de cada archivo](docs/REPOSITORY_GUIDE.md)
+- [Registro de experimentos y resultados](docs/EXPERIMENTS.md)
+- [Ficha del corpus ampliado](data/expanded/README.md)
+- [Informe JSON del corpus ampliado](data/expanded/wise_ronin_expanded_report.json)
+- [Workflow de entrenamiento equilibrado](.github/workflows/wise-ronin-balanced-80k.yml)
 
 ## Licencia y uso
 

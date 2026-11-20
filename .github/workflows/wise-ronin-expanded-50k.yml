@@ -25,7 +25,7 @@ jobs:
         with:
           lfs: false
 
-      - name: Download promoted step-40000 checkpoint and tokenizer
+      - name: Download promoted step-40000 checkpoint
         uses: actions/download-artifact@v4
         with:
           name: wise-ronin-correction-sft-step-40000
@@ -34,10 +34,22 @@ jobs:
           repository: ${{ github.repository }}
           path: .
 
-      - name: Verify checkpoint and tokenizer paths
+      - name: Download original tokenizer from step-30000 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-balanced-80k-two-epochs
+          run-id: 44721903295
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          path: tokenizer-source
+
+      - name: Verify checkpoint and restore original tokenizer
         run: |
-          find artifacts -maxdepth 4 -type f -print
+          find artifacts tokenizer-source -maxdepth 5 -type f -print
           test -s artifacts/correction-sft/wise_ronin_step_40000.pt
+          TOKENIZER="$(find tokenizer-source -type f -name 'tokenizer-wise-ronin.json' -print -quit)"
+          test -n "$TOKENIZER"
+          cp "$TOKENIZER" artifacts/tokenizer-wise-ronin.json
           test -s artifacts/tokenizer-wise-ronin.json
 
       - name: Set up Python

@@ -346,6 +346,13 @@ def main():
     if start_step >= args.steps:
         raise ValueError("El checkpoint ya alcanzó o superó --steps")
 
+    epoch_orders = []
+    if args.epochs is not None:
+        for epoch_index in range(args.epochs):
+            order = list(range(len(encoded)))
+            random.Random(args.seed + epoch_index).shuffle(order)
+            epoch_orders.append(order)
+
     model.train()
     started = time.time()
     running = 0.0
@@ -354,8 +361,7 @@ def main():
             local_step = step - start_step
             epoch_index = local_step // updates_per_epoch
             batch_index = local_step % updates_per_epoch
-            order = list(range(len(encoded)))
-            random.Random(args.seed + epoch_index).shuffle(order)
+            order = epoch_orders[epoch_index]
             begin = batch_index * args.batch_size
             indices = order[begin:begin + args.batch_size]
         else:

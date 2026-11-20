@@ -25,6 +25,8 @@ jobs:
           python-version: "3.11"
       - name: Build correction data and held-out evaluation
         run: python build_wise_ronin_correction.py
+      - name: Compile correction builder, validator and evaluator
+        run: python -m py_compile build_wise_ronin_correction.py validate_wise_ronin_correction.py evaluate_wise_ronin_correction.py
       - name: Validate isolation and preference contrasts
         run: python validate_wise_ronin_correction.py
       - name: Upload correction pack and report

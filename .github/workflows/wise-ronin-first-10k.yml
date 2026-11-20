@@ -32,7 +32,7 @@ permissions:
 
 concurrency:
   group: wise-ronin-first-10k
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   train:

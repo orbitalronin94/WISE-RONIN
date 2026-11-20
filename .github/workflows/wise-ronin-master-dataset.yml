@@ -31,10 +31,7 @@ jobs:
       - name: Compile and build unified corpus
         run: |
           python -m py_compile build_balanced_80k.py merge_wise_ronin_corpora.py
-          python merge_wise_ronin_corpora.py \\
-            --legacy dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl \\
-            --balanced data/balanced/dataset_reequilibrado_80k.jsonl \\
-            --qa data/seeds/wise_ronin_1000_qa_ronin.jsonl
+          python merge_wise_ronin_corpora.py --legacy dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl --balanced data/balanced/dataset_reequilibrado_80k.jsonl --qa data/seeds/wise_ronin_1000_qa_ronin.jsonl
 
       - name: Validate merged corpus and quarantine outputs
         run: |

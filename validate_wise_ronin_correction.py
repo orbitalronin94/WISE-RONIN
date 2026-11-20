@@ -17,7 +17,10 @@ hold_users={r["user"] for r in hold}
 train_fact_ids={r.get("fact_id") for r in sft if r.get("fact_id")}
 hold_fact_ids={r.get("fact_id") for r in hold if r.get("fact_id")}
 assert not (train_fact_ids & hold_fact_ids), "fact_id leakage"
-assert not (train_users & hold_users), "exact prompt leakage"
+overlap=sorted(train_users & hold_users)
+if overlap:
+    print("EXACT_PROMPT_OVERLAP:", json.dumps(overlap, ensure_ascii=False))
+    raise AssertionError("exact prompt leakage")
 assert all(r.get("chosen") and r.get("rejected") and r["chosen"] != r["rejected"] for r in prefs)
 assert all(r.get("assistant") and r.get("user") for r in sft)
 assert all(r.get("category") for r in hold)

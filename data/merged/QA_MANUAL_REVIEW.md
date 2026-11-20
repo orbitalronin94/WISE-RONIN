@@ -7,7 +7,7 @@ The uploaded file contains 976 records. This review does not rewrite the source.
 | Class | Records | Finding / required action |
 |---|---:|---|
 | Electrical conductivity | 447 | Silver is the best electrical conductor among metals; copper is commonly second. The supplied answer reverses the ranking. |
-| Capitals and political status | 326, 334, 345, 371 | Jerusalem needs geopolitical context; Almaty is no longer Kazakhstan's capital (Astana); Sri Lanka's legislative capital is Sri Jayawardenepura Kotte while Colombo is the commercial centre and seat of the president and government; Bolivia distinguishes constitutional capital Sucre from the seat of government La Paz. |
+| Capitals and political status | 326, 334, 340, 345, 371 | Jerusalem needs geopolitical context; Almaty is no longer Kazakhstan's capital (Astana); Indonesia's relocation to Nusantara is legally transitional and requires a presidential decree; Sri Lanka's legislative capital is Sri Jayawardenepura Kotte while Colombo is the commercial centre and seat of the president and government; Bolivia distinguishes constitutional capital Sucre from the seat of government La Paz. |
 | Longest river | 38, 423, 644, 833, 960 | Nile is often listed first, but the Nile/Amazon comparison depends on source and mouth definitions and measurement method. Avoid presenting the superlative as uncontested. |
 | Air composition | 39, 99, 424, 645, 834, 961 | The question asks what gas we breathe; the answer should be air, a mixture containing about 21% oxygen, not pure oxygen. |
 | Evolution | 476, 659, 866 | Darwin and Alfred Russel Wallace independently developed the theory of evolution by natural selection. Avoid sole attribution. |
@@ -25,6 +25,7 @@ The uploaded file contains 976 records. This review does not rewrite the source.
 - Kazakhstan's Constitution, Article 2: the capital is Astana — https://aifc.kz/wp-content/uploads/2024/06/constitution-of-the-rk-eng-1.pdf
 - Spain's Ministry of Foreign Affairs, Sri Lanka country sheet (July 2025): Sri Jayawardenepura Kotte is legislative capital; Colombo is commercial capital and seat of the presidency and government — https://www.exteriores.gob.es/Documents/FichasPais/SRILANKA_FICHA%20PAIS.pdf
 - United Nations document on Bolivia: Sucre is constitutional capital; La Paz is the seat of government — https://documents.un.org/access.nsf/get?DS=CMW%2FC%2FBOL%2F1&Lang=E&Open=
+- Indonesian Constitutional Court, 29 October 2026: the relocation decree to Nusantara remained pending, and the Court declined to impose a deadline — https://en.mkri.id/news/details/2026-10-29/Court_Declares_IKN_Law_Petition_Inadmissible
 - Linnean Society history in *Biological Journal of the Linnean Society*: Darwin and Wallace's independent work — https://academic.oup.com/biolinnean/article/137/3/556/6693379
 - Cambridge University Press, history of printing: East Asian origins and Gutenberg's European development — https://www.cambridge.org/core/books/abs/five-innovations-that-changed-human-history/inventing-printing/9A13F759425814CA7D3FC869B146BE04
 - Whipple Museum, University of Cambridge, early thermometers: Galileo's thermoscope and the later thermometer development — https://www.whipplemuseum.cam.ac.uk/explore-whipple-collections/meteorology/early-thermometers-and-temperature-scales
@@ -38,4 +39,4 @@ The uploaded file contains 976 records. This review does not rewrite the source.
 - Do not silently rewrite the uploaded source.
 - Quarantine only identified records; preserve their original prompt, completion, source name, and source record ID in the audit JSONL.
 - Correct or replace a quarantined item only after review, then regenerate the master corpus and its audit artifacts.
-- The 32 quarantined records are excluded from training; the remaining accepted records retain source provenance.
+- The 33 quarantined records are excluded from training; the remaining accepted records retain source provenance.

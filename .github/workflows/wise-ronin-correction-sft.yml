@@ -1,4 +1,5 @@
 name: WISE-RONIN — Controlled factual correction SFT
+# Uses repository-root extraction so artifacts/ paths resolve correctly.
 
 on:
   push:

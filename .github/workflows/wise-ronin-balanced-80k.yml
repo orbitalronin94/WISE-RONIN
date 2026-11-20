@@ -1,6 +1,10 @@
 name: WISE-RONIN — Balanced 80k, two-epoch continuation
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/wise-ronin-balanced-80k.yml'
   workflow_dispatch:
 
 permissions:

@@ -5,7 +5,7 @@ The row count is not presented as the number of independent facts: every record 
 fact_id/base_id and variant_id so splits and audits can group paraphrases safely.
 """
 from __future__ import annotations
-import argparse, hashlib, json, random
+import argparse, base64, hashlib, json, random, re, tempfile, zlib
 from collections import Counter
 from pathlib import Path
 
@@ -231,6 +231,60 @@ QUESTION_PREFIXES = [
 def stable_id(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
 
+def load_v2_seed_rows():
+    """Execute the preserved V2 seed generator in isolation and return its JSONL rows."""
+    seed_path = Path(__file__).parent / "data/seeds/gen_2mb_v2.py.zlib.b64"
+    compressed = base64.b64decode(seed_path.read_text(encoding="ascii"))
+    source = zlib.decompress(compressed).decode("utf-8")
+    with tempfile.TemporaryDirectory(prefix="wise_ronin_v2_") as tmp:
+        output = Path(tmp) / "dataset_2mb_v2.jsonl"
+        source = source.replace('"/mnt/data/dataset_2mb_v2.jsonl"', repr(str(output)))
+        namespace = {"__name__": "__main__"}
+        exec(compile(source, str(seed_path), "exec"), namespace)
+        return [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def v2_seed_facts():
+    """Extract unique factual anchors and exact arithmetic from V2, not its style templates."""
+    rows = load_v2_seed_rows()
+    excluded = {
+        "¿Cuál es el río más largo de España?",
+        "¿Cuál es el río más largo de América?",
+        "¿Cuál es el río más largo de Asia?",
+        "¿Cuál es el desierto más grande de Asia?",
+        "¿Cuál es el pico más alto de Europa?",
+        "¿Cuál es el pico más alto de Oceanía?",
+        "¿En qué año se inventó la radio?",
+        "¿En qué año se inventó la televisión?",
+        "¿En qué año se inventó el ordenador ENIAC?",
+        "¿En qué año se inventó el primer móvil?",
+        "¿Quién formuló la teoría de la evolución?",
+        "¿Quién escribió Ética?",
+        "¿Quién compuso El Danubio azul?",
+        "¿Quién pintó El beso?",
+        "¿Quién escribió Jane Eyre?",
+        "¿Quién escribió Cumbres borrascosas?",
+        "¿De qué país es el kebab?",
+        "¿Cuántas semanas tiene un año?",
+    }
+    factual, arithmetic = {}, {}
+    for row in rows:
+        q, answer = row["user"].strip(), str(row["hecho"]).strip()
+        if q in excluded:
+            continue
+        if q.startswith("¿Cuánto es ") or q.startswith("¿Cuál es el perímetro ") or q.startswith("¿Cuál es el área "):
+            if " dividido por " in q:
+                m = re.search(r"¿Cuánto es (\d+) dividido por (\d+)\?", q)
+                if not m or int(m.group(1)) % int(m.group(2)) != 0:
+                    continue
+            if " por " in q and " al cubo" in q:
+                continue
+            arithmetic[q] = (q, answer, "v2_" + ("division" if "dividido por" in q else "arithmetic"))
+        else:
+            factual[q] = (q, answer, "seed_v2")
+    return list(factual.values()), list(arithmetic.values())
+
+
 def fact_rows():
     facts=[]
     for country,capital in CAPITALS:
@@ -241,6 +295,8 @@ def fact_rows():
     for q,a in GENERAL:
         facts.append((q,a,"general"))
     # New anchors from the 2 MiB seed, merged into the original factual bank.
+    v2_factual, _ = v2_seed_facts()
+    facts.extend(v2_factual)
     for country,capital in SEED_CAPITALS:
         facts.append((f"¿Cuál es la capital de {country}?",capital,"geography_seed"))
     for q,a in SEED_GENERAL:
@@ -259,6 +315,8 @@ def fact_rows():
 
 def arithmetic_rows(limit: int):
     rows=[]
+    _, v2_math = v2_seed_facts()
+    rows.extend(v2_math)
     # Additional exact tasks adapted from the uploaded seed. These are inserted
     # before the broad legacy arithmetic sweep so they survive target-row limits.
     for a in range(2,17):

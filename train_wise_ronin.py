@@ -345,7 +345,8 @@ def main():
         if step < args.warmup_steps:
             lr = args.lr * (step + 1) / max(1, args.warmup_steps)
         else:
-            decay = (step - args.warmup_steps) / max(1, args.steps - args.warmup_steps)
+            # On resume, schedule only the remaining updates instead of restarting the cosine at the old global step.
+            decay = (step - start_step) / max(1, args.steps - start_step)
             lr = args.lr * (0.1 + 0.9 * 0.5 * (1 + math.cos(math.pi * min(1.0, decay))))
         for group in optimizer.param_groups:
             group["lr"] = lr

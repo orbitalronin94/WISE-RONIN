@@ -126,7 +126,7 @@ jobs:
 
       - name: Evaluate the untouched 500-case holdout
         run: |
-          CHECKPOINT="artifacts/wise_ronin_step_$(printf '%05d' "${{ inputs.steps }}").pt"
+          CHECKPOINT="artifacts/wise_ronin_step_$(printf '%05d' "${{ inputs.steps || '10000' }}").pt"
           python evaluate_wise_ronin.py \
             --checkpoint "$CHECKPOINT" \
             --tokenizer artifacts/tokenizer-wise-ronin.json \

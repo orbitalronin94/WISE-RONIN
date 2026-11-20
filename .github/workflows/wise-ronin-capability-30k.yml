@@ -30,8 +30,8 @@ jobs:
         with:
           name: wise-ronin-expanded-corpus-step-50000
           run-id: 44749064856
-          github-token: \${{ secrets.GITHUB_TOKEN }}
-          repository: \${{ github.repository }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
           path: .
 
       - name: Verify parent checkpoint and tokenizer

@@ -25,7 +25,7 @@ class FakeModel:
         self.seen_widths.append(batch.shape[1])
         self.reset_flags.append(reset_state)
         logits = torch.zeros(batch.shape[0], batch.shape[1], 256)
-        logits[:, :, 3 if len(self.seen_widths) == 1 else 2] = 1.0
+        logits[:, :, 3 if reset_state else 2] = 1.0
         return {"logits": logits}
 
 def test_fit_prompt_preserves_question_head_and_answer_suffix():

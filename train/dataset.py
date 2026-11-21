@@ -40,7 +40,7 @@ def encode_rows(rows, tokenizer, max_len):
     """Tokenize the immutable corpus once; preserve row order for RNG sampling."""
     return [
         tokenizer.encode(
-            (str(row["prompt"]) + "\\n" + str(row["completion"])).strip(),
+            (str(row["prompt"]) + "\n" + str(row["completion"])).strip(),
             max_len,
         )
         for row in rows

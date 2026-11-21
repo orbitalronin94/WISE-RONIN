@@ -20,3 +20,24 @@ def test_pilot_surprise_gate_allows_cold_start_delta_writes():
     assert (surprise >= CONFIG.surprise_threshold).any()
     assert torch.count_nonzero(layer.state).item() > 0
     assert torch.count_nonzero(output).item() > 0
+
+
+def test_lumen_delta_stack_preserves_homeostatic_activity_on_cold_start():
+    from model.lumen import RoninLumen
+
+    torch.manual_seed(42)
+    model = RoninLumen()
+    model.train()
+    tokens = torch.randint(4, CONFIG.vocab_size, (2, 8))
+    output = model(tokens, reset_state=True)
+
+    assert torch.isfinite(output["logits"]).all()
+    activity = [organ.last_input_positive for organ in model.homeo]
+    assert all(rate > 0.0 for rate in activity), (
+        "A Delta layer erased the representation before homeostasis: "
+        f"per-layer positive input rates={activity}"
+    )
+    assert all(organ.last_output_positive > 0.0 for organ in model.homeo), (
+        "Homeostasis produced no positive activations in at least one layer: "
+        f"{[organ.last_output_positive for organ in model.homeo]}"
+    )

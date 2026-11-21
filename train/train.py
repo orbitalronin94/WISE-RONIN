@@ -91,6 +91,34 @@ def enable_fake_int8(model):
     LOG.info("fake-int8 activation simulation enabled")
 
 
+def migrate_legacy_homeostasis(model, optimizer):
+    """Reset legacy sparse-gate thresholds when entering residual V3.1.
+
+    V3.0 learned large subtractive biases while Top-K output replaced the
+    representation. V3.1 adds the gated update to the residual stream, so
+    carrying those thresholds forward can suppress every update. Reset only
+    the homeostasis-specific state; preserve all other model and optimizer
+    state from the step-500 parent.
+    """
+    reset_units = 0
+    with torch.no_grad():
+        for organ in model.homeo:
+            organ.bias.zero_()
+            organ.m.fill_(organ.m_target)
+            organ.effective_m.zero_()
+            reset_units += organ.dim
+            state = optimizer.state.get(organ.bias, {})
+            for key in ("exp_avg", "exp_avg_sq", "max_exp_avg_sq"):
+                value = state.get(key)
+                if isinstance(value, torch.Tensor):
+                    value.zero_()
+    LOG.warning(
+        "V3.1 migration: reset homeostasis bias/EMA and AdamW moments "
+        "for %d units; all other parent optimizer state preserved",
+        reset_units,
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description="RONIN-LUMEN CPU training")
     parser.add_argument("--steps", type=int, default=500)
@@ -199,6 +227,8 @@ def main():
             LOG.warning("Migrated legacy checkpoint: initialized post-gate activity EMA for %d homeostasis layers",
                         len(missing))
         optimizer.load_state_dict(state["optimizer"])
+        if parent_arch != "ronin_lumen_v3_1_residual_homeostasis":
+            migrate_legacy_homeostasis(model, optimizer)
         scheduler.load_state_dict(state["scheduler"])
         start = int(state["step"])
         tokens_seen = int(state.get("tokens_seen", 0))

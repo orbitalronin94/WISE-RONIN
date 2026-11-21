@@ -299,3 +299,5 @@ jobs:
             artifacts/reasoning_gsm8k_500.manifest.json
           if-no-files-found: error
           retention-days: 90
+
+# Trigger continuation after token-cache import-path fix was validated in PR #31.

@@ -55,7 +55,30 @@ La conclusión operativa es clara: en este entorno de CPU compartida/limitada, a
 - Es una decisión de rendimiento para los runners CPU estándar de GitHub Actions, no una afirmación de que dos hilos sean óptimos en cualquier CPU o máquina.
 - La medición inicial es un benchmark de cómputo corto, no el tiempo total de un entrenamiento con lectura de datos y checkpoints.
 
-El benchmark posterior explora siete perfiles manteniendo dos hilos intra-op y variando inter-op, MKLDNN, `foreach` y afinidad de CPU. Servirá para afinar la configuración sin volver a abrir la comparación 1/2/4 hilos. [Workflow de benchmark CPU](.github/workflows/benchmark-cpu-throughput.yml).
+El benchmark de siete perfiles [44933048303](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44933048303) encontró que el perfil combinado superó a los otros seis en esa prueba corta: 1,628 pasos/s para LUMEN y 9,156 para el Transformer. Frente al perfil base de la misma tanda (1,108 y 7,862 pasos/s), supone +47,1 % y +16,5 %, respectivamente.
+
+Ese perfil ganador mantiene 2 hilos intra-op y añade 2 inter-op, MKLDNN desactivado, `foreach` desactivado y afinidad del proceso a dos CPU disponibles, con variables OpenMP/MKL fijadas. **Es el mejor candidato medido en el microbenchmark, no una mejora todavía demostrada en un entrenamiento completo**: la prueba excluye carga de datos, guardado de checkpoints y variación entre runners. Por eso se conserva como perfil candidato, no como una verdad universal ni como motivo para cambiar silenciosamente una ejecución en curso.
+
+La siguiente tanda [44937990141](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44937990141) compara siete hipótesis adicionales contra ese perfil de control: `torch.compile` por defecto, `torch.compile` con `reduce-overhead`, autocast BF16 CPU, AdamW fused, reutilización de gradientes (`set_to_none=False`), flush de denormals y control combinado. En la última consulta de estado seguía en cola; no hay resultados que permitan elegir ganador todavía. [Workflow de benchmark CPU](.github/workflows/benchmark-cpu-throughput.yml).
+
+
+
+## Decisiones de entrenamiento, evaluación y calidad
+
+Las decisiones que afectan a la validez del experimento quedan separadas de las optimizaciones de velocidad:
+
+- **Comparación emparejada:** LUMEN y el Transformer usan el mismo corpus congelado, tokenizer, semilla 42, batch 8, contexto máximo 128, secuencia de tokens y pares de checkpoints con el mismo paso global. Sus diferencias arquitectónicas y objetivos auxiliares se declaran; no se finge que sean el mismo algoritmo.
+- **Progresión verificable:** los hitos científicos son acumulativos y se publican en checkpoints de 500 pasos. Se reanuda el estado completo (pesos, optimizador, scheduler y RNG), no solo los pesos. Se valida el padre exacto, hashes, tokens vistos y salud antes de continuar.
+- **Parada ante degradación:** cualquier `NaN`/valor no finito, colapso de actividad o fallo de integridad detiene la cadena. El checkpoint posterior al fallo no se considera válido; se conserva el último estado sano y no se salta por encima del hueco.
+- **Datos y holdout separados:** corpus y tokenizer se preparan una vez y se reutilizan por hash. El holdout histórico de 500 filas permanece fuera del entrenamiento; GSM8K test se fija por hash, con 500 problemas limpios, 100 evaluados de forma determinista en el piloto inicial y 400 reservados. La evaluación usa generación greedy con máximo 64 tokens; resultados y respuestas se conservan para inspección.
+- **Entrenamiento separado de inferencia:** replay/sueño, consolidación, poda de vocabulario y mutaciones de estado propias del entrenamiento no se ejecutan durante la generación de evaluación. La inferencia no conserva estado entre prompts ni altera el checkpoint. Así se evita que el evaluador cambie el modelo que pretende medir.
+- **Calidad más allá de la loss:** además de pérdida y exactitud, se vigilan EOS, diversidad, repetición de n-gramas, bucles/plantillas y ejemplos representativos. Las pruebas generativas exploratorias usan una política de muestreo fijada (temperatura 0,8, top-p 0,9 y penalización de repetición 1,1) y se informan aparte del holdout greedy.
+- **Ablaciones controladas:** se cambia una familia de mecanismos cada vez. El orden de investigación acordado empieza por replay/consolidación y después homeostasis; no se atribuye una mejora a un órgano sin una ablación que lo aísle.
+- **Automatización con intención distinta:** los benchmarks de rendimiento pueden lanzarse automáticamente al integrar su PR para que la evidencia llegue pronto; los entrenamientos largos siguen siendo explícitos/manuales. Un merge documental o de benchmark no debe iniciar accidentalmente un entrenamiento.
+
+### Incidencia longitudinal más reciente
+
+La continuación 2.000 → 4.000 [run 44936542271](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44936542271) no produjo un hito válido completo: LUMEN registró valores no finitos desde el paso 3.100 y el detector detuvo la ejecución; el último estado sano observado en los logs fue el paso 3.000. El job fallido no publicó ese checkpoint. El Transformer sí llegó al paso 4.000, pero eso no crea un par emparejado válido en 4.000. La [PR #39](https://github.com/orbitalronin94/WISE-RONIN/pull/39) propone reproducir únicamente el tramo sano hasta 3.000 desde el padre 2.000 y, tras verificar la reproducción, ejecutar un único holdout emparejado en 3.000. Hasta que esa recuperación termine, no se declara un holdout de esta continuación ni se presenta el checkpoint reproducido como el original.
 
 
 ## Qué estamos intentando cambiar

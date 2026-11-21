@@ -169,7 +169,8 @@ jobs:
           Path("artifacts/manifests/step_6000.json").write_text(json.dumps(manifest, indent=2) + "\n")
           PY
 
-      - name: Upload all 500-step checkpoints, final holdout and provenance
+      - name: Upload checkpoints, holdout and provenance (including partial failures)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ronin-lumen-compiled-3000-6000-${{ github.run_id }}
@@ -179,5 +180,5 @@ jobs:
             artifacts/timing/lumen.json
             artifacts/evaluations/final_6000/
             artifacts/manifests/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90

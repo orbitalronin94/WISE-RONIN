@@ -89,7 +89,7 @@ Para el Transformer se guardará su configuración completa y las métricas de e
 
 Se permite encadenar varios bloques de 500 pasos en un mismo workflow para reutilizar preparación de datos y tokenizer. Cada bloque debe guardar un checkpoint atómico y superar validaciones de carga, hashes, paso global, tokens vistos, estado del optimizador/scheduler/RNG y salud del modelo. El bloque siguiente depende del éxito completo del anterior. Cualquier fallo detiene la cadena y conserva el último checkpoint válido.
 
-El encadenamiento conjunto todavía no debe activarse: el trainer LUMEN dispone de reanudación por bloques, pero el trainer Transformer del piloto aún necesita implementación y pruebas de reanudación exacta; además, el evaluador actual exige exactamente el checkpoint de 500 pasos. Primero se implementarán esos contratos y se comprobará que una ejecución continua equivale a varios bloques reanudados.
+El encadenamiento conjunto está implementado en esta rama: ambos trainers guardan/restauran modelo, optimizador, scheduler y RNG; el evaluador acepta cualquier hito global coincidente; y el workflow puede ejecutar varios bloques consecutivos. La implementación todavía debe superar su primera validación integral en Actions. En el primer bootstrap desde el checkpoint histórico de 500 pasos, el baseline Transformer se reproduce determinísticamente para reconstruir el estado de optimizador/RNG que el artefacto original no guardó; se exige igualdad exacta de pesos antes de continuar.
 
 ## Evaluación
 
@@ -121,18 +121,19 @@ Este holdout no es un benchmark de razonamiento matemático; sirve para comproba
 
 ## Siguiente escalón
 
-1. Corregir el colapso de actividad de las capas profundas y medir actividad efectiva post-Top-K.
-2. Añadir y probar reanudación exacta al trainer Transformer.
-3. Ampliar el evaluador para comparar hitos acumulativos y validar manifiestos/checkpoint padre.
-4. Ejecutar el siguiente bloque de 500 pasos solo después de superar los checks de ambos modelos.
-5. Continuar la serie en incrementos de 500; después ampliar semillas, evaluación completa y ablaciones.
+1. Validar en Actions la medición post-Top-K y la puerta de colapso por capa; corregir cualquier regresión detectada.
+2. Probar que una ejecución continua de 1.000 pasos y dos bloques reanudados de 500 producen la misma trayectoria bajo el mismo entorno.
+3. Verificar manifiestos, hashes de padres/hijos y equivalencia de presupuesto en cada hito.
+4. Ejecutar el siguiente bloque de 500 pasos solo después de superar todos los checks.
+5. Continuar la serie; después ampliar semillas, evaluación completa y ablaciones.
 6. Solo después, incorporar el corpus propio y el código con licencia auditada para la campaña 80/20 definitiva.
 
 ## Reproducibilidad
 
 - [Artefacto de staging de 19k filas](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44890014413)
 - [Auditoría del holdout histórico](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44890014413)
-- [Workflow del piloto](../.github/workflows/pilot.yml)
+- [Workflow longitudinal](../.github/workflows/pilot.yml)
+- [Generador de manifiestos por hito](../scripts/write_experiment_manifest.py)
 - [Constructor del corpus provisional](../scripts/build_pilot_corpus.py)
 - [Tokenizer del piloto](../scripts/train_pilot_tokenizer.py)
 - [Baseline Transformer](../train/transformer_baseline.py)

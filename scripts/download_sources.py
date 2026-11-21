@@ -103,7 +103,7 @@ def stream_for(source: dict[str, Any]):
     return load_dataset(**args).shuffle(seed=SEED, buffer_size=10000), revision
 
 
-def sample(source: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+def sample(source: dict[str, Any], global_hashes: set[str]) -> tuple[list[dict[str, Any]], str]:
     """Sample, exact-deduplicate and apply the five-token prefix rule."""
     wanted = source["quota"]
     candidates: list[dict[str, Any]] = []
@@ -111,9 +111,10 @@ def sample(source: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
     stream, revision = stream_for(source)
     for row in stream:
         record = convert(row, source)
-        if record is None or record["source_hash"] in hashes:
+        if record is None or record["source_hash"] in hashes or record["source_hash"] in global_hashes:
             continue
         hashes.add(record["source_hash"])
+        global_hashes.add(record["source_hash"])
         candidates.append(record)
         if len(candidates) >= wanted * READ_MULTIPLIER:
             break
@@ -173,9 +174,10 @@ def main() -> None:
         "blocked_sources": BLOCKED,
     }
 
+    global_hashes: set[str] = set()
     for source in SOURCES:
         LOG.info("Sampling %s: %s rows", source["key"], source["quota"])
-        rows, revision = sample(source)
+        rows, revision = sample(source, global_hashes)
         filename = source["key"] + ".jsonl"
         result = write_jsonl(output / filename, rows)
         manifest["sources"].append({**source, "dataset_revision": revision, "file": filename, **result, "status": "downloaded_and_sampled"})

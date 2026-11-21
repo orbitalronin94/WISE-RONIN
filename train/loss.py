@@ -16,8 +16,7 @@ def perdida_total(output, targets, model, use_jepa=True, use_rep=True,
     if use_jepa and steps > 8:
         hidden = output["hidden"]
         target_emb = model.emb.emb(targets[:, 1:])
-        windows = [target_emb[:, i + 1:i + 9].mean(1) for i in range(steps - 8)]
-        target = torch.stack(windows, dim=1)
+        target = target_emb.unfold(1, 8, 1).mean(dim=-1)
         prediction = model.predict_latent(hidden[:, :steps - 8])
         latent_loss = F.mse_loss(prediction, target.detach())
 

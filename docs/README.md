@@ -18,7 +18,7 @@
 ## Datos, licencias y evaluación
 
 - [Preparación y procedencia de datos](../data/README.md)
-- [Datos propios: formato y requisitos](../data/owner/README.md)
+- [Datos propios: formato y requisitos](../data/owner/README_ES.md)
 - [Holdout congelado](../data/holdout_500.jsonl)
 - [Preparación de bibliotecas en GitHub Actions](../.github/workflows/prepare-data.yml)
 - [Entrenamiento CPU en GitHub Actions](../.github/workflows/train.yml)

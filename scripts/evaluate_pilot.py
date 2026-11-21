@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Greedy, matched-budget evaluation of LUMEN and the parameter-matched Transformer."""
 from __future__ import annotations
-import argparse, json, re, hashlib, unicodedata
+import argparse, json, re, hashlib, unicodedata, random
 from collections import OrderedDict
 from pathlib import Path
 import torch
@@ -89,7 +89,8 @@ def main():
     tok_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
     tokenizer = BPETokenizer(args.tokenizer)
 
-    gsm = read_jsonl(args.gsm8k)[:args.gsm8k_limit]
+    gsm_all = read_jsonl(args.gsm8k)
+    gsm = random.Random(42).sample(gsm_all, min(args.gsm8k_limit, len(gsm_all)))
     historical_raw = read_jsonl(args.historical_holdout)
     historical_by_prompt = OrderedDict()
     for row in historical_raw:
@@ -106,6 +107,7 @@ def main():
     summary = {"data_sha256": data_hash, "tokenizer_sha256": tok_hash,
                "gsm8k_test_questions": len(gsm), "historical_unique_prompts": len(historical),
                "max_new_tokens": args.max_new_tokens, "decoding": "greedy",
+               "gsm8k_sample_seed": 42, "gsm8k_selected_ids": [r["id"] for r in gsm],
                "models": {}}
     all_predictions = []
     for kind, checkpoint in (("lumen", args.lumen_ckpt), ("transformer", args.transformer_ckpt)):

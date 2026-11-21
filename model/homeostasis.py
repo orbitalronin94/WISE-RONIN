@@ -18,8 +18,9 @@ class Homeostasis(nn.Module):
         self.last_output_norm = 0.0
         self.last_gate_activity_per_unit = None
 
-    def forward(self, x):
-        self.last_input_positive = float((x.detach() > 0).float().mean().item())
+    def forward(self, x, collect_diagnostics=True):
+        if collect_diagnostics:
+            self.last_input_positive = float((x.detach() > 0).float().mean().item())
         if self.training:
             with torch.no_grad():
                 input_active = (x > 0).float().mean(dim=(0, 1))
@@ -30,21 +31,9 @@ class Homeostasis(nn.Module):
         _, indices = torch.topk(y, k=k, dim=-1)
         mask = torch.zeros_like(y).scatter_(-1, indices, 1.0)
         gated_update = torch.relu(y) * mask
-        # Diagnostic only: per-unit positive gated activity for rolling health
-        # windows. This value does not participate in the forward computation.
-        self.last_gate_activity_per_unit = (
-            (gated_update.detach() > 0).float().mean(dim=(0, 1))
-        )
-
         # Top-K sparsifies the homeostatic update, not the information stream.
         # Returning only gated_update erased most dimensions at every layer.
         output = x + gated_update
-        self.last_gate_positive = float((gated_update.detach() > 0).float().mean().item())
-        self.last_output_positive = float((output.detach() > 0).float().mean().item())
-        self.last_output_norm = float(
-            output.detach().norm().item()
-            / max(1, (output.shape[0] * output.shape[1]) ** 0.5)
-        )
 
         if self.training:
             with torch.no_grad():
@@ -56,6 +45,18 @@ class Homeostasis(nn.Module):
                 effective_active = (gated_update > 0).float().mean(dim=(0, 1))
                 self.effective_m.mul_(0.99).add_(effective_active, alpha=0.01)
                 self.bias.add_(self.eta * (self.effective_m - self.m_target))
+        else:
+            effective_active = (gated_update.detach() > 0).float().mean(dim=(0, 1))
+        # The health window needs per-unit activity each step, but scalar
+        # summaries are only materialized on requested diagnostic steps.
+        self.last_gate_activity_per_unit = effective_active.detach()
+        if collect_diagnostics:
+            self.last_gate_positive = float(effective_active.mean().item())
+            self.last_output_positive = float((output.detach() > 0).float().mean().item())
+            self.last_output_norm = float(
+                output.detach().norm().item()
+                / max(1, (output.shape[0] * output.shape[1]) ** 0.5)
+            )
         return output
 
     def neuronas_muertas(self):

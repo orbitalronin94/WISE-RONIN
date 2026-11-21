@@ -34,6 +34,7 @@ def generate_batch(model, prompts, tokenizer, kind, max_new=64, max_prompt=63):
     for prompt in prompts:
         ids = tokenizer.tokenizer.encode(str(prompt), add_special_tokens=False).ids[:max_prompt]
         sequences.append([bos] + ids)
+    initial_lengths = [len(s) for s in sequences]
     finished = [False] * len(sequences)
     for _ in range(max_new):
         width = max(len(s) for s in sequences)
@@ -56,8 +57,8 @@ def generate_batch(model, prompts, tokenizer, kind, max_new=64, max_prompt=63):
         if all(finished):
             break
     outputs = []
-    for seq, prompt in zip(sequences, prompts):
-        generated = seq[1 + min(max_prompt, len(seq) - 1):]
+    for seq, prompt_len in zip(sequences, initial_lengths):
+        generated = seq[prompt_len:]
         outputs.append(tokenizer.tokenizer.decode(generated, skip_special_tokens=True))
     return outputs
 

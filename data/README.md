@@ -53,7 +53,7 @@ La columna `confirmed` es una etiqueta de procedencia del pipeline, no una garan
 - El muestreador falla si no alcanza la cuota; no reduce cuotas silenciosamente.
 - El holdout `holdout_500.jsonl` no se lee ni se modifica durante esta preparación.
 
-Workflow disponible en GitHub Actions: **Prepare RONIN-LUMEN source libraries**. El artefacto esperado se llama `lumen-source-candidates-seed-42`. Todavía no hay ejecución ni artifact publicados; el archivo de workflow está en la rama draft de esta PR.
+Workflow disponible en GitHub Actions: **Prepare RONIN-LUMEN source libraries**. El artefacto esperado se llama `lumen-source-candidates-seed-42`. Ejecución completada: [run 44887380018](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44887380018). Se generó el artifact `lumen-source-candidates-seed-42` (artifact ID `14700274265`, ZIP SHA-256 `eab0eb4f513238d6f76f02c5ac760959f43ba6404cf5b722fbe3f44da17d6bfa`). Se verificaron los siete recuentos de filas y los siete SHA-256 internos contra `data/source_manifest_seed42.json`. El artifact contiene 19.000 candidatos externos, no el dataset final de 25.000.
 
 ## Pendientes antes de crear `train_25k.jsonl`
 

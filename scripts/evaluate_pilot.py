@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse, json, re, hashlib, unicodedata, random
 from collections import OrderedDict
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import torch
 from model.config import CONFIG
 from model.lumen import RoninLumen

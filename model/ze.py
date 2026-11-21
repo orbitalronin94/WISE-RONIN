@@ -12,7 +12,7 @@ class DualModelZe(nn.Module):
         self.from_b = nn.Linear(counterfactual_dim, dim, bias=False)
         self.threshold = float(threshold)
         self.streak_limit = int(streak_limit)
-        self.register_buffer("conflict_streak", torch.zeros((), dtype=torch.long))
+        self.register_buffer("conflict_streak", torch.zeros(0, dtype=torch.long))
         self.register_buffer("localization_count", torch.zeros((), dtype=torch.long))
         self.register_buffer("erase_count", torch.zeros((), dtype=torch.long))
 
@@ -29,10 +29,19 @@ class DualModelZe(nn.Module):
         conflict = delta_f + 0.1 * latent_disagreement
         high = conflict > self.threshold
         with torch.no_grad():
-            if high.any():
-                self.conflict_streak.add_(1)
-            else:
-                self.conflict_streak.zero_()
+            if self.conflict_streak.numel() != high.shape[0]:
+                self.conflict_streak = torch.zeros(high.shape[0], dtype=torch.long, device=high.device)
+            trigger = torch.zeros_like(high)
+            for t in range(high.shape[1]):
+                self.conflict_streak = torch.where(
+                    high[:, t], self.conflict_streak + 1,
+                    torch.zeros_like(self.conflict_streak),
+                )
+                trigger[:, t] = self.conflict_streak >= self.streak_limit
+                self.conflict_streak = torch.where(
+                    trigger[:, t], torch.zeros_like(self.conflict_streak),
+                    self.conflict_streak,
+                )
         # On low conflict, constructive interference; on high conflict, localize to lower PE.
         blend = torch.sigmoid((self.threshold - conflict).unsqueeze(-1) * 4.0)
         choose_b = (fb < fa).unsqueeze(-1)
@@ -44,7 +53,7 @@ class DualModelZe(nn.Module):
         return result, {
             "F_A": fa, "F_B": fb, "delta_F": delta_f,
             "latent_disagreement": latent_disagreement,
-            "conflict": conflict, "high_conflict": high,
+            "conflict": conflict, "high_conflict": high, "erase_trigger": trigger,
         }
 
     @torch.no_grad()

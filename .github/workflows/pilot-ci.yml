@@ -22,6 +22,7 @@ on:
       - "tests/**"
       - ".github/workflows/pilot-ci.yml"
       - ".github/workflows/benchmark-cpu-throughput.yml"
+      - ".github/workflows/recover-lumen-3000.yml"
 
 permissions:
   contents: read
@@ -58,6 +59,7 @@ jobs:
           for workflow_path in (
               Path(".github/workflows/pilot.yml"),
               Path(".github/workflows/benchmark-cpu-throughput.yml"),
+              Path(".github/workflows/recover-lumen-3000.yml"),
           ):
               workflow = yaml.safe_load(workflow_path.read_text())
               for job_name, job in workflow.get("jobs", {}).items():

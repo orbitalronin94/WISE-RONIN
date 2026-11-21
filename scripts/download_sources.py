@@ -21,7 +21,9 @@ from huggingface_hub import HfApi
 LOG = logging.getLogger("lumen.sources")
 SEED = 42
 MAX_CHARS = 12000
-READ_MULTIPLIER = 20
+READ_MULTIPLIER = 50
+MIN_TEXT_CHARS = 24
+MIN_TEXT_WORDS = 4
 
 # The external allocation is 80% of 25k. The remaining 5k must be supplied
 # from the owner's curated corpus; this script never fabricates those records.
@@ -173,6 +175,12 @@ def main() -> None:
         "final_target_rows": 25000,
         "external_target_rows": 20000,
         "owner_curated_rows_required": 5000,
+        "quality_filters": {
+            "minimum_normalized_characters": MIN_TEXT_CHARS,
+            "minimum_normalized_words": MIN_TEXT_WORDS,
+            "read_multiplier": READ_MULTIPLIER,
+            "deduplication": "NFKC + casefold + punctuation/whitespace normalization",
+        },
         "sources": [],
         "blocked_sources": BLOCKED,
     }

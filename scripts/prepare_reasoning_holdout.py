@@ -6,7 +6,6 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from datasets import load_dataset
-from huggingface_hub import HfApi
 from data.audit_holdout import audit_rows, read_jsonl
 
 def norm(value):
@@ -22,8 +21,8 @@ def main():
     args = p.parse_args()
     train_rows = read_jsonl(args.train_data)
     train_texts = [norm(str(r.get("prompt", "")) + " " + str(r.get("completion", ""))) for r in train_rows]
-    info = HfApi().dataset_info("openai/gsm8k")
-    revision = info.sha
+    # Pin the official Hugging Face dataset commit; never follow a moving main ref.
+    revision = "740312add88f781978c0658806c59bc2815b9866"
     ds = load_dataset("openai/gsm8k", "main", split="test", revision=revision)
     selected, skipped, seen_questions = [], 0, set()
     for row in ds:

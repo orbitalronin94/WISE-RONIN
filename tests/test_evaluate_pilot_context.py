@@ -20,10 +20,12 @@ class FakeTokenizerWrapper:
 class FakeModel:
     def __init__(self):
         self.seen_widths = []
+        self.reset_flags = []
     def __call__(self, batch, reset_state=True):
         self.seen_widths.append(batch.shape[1])
+        self.reset_flags.append(reset_state)
         logits = torch.zeros(batch.shape[0], batch.shape[1], 256)
-        logits[:, :, 2] = 1.0
+        logits[:, :, 3 if len(self.seen_widths) == 1 else 2] = 1.0
         return {"logits": logits}
 
 def test_fit_prompt_preserves_question_head_and_answer_suffix():
@@ -39,3 +41,5 @@ def test_generate_batch_slides_within_shared_128_token_context():
     assert outputs == [""]
     assert model.seen_widths
     assert max(model.seen_widths) <= 128
+    assert model.seen_widths == [128, 1]
+    assert model.reset_flags == [True, False]

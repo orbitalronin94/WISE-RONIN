@@ -14,6 +14,7 @@
 - [Extensión experimental V3.2 ZE / LC-NE](RONIN_LUMEN_V3_2_ZE.md)
 - [Auditoría de la especificación](SPEC_AUDIT.md) — contradicciones, decisiones pendientes y estado de implementación.
 - [Auditoría del bucle de entrenamiento](TRAIN_LOOP_REFERENCE_AUDIT.md) — qué está implementado, qué está incompleto y qué exige validación.
+- [Protocolo del piloto comparativo](PILOTO_COMPARATIVO_ES.md) — comparación de LUMEN con un Transformer de parámetros equiparados y evaluación GSM8K.
 
 ## Datos, licencias y evaluación
 
@@ -22,6 +23,7 @@
 - [Holdout congelado](../data/holdout_500.jsonl)
 - [Preparación de bibliotecas en GitHub Actions](../.github/workflows/prepare-data.yml)
 - [Entrenamiento CPU en GitHub Actions](../.github/workflows/train.yml)
+- [Piloto comparativo de 500 pasos](../.github/workflows/pilot.yml)
 
 ## Código por responsabilidad
 
@@ -34,6 +36,11 @@
 - [Sueño / replay](../train/sleep.py)
 - [Pérdidas auxiliares](../train/loss.py)
 - [Entrenador y checkpoints](../train/train.py)
+- [Baseline Transformer de 2,3 M de parámetros](../train/transformer_baseline.py)
+- [Constructor del corpus piloto](../scripts/build_pilot_corpus.py)
+- [Tokenizer del piloto](../scripts/train_pilot_tokenizer.py)
+- [Preparación del holdout GSM8K](../scripts/prepare_reasoning_holdout.py)
+- [Evaluador común](../scripts/evaluate_pilot.py)
 - [Entrenamiento del tokenizer](../scripts/train_tokenizer.py)
 
 ## Estado de validación

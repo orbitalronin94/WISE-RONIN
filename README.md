@@ -86,9 +86,11 @@ La prueba del mérito no será el lenguaje grandilocuente: será que las ablacio
 - **Staging externo:** workflow [44890014413](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44890014413) completado. Artefacto de 19.000 candidatos; auditoría automática: 0 duplicados normalizados, 0 coincidencias exactas con holdout y 0 coincidencias largas de subcadena. El holdout conserva 500 filas y 55 prompts únicos.
 - **No es corpus final:** faltan 5.000 filas propias curadas y 1.000 filas de código con licencia comprobada. Las fuentes externas descargadas siguen con `license_reviewed=false` y `rights_confirmed=false`; el resultado léxico no sustituye revisión humana ni semántica.
 - **Tokenizer:** todavía no hay tokenizer final construido a partir del corpus aprobado.
-- **Entrenamiento:** los runs de 10 pasos con datos dummy son pruebas de ejecución y reanudación, no aprendizaje. No se debe presentar ninguno como entrenamiento real.
+- **Piloto comparativo autorizado:** se ha preparado una campaña provisional de 500 pasos sobre las 19.000 filas externas. Compara LUMEN (2.281.841 parámetros) con un decoder Transformer de tamaño prácticamente idéntico (2.295.168), con tokenizer, datos, semilla y tokens equiparados. [Protocolo comparativo](docs/PILOTO_COMPARATIVO_ES.md) · [Workflow del piloto](.github/workflows/pilot.yml).
+- **Estado del piloto:** preparado en la rama `pilot/ronin-lumen-500`; aún no iniciado en Actions. No se presenta como entrenamiento completado hasta que exista una ejecución y sus checkpoints.
+- **Producción:** sigue bloqueada por las revisiones de licencias, las 5.000 filas propias, las 1.000 filas de código auditadas y el tokenizer final.
 
-La primera campaña con datos reales debe tener un manifiesto propio, hash del corpus y tokenizer, checkpoints separados y evaluación congelada. Si se hace una campaña provisional con una composición distinta de la receta final, se publicará como experimento provisional, nunca como resultado de la configuración de producción.
+El piloto provisional no reemplaza la campaña 80/20 definitiva. Sus resultados se publicarán con sus límites y no se confundirán con los del corpus de producción.
 
 ## Documentación y código
 
@@ -97,12 +99,14 @@ El [índice de documentación](docs/README.md) organiza las especificaciones, au
 - [Documento maestro V1](DOCUMENTO_MAESTRO_RONIN_LUMEN_V1.md)
 - [Especificación V1](SPEC_RONIN_LUMEN_V1.md)
 - [Neurociencia y decisiones de arquitectura](docs/NEUROCIENCIA_Y_ARQUITECTURA_ES.md)
+- [Protocolo del piloto comparativo de razonamiento](docs/PILOTO_COMPARATIVO_ES.md)
 - [Auditoría de la especificación](docs/SPEC_AUDIT.md)
 - [Auditoría del bucle de entrenamiento](docs/TRAIN_LOOP_REFERENCE_AUDIT.md)
 - [Extensión experimental V3.2 ZE](docs/RONIN_LUMEN_V3_2_ZE.md)
 - [Procedencia y preparación de datos](data/README.md)
 - [Contrato del corpus propio (español)](data/owner/README_ES.md) · [versión original](data/owner/README.md)
 - [Workflow de entrenamiento CPU](.github/workflows/train.yml)
+- [Workflow del piloto comparativo](.github/workflows/pilot.yml)
 - [Workflow de preparación de datos](.github/workflows/prepare-data.yml)
 
 ## Reproducir el smoke test

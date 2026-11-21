@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import random
 from pathlib import Path
@@ -11,7 +12,7 @@ import torch
 from model.config import CONFIG
 from model.lumen import RoninLumen
 from train.curriculum import datos_para_fase, sample_phase2
-from train.dataset import BPETokenizer, collate, load_jsonl
+from train.dataset import BPETokenizer, collate_rows, load_jsonl
 from train.loss import perdida_total
 from train.sleep import sueno
 from train.quant import fake_int8_tensor
@@ -33,7 +34,7 @@ def restore_rng(state, local_rng):
     local_rng.setstate(state["local_sampler"])
 
 
-def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, local_rng):
+def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, local_rng, tokens_seen, tokenizer_hash):
     model.reset_states()
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({
@@ -49,6 +50,9 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "torch_version": torch.__version__,
         "delta_policy": "reset_at_each_batch_boundary",
         "v32_ze": args.v32_ze,
+        "pilot_all_rows": args.pilot_all_rows,
+        "tokens_seen": tokens_seen,
+        "tokenizer_sha256": tokenizer_hash,
     }, path)
     LOG.info("checkpoint=%s step=%d", path, step)
 
@@ -92,6 +96,8 @@ def main():
     parser.add_argument("--orpo", action="store_true")
     parser.add_argument("--v32-ze", action="store_true",
                         help="Enable experimental V3.2 dual-state/LC-NE/energy mechanisms")
+    parser.add_argument("--pilot-all-rows", action="store_true",
+                        help="Use every row in the explicitly authorized provisional pilot corpus; phase 1 only")
     parser.add_argument("--dummy-m1", action="store_true",
                         help="Explicit synthetic smoke test only; never a training dataset")
     args = parser.parse_args()
@@ -102,6 +108,8 @@ def main():
         parser.error("ORPO is not implemented: preference pairs and objective need a separate approved specification")
     if args.dummy_m1 and args.steps > 10:
         parser.error("--dummy-m1 is limited to blocks of at most 10 steps")
+    if args.pilot_all_rows and (args.dummy_m1 or args.phase != 1):
+        parser.error("--pilot-all-rows is only valid for real-data phase 1")
 
     torch.set_num_threads(2)
     torch.manual_seed(args.seed)
@@ -118,13 +126,16 @@ def main():
             raise ValueError("Tokenizer vocabulary size must match model config")
         if tokenizer.tokenizer.token_to_id("[PAD]") != 0:
             raise ValueError("[PAD] must be token ID 0")
-        phase_data = datos_para_fase(rows, args.phase)
+        phase_data = rows if args.pilot_all_rows else datos_para_fase(rows, args.phase)
 
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay
     )
     scheduler = make_scheduler(optimizer, args.warmup, args.total_steps)
     start, state = 0, None
+    tokens_seen, tokenizer_hash = 0, "dummy-no-tokenizer"
+    if not args.dummy_m1:
+        tokenizer_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
     if args.resume:
         state = torch.load(args.resume, map_location="cpu", weights_only=False)
         if state.get("v32_ze", False) != args.v32_ze:
@@ -133,11 +144,17 @@ def main():
             raise ValueError("Checkpoint config or training corpus hash mismatch")
         if state["phase"] != args.phase:
             raise ValueError("Cannot change curriculum phase when resuming a checkpoint")
+        if args.pilot_all_rows and (
+            state.get("pilot_all_rows") is not True
+            or state.get("tokenizer_sha256") != tokenizer_hash
+        ):
+            raise ValueError("Pilot resume requires the same all-row mode and tokenizer hash")
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
         scheduler.load_state_dict(state["scheduler"])
         start = int(state["step"])
-        LOG.info("resumed step=%d", start)
+        tokens_seen = int(state.get("tokens_seen", 0))
+        LOG.info("resumed step=%d tokens_seen=%d", start, tokens_seen)
 
     phase_ranges = {1: (0, 2000), 2: (2000, 8000), 3: (8000, 10000)}
     low, high = phase_ranges[args.phase]
@@ -164,8 +181,9 @@ def main():
         else:
             chosen = (sample_phase2(phase_data, args.batch, local_rng)
                       if args.phase == 2 else local_rng.choices(phase_data, k=args.batch))
-            tokens = collate(chosen, tokenizer, args.batch, args.max_len, local_rng)
+            tokens = collate_rows(chosen, tokenizer, args.max_len)
 
+        tokens_seen += int(tokens.ne(0).sum())
         output = model(tokens, reset_state=True)
         loss, metrics = perdida_total(
             output, tokens, model,
@@ -196,18 +214,19 @@ def main():
             LOG.info(
                 "step=%d loss=%.5f token=%.5f latent=%.5f div=%.5f "
                 "router=%.5f rep=%.5f F_complexity=%.5f dead=%.2f%% "
-                "energy_entropy=%.4f PE=%.4f ZE_conflict=%.4f ZE_erase=%d lr=%.3e",
+                "energy_entropy=%.4f PE=%.4f ZE_conflict=%.4f ZE_erase=%d tokens_seen=%d lr=%.3e",
                 step, loss.item(), metrics["L_token"].item(),
                 metrics["L_latente"].item(), metrics["L_div"].item(),
                 metrics["L_router"].item(), metrics["L_rep"].item(),
                 metrics["F_complexity"].item(), dead * 100, entropy,
                 float(output["surprise"].mean().detach()), ze_conflict, ze_erase,
-                scheduler.get_last_lr()[0],
+                tokens_seen, scheduler.get_last_lr()[0],
             )
             if step >= 100 and dead > 0.20:
                 save_checkpoint(
                     Path(args.ckpt_dir) / f"step_{step}_STOP.pt",
                     model, optimizer, scheduler, step, args, data_hash, local_rng,
+                    tokens_seen, tokenizer_hash,
                 )
                 raise RuntimeError(f"STOP: dead neurons {dead:.1%} exceeds 20%")
 
@@ -229,12 +248,14 @@ def main():
 
         if step % 500 == 0:
             save_checkpoint(Path(args.ckpt_dir) / f"step_{step}.pt",
-                            model, optimizer, scheduler, step, args, data_hash, local_rng)
+                            model, optimizer, scheduler, step, args, data_hash, local_rng,
+                            tokens_seen, tokenizer_hash)
 
     final_step = start + args.steps
     if final_step % 500:
         save_checkpoint(Path(args.ckpt_dir) / f"step_{final_step}.pt",
-                        model, optimizer, scheduler, final_step, args, data_hash, local_rng)
+                        model, optimizer, scheduler, final_step, args, data_hash, local_rng,
+                        tokens_seen, tokenizer_hash)
     LOG.info("completed step=%d device=cpu", final_step)
 
 

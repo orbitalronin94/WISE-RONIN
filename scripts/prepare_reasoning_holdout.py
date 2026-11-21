@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pin and prepare a clean 100-question GSM8K test slice for pilot evaluation only."""
+"""Pin and prepare a clean 500-question GSM8K test holdout for pilot evaluation only."""
 from __future__ import annotations
 import argparse, hashlib, json, re, unicodedata
 from pathlib import Path
@@ -14,8 +14,8 @@ def norm(value):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--train-data", default="data/pilot_train_19k.jsonl")
-    p.add_argument("--output", default="artifacts/reasoning_gsm8k_100.jsonl")
-    p.add_argument("--manifest", default="artifacts/reasoning_gsm8k_100.manifest.json")
+    p.add_argument("--output", default="artifacts/reasoning_gsm8k_500.jsonl")
+    p.add_argument("--manifest", default="artifacts/reasoning_gsm8k_500.manifest.json")
     p.add_argument("--count", type=int, default=500)
     args = p.parse_args()
     train_rows = read_jsonl(args.train_data)

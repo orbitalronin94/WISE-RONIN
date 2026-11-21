@@ -27,8 +27,13 @@ class MemoriaElastica(nn.Module):
     def registrar_nueva(self, vector):
         """Write into an empty slot; if full, replace the least-used slot."""
         vector = vector.detach().reshape(-1, self.dim).mean(0)
-        if not torch.isfinite(vector).all() or vector.norm() == 0:
+        if not torch.isfinite(vector).all():
             return False
+        norm = vector.norm()
+        if norm <= 1e-8:
+            return False
+        # Prevent one anomalous activation from poisoning long-lived memory.
+        vector = vector * (10.0 / norm).clamp(max=1.0)
         empty = torch.nonzero(self.contador_lenta == 0, as_tuple=False).flatten()
         if empty.numel():
             slot = int(empty[0].item())

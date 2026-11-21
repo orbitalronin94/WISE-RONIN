@@ -48,6 +48,7 @@ jobs:
           PYTHONPATH=. pytest -q tests/test_data_audit.py tests/test_dataset_gates.py tests/test_legacy_import.py
 
       - name: Download, normalize and sample approved source datasets
+        if: github.event_name == 'workflow_dispatch'
         env:
           HF_HUB_DISABLE_XET: "1"
         run: |
@@ -55,6 +56,7 @@ jobs:
             --output-dir artifacts/lumen-source-candidates
 
       - name: Verify source hashes, candidate uniqueness and frozen holdout
+        if: github.event_name == 'workflow_dispatch'
         run: |
           python data/audit_holdout.py \
             --candidates artifacts/lumen-source-candidates \
@@ -62,6 +64,7 @@ jobs:
             --report artifacts/holdout-overlap-report.json
 
       - name: Upload source candidates and provenance manifest
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: lumen-source-candidates-seed-42
@@ -70,6 +73,7 @@ jobs:
           retention-days: 30
 
       - name: Upload holdout audit report
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: lumen-holdout-audit-${{ github.run_id }}

@@ -7,6 +7,8 @@ on:
       - lumen-v1/m1-refactor
     paths:
       - scripts/download_sources.py
+      - data/audit_holdout.py
+      - tests/test_data_audit.py
       - data/README.md
       - .github/workflows/prepare-data.yml
 
@@ -29,22 +31,41 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install data preparation dependency
-        run: python -m pip install --upgrade "datasets>=3,<4" "huggingface_hub>=0.25,<1.0" zstandard
+      - name: Install data preparation dependencies
+        run: |
+          python -m pip install --upgrade "datasets>=3,<4" "huggingface_hub>=0.25,<1.0" zstandard pytest
 
-      - name: Validate downloader syntax
-        run: python -m py_compile scripts/download_sources.py
-      - name: Download and sample approved source datasets
+      - name: Validate downloader and audit tests
+        run: |
+          python -m py_compile scripts/download_sources.py data/audit_holdout.py
+          PYTHONPATH=. pytest -q tests/test_data_audit.py
+
+      - name: Download, normalize and sample approved source datasets
         env:
           HF_HUB_DISABLE_XET: "1"
         run: |
           python scripts/download_sources.py \
             --output-dir artifacts/lumen-source-candidates
 
+      - name: Verify source hashes, candidate uniqueness and frozen holdout
+        run: |
+          python data/audit_holdout.py \
+            --candidates artifacts/lumen-source-candidates \
+            --holdout data/holdout_500.jsonl \
+            --report artifacts/holdout-overlap-report.json
+
       - name: Upload source candidates and provenance manifest
         uses: actions/upload-artifact@v4
         with:
           name: lumen-source-candidates-seed-42
           path: artifacts/lumen-source-candidates/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload holdout audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-holdout-audit-${{ github.run_id }}
+          path: artifacts/holdout-overlap-report.json
           if-no-files-found: error
           retention-days: 30

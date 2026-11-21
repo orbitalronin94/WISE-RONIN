@@ -23,7 +23,7 @@ def main():
     info = HfApi().dataset_info("openai/gsm8k")
     revision = info.sha
     ds = load_dataset("openai/gsm8k", "main", split="test", revision=revision)
-    selected, skipped = [], 0
+    selected, skipped, seen_questions = [], 0, set()
     for row in ds:
         question = str(row["question"]).strip()
         answer = str(row["answer"])
@@ -31,9 +31,11 @@ def main():
             continue
         expected = answer.rsplit("####", 1)[1].strip().replace(",", "")
         qn = norm(question)
-        if not qn or any(qn == text or (len(qn) >= 28 and qn in text) for text in train_texts):
+        if (not qn or qn in seen_questions
+                or any(qn == text or (len(qn) >= 28 and qn in text) for text in train_texts)):
             skipped += 1
             continue
+        seen_questions.add(qn)
         selected.append({
             "id": f"GSM8K-TEST-{len(selected)+1:03d}",
             "categoria": "reasoning_gsm8k",
@@ -59,7 +61,8 @@ def main():
     digest = hashlib.sha256(out.read_bytes()).hexdigest()
     manifest = {
         "dataset": "openai/gsm8k", "revision": revision, "split": "test",
-        "rows": len(selected), "sha256": digest, "skipped_training_overlap": skipped,
+        "rows": len(selected), "unique_questions": len(seen_questions),
+        "sha256": digest, "skipped_training_overlap": skipped,
         "training_corpus_sha256": hashlib.sha256(Path(args.train_data).read_bytes()).hexdigest(),
         "audit": {
             "exact_matches": audit["exact_match_count"],

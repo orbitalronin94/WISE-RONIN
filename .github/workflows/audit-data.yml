@@ -1,13 +1,13 @@
 name: RONIN-LUMEN data and holdout audit
 
 on:
-  push:
-    branches: [lumen-v1/m1-refactor]
-    paths:
-      - "data/audit_holdout.py"
-      - "tests/test_data_audit.py"
-      - ".github/workflows/audit-data.yml"
   workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: "Completed source-preparation workflow run ID"
+        required: true
+        default: "44887381117"
+        type: string
 
 permissions:
   contents: read
@@ -26,12 +26,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Download immutable source-candidate artifact
+      - name: Download selected source-candidate artifact
         uses: actions/download-artifact@v4
         with:
           name: lumen-source-candidates-seed-42
           repository: ${{ github.repository }}
-          run-id: 44887381117
+          run-id: ${{ inputs.artifact_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/lumen-source-candidates
       - name: Test audit logic

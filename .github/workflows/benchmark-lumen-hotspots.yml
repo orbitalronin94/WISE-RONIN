@@ -22,6 +22,8 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,6 +64,30 @@ jobs:
           test -s benchmark-inputs/data/pilot_tokenized_128.pt
       - name: Verify exact Delta and Homeostasis fast paths
         run: PYTHONPATH=. pytest -q tests/test_hotspot_fastpaths.py
+      - name: Build control plus seven one-factor hypotheses from current profile
+        id: matrix
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          base = json.loads(Path("config/lumen_cpu_profile.json").read_text())
+          profiles = [{"name": "control", "profile": base}]
+          hypotheses = [
+              ("hypothesis_threads_1", {"threads": 1, "interop_threads": 1}),
+              ("hypothesis_threads_4", {"threads": 4, "interop_threads": 2}),
+              ("hypothesis_mkldnn_toggle", {"mkldnn_enabled": not base["mkldnn_enabled"]}),
+              ("hypothesis_foreach_toggle", {"foreach": not base["foreach"]}),
+              ("hypothesis_affinity_toggle", {"cpu_affinity": not base["cpu_affinity"]}),
+              ("hypothesis_delta_pre_normalize", {"delta_pre_normalize": not base["delta_pre_normalize"]}),
+              ("hypothesis_homeostasis_fused_scatter", {"homeostasis_fused_scatter": not base["homeostasis_fused_scatter"]}),
+          ]
+          for name, changes in hypotheses:
+              candidate = dict(base)
+              candidate.update(changes)
+              profiles.append({"name": name, "profile": candidate})
+          matrix = {"include": [{"name": item["name"], "profile": json.dumps(item["profile"], separators=(",", ":"))} for item in profiles]}
+          print("matrix=" + json.dumps(matrix, separators=(",", ":")))
+          PY
       - name: Publish identical inputs for all parallel workers
         uses: actions/upload-artifact@v4
         with:
@@ -77,24 +103,7 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 8
-      matrix:
-        include:
-          - name: control
-            profile: '{"threads":2,"interop_threads":2,"mkldnn_enabled":false,"foreach":false,"cpu_affinity":true,"delta_pre_normalize":false,"homeostasis_fused_scatter":false}'
-          - name: hypothesis_threads_1
-            profile: '{"threads":1,"interop_threads":1,"mkldnn_enabled":false,"foreach":false,"cpu_affinity":true,"delta_pre_normalize":false,"homeostasis_fused_scatter":false}'
-          - name: hypothesis_threads_4
-            profile: '{"threads":4,"interop_threads":2,"mkldnn_enabled":false,"foreach":false,"cpu_affinity":true,"delta_pre_normalize":false,"homeostasis_fused_scatter":false}'
-          - name: hypothesis_mkldnn_on
-            profile: '{"threads":2,"interop_threads":2,"mkldnn_enabled":true,"foreach":false,"cpu_affinity":true,"delta_pre_normalize":false,"homeostasis_fused_scatter":false}'
-          - name: hypothesis_foreach_on
-            profile: '{"threads":2,"interop_threads":2,"mkldnn_enabled":false,"foreach":true,"cpu_affinity":true,"delta_pre_normalize":false,"homeostasis_fused_scatter":false}'
-          - name: hypothesis_no_affinity
-            profile: '{"threads":2,"interop_threads":2,"mkldnn_enabled":false,"foreach":false,"cpu_affinity":false,"delta_pre_normalize":false,"homeostasis_fused_scatter":false}'
-          - name: hypothesis_delta_batched_norm
-            profile: '{"threads":2,"interop_threads":2,"mkldnn_enabled":false,"foreach":false,"cpu_affinity":true,"delta_pre_normalize":true,"homeostasis_fused_scatter":false}'
-          - name: hypothesis_homeostasis_fused_scatter
-            profile: '{"threads":2,"interop_threads":2,"mkldnn_enabled":false,"foreach":false,"cpu_affinity":true,"delta_pre_normalize":false,"homeostasis_fused_scatter":true}'
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -140,9 +149,6 @@ jobs:
     needs: benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    outputs:
-      promoted: ${{ steps.selection.outputs.promoted }}
-      selected_profile: ${{ steps.selection.outputs.selected_profile }}
     steps:
       - uses: actions/checkout@v4
         with:

@@ -8,6 +8,8 @@ class EstadoDelta(nn.Module):
     def __init__(self, dim=256, tau=0.15):
         super().__init__()
         self.dim = dim
+        # Optional sequence-batched normalization; mathematically equivalent to per-token normalization.
+        self.pre_normalize_sequence = False
         self.proj_k = nn.Linear(dim, dim, bias=False)
         self.proj_v = nn.Linear(dim, dim, bias=False)
         self.proj_q = nn.Linear(dim, dim, bias=False)
@@ -34,6 +36,9 @@ class EstadoDelta(nn.Module):
             (self.proj_k.weight, self.proj_v.weight, self.proj_q.weight), dim=0
         ))
         k_all, v_all, q_all = projected.chunk(3, dim=-1)
+        if self.pre_normalize_sequence:
+            k_all = F.normalize(k_all, dim=-1, eps=1e-6)
+            q_all = F.normalize(q_all, dim=-1, eps=1e-6)
         outs, surprises = [], []
         complexities, write_rates = [], []
         for t in range(steps):
@@ -41,7 +46,7 @@ class EstadoDelta(nn.Module):
                 previous_log_prob = torch.log_softmax(S.float(), dim=-1)
             k, v, q = k_all[:, t], v_all[:, t], q_all[:, t]
             # Unit-norm keys prevent recurrent reads scaling with upstream magnitude.
-            k_unit = F.normalize(k, dim=-1, eps=1e-6)
+            k_unit = k if self.pre_normalize_sequence else F.normalize(k, dim=-1, eps=1e-6)
             pred = torch.bmm(k_unit.unsqueeze(1), S).squeeze(1)
             err = v - pred
             surprise = err.norm(dim=-1, keepdim=True) / (self.dim ** 0.5)
@@ -62,7 +67,7 @@ class EstadoDelta(nn.Module):
                 current_prob = current_log_prob.exp()
                 kl = (current_prob * (current_log_prob - previous_log_prob)).sum(dim=-1).mean()
                 complexities.append(kl.to(x.dtype))
-            q_unit = F.normalize(q, dim=-1, eps=1e-6)
+            q_unit = q if self.pre_normalize_sequence else F.normalize(q, dim=-1, eps=1e-6)
             delta_out = torch.bmm(q_unit.unsqueeze(1), S).squeeze(1)
             # Keep associative retrieval subordinate to the information stream.
             max_out_norm = 0.5 * x[:, t].norm(dim=-1, keepdim=True)

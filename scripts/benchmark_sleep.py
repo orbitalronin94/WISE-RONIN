@@ -84,9 +84,10 @@ def main():
     parser.add_argument("--bank-size", type=int, default=96)
     parser.add_argument("--eval-size", type=int, default=32)
     parser.add_argument("--sleep-steps", type=int, default=50)
+    parser.add_argument("--repeats", type=int, default=3)
     args = parser.parse_args()
-    if args.bank_size < 8 or args.eval_size < 4 or args.sleep_steps < 1:
-        parser.error("bank-size >= 8, eval-size >= 4 and sleep-steps >= 1 are required")
+    if args.bank_size < 8 or args.eval_size < 4 or args.sleep_steps < 1 or args.repeats < 1:
+        parser.error("bank-size >= 8, eval-size >= 4, sleep-steps >= 1 and repeats >= 1 are required")
 
     torch.set_num_threads(2)
     torch.set_num_interop_threads(2)
@@ -134,39 +135,55 @@ def main():
     baseline_mlp = {k: v.detach().clone() for k, v in baseline.memoria.mlp.state_dict().items()}
 
     variants = {}
-    for name in ("current_random_noise", "denoising_50"):
-        model = make_variant()
-        before = {k: v.detach().clone() for k, v in model.memoria.mlp.state_dict().items()}
-        started = time.perf_counter()
-        if name == "current_random_noise":
-            torch.manual_seed(42)
-            replay_loss = float(sueno(model, device="cpu"))
-            updates = 3
-        else:
-            torch.manual_seed(42)
-            replay_loss = denoising_sleep(model, bank_records, steps=args.sleep_steps)
-            updates = args.sleep_steps
-        elapsed = time.perf_counter() - started
-        eval_loss, logits, _ = eval_metrics(model, tokens[args.bank_size:], tokens[args.bank_size:])
-        recon = reconstruction_mse(model, eval_records)
-        changed = any(not torch.equal(before[k], v) for k, v in model.memoria.mlp.state_dict().items())
-        changed_non_memory = []
-        base_state = baseline.state_dict()
-        for key, value in model.state_dict().items():
-            if not key.startswith("memoria.mlp.") and not torch.equal(value, base_state[key]):
-                changed_non_memory.append(key)
+    variant_specs = {
+        "current_random_noise_3": ("current", 3),
+        "denoising_replay_3": ("denoising", 3),
+        "denoising_replay_50": ("denoising", args.sleep_steps),
+    }
+    for name, (method, updates) in variant_specs.items():
+        samples = []
+        for repeat in range(args.repeats):
+            model = make_variant()
+            before = {k: v.detach().clone() for k, v in model.memoria.mlp.state_dict().items()}
+            started = time.perf_counter()
+            torch.manual_seed(42 + repeat)
+            if method == "current":
+                replay_loss = float(sueno(model, device="cpu"))
+            else:
+                replay_loss = denoising_sleep(model, bank_records, steps=updates)
+            elapsed = time.perf_counter() - started
+            eval_loss, logits, _ = eval_metrics(
+                model, tokens[args.bank_size:], tokens[args.bank_size:]
+            )
+            recon = reconstruction_mse(model, eval_records)
+            changed = any(
+                not torch.equal(before[k], value)
+                for k, value in model.memoria.mlp.state_dict().items()
+            )
+            changed_non_memory = []
+            base_state = baseline.state_dict()
+            for key, value in model.state_dict().items():
+                if not key.startswith("memoria.mlp.") and not torch.equal(value, base_state[key]):
+                    changed_non_memory.append(key)
+            samples.append({
+                "elapsed_seconds": round(elapsed, 6),
+                "replay_loss_last": replay_loss,
+                "heldout_denoising_mse": recon,
+                "heldout_denoising_mse_delta_vs_no_sleep": round(recon - baseline_recon, 8),
+                "next_token_eval_loss": eval_loss,
+                "next_token_eval_loss_delta_vs_no_sleep": round(eval_loss - baseline_loss, 8),
+                "logit_rms_delta_vs_no_sleep": float((logits - baseline_logits).pow(2).mean().sqrt()),
+                "memory_mlp_changed": changed,
+                "non_memory_state_keys_changed": changed_non_memory,
+                "bank_records_after_sleep": int((model.memoria.contador_lenta > 0).sum()),
+            })
         variants[name] = {
-            "updates": updates,
-            "elapsed_seconds": round(elapsed, 6),
-            "replay_loss_last": replay_loss,
-            "heldout_denoising_mse": recon,
-            "heldout_denoising_mse_delta_vs_no_sleep": round(recon - baseline_recon, 8),
-            "next_token_eval_loss": eval_loss,
-            "next_token_eval_loss_delta_vs_no_sleep": round(eval_loss - baseline_loss, 8),
-            "logit_rms_delta_vs_no_sleep": float((logits - baseline_logits).pow(2).mean().sqrt()),
-            "memory_mlp_changed": changed,
-            "non_memory_state_keys_changed": changed_non_memory,
-            "bank_records_after_sleep": int((model.memoria.contador_lenta > 0).sum()),
+            "updates_per_run": updates,
+            "repeats": args.repeats,
+            "median_elapsed_seconds": statistics.median(x["elapsed_seconds"] for x in samples),
+            "median_heldout_denoising_mse": statistics.median(x["heldout_denoising_mse"] for x in samples),
+            "median_next_token_eval_loss": statistics.median(x["next_token_eval_loss"] for x in samples),
+            "runs": samples,
         }
 
     report = {
@@ -177,6 +194,7 @@ def main():
         "corpus_sha256": data_hash,
         "tokenizer_sha256": tokenizer_hash,
         "seed": 42,
+        "repeats": args.repeats,
         "diagnostic_only": True,
         "diagnostic_bank_source": "pooled hidden activations from frozen training-corpus rows; no holdout rows",
         "original_checkpoint_slow_memory_records": original_count,

@@ -2,7 +2,7 @@
 import torch
 from torch.nn import functional as F
 
-def perdida_total(output, targets, model, use_jepa=True, pad_id=0):
+def perdida_total(output, targets, model, use_jepa=True, use_rep=True, pad_id=0):
     logits = output["logits"]
     B, T, V = logits.shape
     token_loss = F.cross_entropy(logits[:, :-1].reshape(-1, V),
@@ -22,6 +22,11 @@ def perdida_total(output, targets, model, use_jepa=True, pad_id=0):
     diversity_loss = -entropy
     router_p = output["router"][..., 0]
     router_loss = -(router_p - 0.5).abs().mean()
-    total = token_loss + 0.3 * latent_loss + 0.01 * diversity_loss + 0.01 * router_loss
+    repetition_loss = logits.new_zeros(())
+    if use_rep and T >= 3:
+        probs = torch.softmax(logits, dim=-1)
+        repeated = (probs[:, :-2] * probs[:, 1:-1] * probs[:, 2:]).sum(-1)
+        repetition_loss = repeated.mean()
+    total = token_loss + 0.3 * latent_loss + 0.01 * diversity_loss + 0.01 * router_loss + 0.05 * repetition_loss
     return total, {"L_token": token_loss.detach(), "L_latente": latent_loss.detach(),
-                   "L_div": diversity_loss.detach(), "L_router": router_loss.detach()}
+                   "L_div": diversity_loss.detach(), "L_router": router_loss.detach(),\n                   "L_rep": repetition_loss.detach()}

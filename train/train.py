@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import logging
 import random
+import time
+from collections import deque
 from pathlib import Path
 
 import torch
@@ -16,6 +19,7 @@ from train.dataset import BPETokenizer, collate_rows, load_jsonl
 from train.loss import perdida_total
 from train.sleep import sueno
 from train.quant import fake_int8_tensor
+from train.scheduler_transition import CosineTransitionScheduler
 
 LOG = logging.getLogger("lumen.train")
 
@@ -65,7 +69,15 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
             "batch": args.batch, "max_len": args.max_len, "lr": args.lr,
             "warmup": args.warmup, "total_steps": args.total_steps,
             "weight_decay": CONFIG.weight_decay,
+            **({
+                "scheduler_mode": "cosine_transition_v1",
+                "transition_start": args.transition_start,
+                "transition_end": args.transition_end,
+                "warmup_transition": args.warmup_transition,
+                "grad_clip": args.grad_clip,
+            } if args.scheduler_transition else {}),
         },
+        "scheduler_transition": scheduler.state_dict() if args.scheduler_transition else None,
         "layer_diagnostics_history": list(layer_diagnostics_history),
         "sleep_events": list(sleep_events),
     }, path)
@@ -133,6 +145,12 @@ def main():
     parser.add_argument("--warmup", type=int, default=CONFIG.warmup_steps)
     parser.add_argument("--total-steps", type=int, default=CONFIG.total_steps)
     parser.add_argument("--seed", type=int, default=CONFIG.seed)
+    parser.add_argument("--grad-clip", type=float, default=1.0)
+    parser.add_argument("--scheduler-transition", action="store_true")
+    parser.add_argument("--transition-start", type=int, default=1000)
+    parser.add_argument("--transition-end", type=int, default=2000)
+    parser.add_argument("--warmup-transition", type=int, default=20)
+    parser.add_argument("--wall-clock-file")
     parser.add_argument("--no-sleep", action="store_true")
     parser.add_argument("--no-jepa", action="store_true")
     parser.add_argument("--no-rep", action="store_true")
@@ -153,6 +171,8 @@ def main():
         parser.error("--dummy-m1 is limited to blocks of at most 10 steps")
     if args.pilot_all_rows and (args.dummy_m1 or args.phase != 1):
         parser.error("--pilot-all-rows is only valid for real-data phase 1")
+    if args.scheduler_transition and not args.resume:
+        parser.error("--scheduler-transition requires an exact resumable parent checkpoint")
 
     torch.set_num_threads(2)
     torch.manual_seed(args.seed)
@@ -174,7 +194,7 @@ def main():
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay
     )
-    scheduler = make_scheduler(optimizer, args.warmup, args.total_steps)
+    scheduler = None if args.scheduler_transition else make_scheduler(optimizer, args.warmup, args.total_steps)
     start, state = 0, None
     tokens_seen, tokenizer_hash = 0, "dummy-no-tokenizer"
     layer_diagnostics_history, sleep_events = [], []
@@ -200,8 +220,23 @@ def main():
             "batch": args.batch, "max_len": args.max_len, "lr": args.lr,
             "warmup": args.warmup, "total_steps": args.total_steps,
             "weight_decay": CONFIG.weight_decay,
+            **({
+                "scheduler_mode": "cosine_transition_v1",
+                "transition_start": args.transition_start,
+                "transition_end": args.transition_end,
+                "warmup_transition": args.warmup_transition,
+                "grad_clip": args.grad_clip,
+            } if args.scheduler_transition else {}),
         }
-        if state.get("training_config") not in (None, expected_training_config):
+        if args.scheduler_transition and not state.get("scheduler_transition") and int(state.get("step", -1)) == args.transition_start:
+            parent_config = {
+                "batch": args.batch, "max_len": args.max_len, "lr": 1.5e-4,
+                "warmup": 100, "total_steps": 10000,
+                "weight_decay": CONFIG.weight_decay,
+            }
+            if state.get("training_config") != parent_config:
+                raise ValueError("Step-1000 parent training config differs from the frozen baseline")
+        elif state.get("training_config") not in (None, expected_training_config):
             raise ValueError("Checkpoint training hyperparameters mismatch")
         if state.get("seed", args.seed) != args.seed:
             raise ValueError("Checkpoint seed mismatch")
@@ -229,8 +264,33 @@ def main():
         optimizer.load_state_dict(state["optimizer"])
         if parent_arch != "ronin_lumen_v3_1_residual_homeostasis":
             migrate_legacy_homeostasis(model, optimizer)
-        scheduler.load_state_dict(state["scheduler"])
         start = int(state["step"])
+        if args.scheduler_transition:
+            saved_transition = state.get("scheduler_transition")
+            if saved_transition:
+                scheduler = CosineTransitionScheduler(
+                    optimizer, start_step=saved_transition["start_step"],
+                    end_step=saved_transition["end_step"], old_lr=saved_transition["old_lr"],
+                    new_lr=saved_transition["new_lr"], warmup_steps=saved_transition["warmup_steps"],
+                    current_step=saved_transition["current_step"],
+                )
+                scheduler.load_state_dict(saved_transition)
+            elif start == args.transition_start:
+                old_lr = float(optimizer.param_groups[0]["lr"])
+                scheduler = CosineTransitionScheduler(
+                    optimizer, start_step=args.transition_start, end_step=args.transition_end,
+                    old_lr=old_lr, new_lr=args.lr, warmup_steps=args.warmup_transition,
+                )
+                LOG.info(
+                    "lr_transition: step=%d, from=%.8g to=%.8g (LUMEN), "
+                    "weights_preserved=True, optimizer_moments_preserved=True",
+                    start, old_lr, args.lr,
+                )
+            else:
+                raise ValueError("scheduler-transition requires the exact step-1000 parent or a transition checkpoint")
+        else:
+            scheduler = make_scheduler(optimizer, args.warmup, args.total_steps)
+            scheduler.load_state_dict(state["scheduler"])
         tokens_seen = int(state.get("tokens_seen", 0))
         layer_diagnostics_history = list(state.get("layer_diagnostics_history", []))
         sleep_events = list(state.get("sleep_events", []))
@@ -254,7 +314,28 @@ def main():
 
     sleep_done = bool(model.memoria.occupancy() >= 0.8)
     model.train()
+    activity_windows = [deque(maxlen=100) for _ in model.homeo]
+    profile = {"forward": 0.0, "backward": 0.0, "sleep": 0.0,
+               "homeostasis_in_forward": 0.0, "wall": 0.0}
+    homeostasis_started = {}
+    def homeo_pre(module, _inputs):
+        homeostasis_started[id(module)] = time.perf_counter()
+    def homeo_post(module, _inputs, _output):
+        started = homeostasis_started.pop(id(module), None)
+        if started is not None:
+            profile["homeostasis_in_forward"] += time.perf_counter() - started
+    hook_handles = []
+    for organ in model.homeo:
+        hook_handles.append(organ.register_forward_pre_hook(homeo_pre))
+        hook_handles.append(organ.register_forward_hook(homeo_post))
+    block_started = time.perf_counter()
+    elapsed_offset = 0.0
+    if args.wall_clock_file and Path(args.wall_clock_file).is_file():
+        elapsed_offset = float(json.loads(Path(args.wall_clock_file).read_text()).get("elapsed_seconds", 0.0))
+    wall_state = json.loads(Path(args.wall_clock_file).read_text()) if args.wall_clock_file and Path(args.wall_clock_file).is_file() else {}
+    reached_targets = set(wall_state.get("reached_targets", []))
     for step in range(start + 1, start + args.steps + 1):
+        step_started = time.perf_counter()
         if args.dummy_m1:
             tokens = torch.randint(4, CONFIG.vocab_size,
                                    (args.batch, args.max_len), device=device)
@@ -264,7 +345,12 @@ def main():
             tokens = collate_rows(chosen, tokenizer, args.max_len)
 
         tokens_seen += int(tokens.ne(0).sum())
+        forward_started = time.perf_counter()
         output = model(tokens, reset_state=True)
+        profile["forward"] += time.perf_counter() - forward_started
+        for index, organ in enumerate(model.homeo):
+            if organ.last_gate_activity_per_unit is not None:
+                activity_windows[index].append(organ.last_gate_activity_per_unit.detach().cpu())
         loss, metrics = perdida_total(
             output, tokens, model,
             use_jepa=not args.no_jepa,
@@ -274,10 +360,18 @@ def main():
             pad_id=0,
         )
         optimizer.zero_grad(set_to_none=True)
+        backward_started = time.perf_counter()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        profile["backward"] += time.perf_counter() - backward_started
+        torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
         optimizer.step()
         scheduler.step()
+        for target in (6.0, 5.8):
+            if target not in reached_targets and loss.item() <= target:
+                elapsed = elapsed_offset + time.perf_counter() - block_started
+                reached_targets.add(target)
+                LOG.info("time_to_target: model=LUMEN, target_loss=%.1f, step=%d, reached=True, wall_seconds=%.3f",
+                         target, step, elapsed)
 
         if step >= 5000 and not quant_enabled and not args.dummy_m1:
             enable_fake_int8(model)
@@ -336,29 +430,59 @@ def main():
             LOG.info("layer_diagnostics step=%d %s", step, layer_diag)
             LOG.info("effective_dead_by_layer step=%d values=%s", step,
                      ",".join(f"{value:.3f}" for value in dead_by_layer))
-            if step >= start + 100 and dead > 0.20:
+        if step % 250 == 0:
+            rolling_dead = []
+            for window in activity_windows:
+                if len(window) < 100:
+                    rolling_dead.append(None)
+                else:
+                    mean_activity = torch.stack(list(window)).mean(dim=0)
+                    rolling_dead.append(float((mean_activity < 1e-4).float().mean().item()))
+            LOG.info(
+                "health_250: step=%d loss=%.5f dead_by_layer=%s gate_plus=%s wall_seconds=%.1f",
+                step, loss.item(),
+                ",".join("na" if value is None else f"{value:.4f}" for value in rolling_dead),
+                ",".join(f"{organ.last_gate_positive:.4f}" for organ in model.homeo),
+                time.perf_counter() - block_started,
+            )
+            if rolling_dead and rolling_dead[0] is not None and rolling_dead[0] > 0.20:
+                LOG.warning("WARNING layer0_dead>20%% step=%d dead=%.2f%%",
+                            step, rolling_dead[0] * 100)
+            over_limit = [i for i, value in enumerate(rolling_dead)
+                          if value is not None and value > 0.40]
+            if over_limit:
                 save_checkpoint(
                     Path(args.ckpt_dir) / f"step_{step}_STOP.pt",
                     model, optimizer, scheduler, step, args, data_hash, local_rng,
                     tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events,
                 )
-                raise RuntimeError(f"STOP: dead neurons {dead:.1%} exceeds 20%")
+                raise RuntimeError(f"STOP: rolling dead-neuron fraction >40% in layers {over_limit}")
 
         if not args.no_sleep and not args.dummy_m1:
             if args.v32_ze:
                 if not sleep_done and model.memoria.occupancy() >= 0.8:
                     records_before_sleep = int((model.memoria.contador_lenta > 0).sum().item())
+                    sleep_started = time.perf_counter()
                     sleep_loss = sueno(model, device="cpu")
+                    sleep_duration = time.perf_counter() - sleep_started
+                    profile["sleep"] += sleep_duration
+                    LOG.info("sleep_called: step=%d, duration_s=%.3f", step, sleep_duration)
                     sleep_events.append({"step": step, "records": records_before_sleep,
-                                         "executed": records_before_sleep > 0, "loss": float(sleep_loss)})
+                                         "executed": records_before_sleep > 0, "loss": float(sleep_loss),
+                                         "duration_s": sleep_duration})
                     sleep_done = True
                     LOG.info("adaptive IRI sleep step=%d occupancy=%.1f%% loss=%.6f",
                              step, model.memoria.occupancy() * 100, sleep_loss)
             elif step % CONFIG.sleep_interval_steps == 0:
                 records_before_sleep = int((model.memoria.contador_lenta > 0).sum().item())
+                sleep_started = time.perf_counter()
                 sleep_loss = sueno(model, device="cpu")
+                sleep_duration = time.perf_counter() - sleep_started
+                profile["sleep"] += sleep_duration
+                LOG.info("sleep_called: step=%d, duration_s=%.3f", step, sleep_duration)
                 sleep_events.append({"step": step, "records": records_before_sleep,
-                                     "executed": records_before_sleep > 0, "loss": float(sleep_loss)})
+                                     "executed": records_before_sleep > 0, "loss": float(sleep_loss),
+                                     "duration_s": sleep_duration})
                 LOG.info("sleep step=%d loss=%.6f", step, sleep_loss)
 
         if step % 1000 == 0 and not args.dummy_m1:
@@ -366,16 +490,43 @@ def main():
             LOG.info("vocabulary prune candidates=%d (tokenizer remap required before applying)",
                      len(candidates))
 
-        if step % 500 == 0:
+        if step % 250 == 0:
             save_checkpoint(Path(args.ckpt_dir) / f"step_{step}.pt",
                             model, optimizer, scheduler, step, args, data_hash, local_rng,
                             tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events)
 
+        profile["wall"] += time.perf_counter() - step_started
+        if step % 100 == 0:
+            total = profile["wall"]
+            known = profile["forward"] + profile["backward"] + profile["sleep"]
+            LOG.info(
+                "profile_100: forward=%.3fs, backward=%.3fs, sleep=%.3fs, "
+                "homeostasis_in_forward=%.3fs, python_overhead=%.3fs, total=%.3fs",
+                profile["forward"], profile["backward"], profile["sleep"],
+                profile["homeostasis_in_forward"], max(0.0, total - known), total,
+            )
+            for key in profile:
+                profile[key] = 0.0
+
+    for handle in hook_handles:
+        handle.remove()
     final_step = start + args.steps
-    if final_step % 500:
+    if final_step % 250:
         save_checkpoint(Path(args.ckpt_dir) / f"step_{final_step}.pt",
                         model, optimizer, scheduler, final_step, args, data_hash, local_rng,
                         tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events)
+    block_elapsed = time.perf_counter() - block_started
+    total_elapsed = elapsed_offset + block_elapsed
+    for target in (6.0, 5.8):
+        if target not in reached_targets:
+            LOG.info("time_to_target: model=LUMEN, target_loss=%.1f, reached=False, wall_seconds=%.3f",
+                     target, total_elapsed)
+    if args.wall_clock_file:
+        wall_path = Path(args.wall_clock_file)
+        wall_path.parent.mkdir(parents=True, exist_ok=True)
+        wall_path.write_text(json.dumps({"model": "LUMEN", "elapsed_seconds": total_elapsed,
+                                         "reached_targets": sorted(reached_targets)}, indent=2) + "\n")
+    LOG.info("wall_clock_accumulated: model=LUMEN, seconds=%.3f", total_elapsed)
     LOG.info("completed step=%d device=cpu", final_step)
 
 

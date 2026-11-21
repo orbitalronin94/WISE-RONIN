@@ -51,6 +51,10 @@ class RoninLumen(nn.Module):
                 0, dtype=torch.long, device=self.ze.conflict_streak.device
             )
 
+    def reset_state(self):
+        """Public singular alias: clear only transient recurrent activity."""
+        self.reset_states()
+
     def forward(self, token_ids, reset_state=True):
         h = self.emb(token_ids)
         e_delta, e_mem, e_head, energy = self.presupuesto(h)

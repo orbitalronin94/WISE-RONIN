@@ -16,6 +16,26 @@ from data.audit_holdout import read_jsonl
 def norm(s):
     return " ".join(re.sub(r"[^\w]+", " ", unicodedata.normalize("NFKC", str(s or "")).casefold()).split())
 
+def generation_metrics(text, eos_terminated):
+    tokens = str(text or "").split()
+    bigrams = list(zip(tokens, tokens[1:]))
+    trigrams = list(zip(tokens, tokens[1:], tokens[2:]))
+    first_loop = len(tokens)
+    for index in range(len(tokens) - 2):
+        if tokens[index] == tokens[index + 1] == tokens[index + 2]:
+            first_loop = index
+            break
+    return {
+        "rep_bigram": 1.0 - len(set(bigrams)) / max(1, len(bigrams)),
+        "rep_trigram": 1.0 - len(set(trigrams)) / max(1, len(trigrams)),
+        "first_loop_at": first_loop,
+        "diversity": len(set(tokens)) / max(1, len(tokens)),
+        "has_eos": int(bool(eos_terminated)),
+        "len_tokens": len(tokens),
+        "text": str(text or ""),
+    }
+
+
 def numeric(s):
     text = str(s or "")
     if "####" in text:
@@ -39,6 +59,14 @@ def fit_prompt(ids, max_context=128):
 
 
 def generate_batch(model, prompts, tokenizer, kind, max_new=64, max_context=128):
+    # Reset transient recurrent activity at every prompt boundary. State remains
+    # active only while decoding tokens belonging to this prompt.
+    if kind == "lumen":
+        reset = getattr(model, "reset_state", None)
+        if reset is None:
+            reset = getattr(model, "reset_states", None)
+        if reset is not None:
+            reset()
     # LUMEN carries recurrent state per batch row; sequential prompts avoid
     # right-padding contaminating a shorter prompt's recurrent prefill state.
     if kind == "lumen" and len(prompts) > 1:
@@ -175,6 +203,7 @@ def main():
                     "response": response, "correct": correct,
                     "eos_terminated": generation["eos_terminated"],
                     "generated_tokens": generation["generated_tokens"],
+                    "generation_metrics": generation_metrics(response, generation["eos_terminated"]),
                 }
                 predictions.append(record)
                 all_predictions.append(record)
@@ -202,6 +231,12 @@ def main():
             "mean_generated_tokens": round(
                 sum(row["generated_tokens"] for row in predictions) / max(1, len(predictions)), 2
             ),
+            "generation_diagnostics": {
+                key: round(
+                    sum(row["generation_metrics"][key] for row in predictions) / max(1, len(predictions)), 4
+                )
+                for key in ("rep_bigram", "rep_trigram", "first_loop_at", "diversity", "has_eos", "len_tokens")
+            },
         }
         del model
     lumen_tokens = summary["models"]["lumen"].get("tokens_seen")

@@ -101,7 +101,7 @@ El [índice de documentación](docs/README.md) organiza las especificaciones, au
 - [Auditoría del bucle de entrenamiento](docs/TRAIN_LOOP_REFERENCE_AUDIT.md)
 - [Extensión experimental V3.2 ZE](docs/RONIN_LUMEN_V3_2_ZE.md)
 - [Procedencia y preparación de datos](data/README.md)
-- [Contrato del corpus propio](data/owner/README.md)
+- [Contrato del corpus propio (español)](data/owner/README_ES.md) · [versión original](data/owner/README.md)
 - [Workflow de entrenamiento CPU](.github/workflows/train.yml)
 - [Workflow de preparación de datos](.github/workflows/prepare-data.yml)
 

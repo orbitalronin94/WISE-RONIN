@@ -139,3 +139,50 @@ No se declara “spec completa y bibliotecas descargadas” hasta que:
 8. Se documente la mezcla lingüística y las atribuciones finales.
 
 **No autoriza:** implementación de órganos, M2, entrenamiento, modificación del holdout ni merge de la PR.
+
+
+## 6. Actual implementation update — 2026-11-21
+
+Following the owner's explicit instruction to integrate the architecture, the branch now contains first-pass executable implementations in:
+- `model/embedding.py`, `energy.py`, `delta_state.py`, `homeostasis.py`, `memory.py`, `heads.py`, and `lumen.py`;
+- `train/loss.py`, `curriculum.py`, `dataset.py`, `sleep.py`, `quant.py`, and `train.py`;
+- `scripts/train_tokenizer.py` and `data/build_dataset.py`.
+
+The model has four recurrent Delta layers, tied input/output embeddings, one energy allocator, four homeostasis/Top-K stages, elastic/slow memory, routed KAN/MLP heads and a JEPA predictor. A first static count is **2,281,841 parameters**. This meets the hard 6M ceiling but not the 3–4M target band. The 20–30 MB model-storage requirement is also not demonstrated by this parameter count.
+
+### Implementation status and explicit limitations
+
+| Area | Implemented now | Not yet complete / validation gate |
+|---|---|---|
+| Embedding Vivo | Usage accounting; 1,000-forward cadence; up-to-5% dead-token candidate proposal | Does not rewrite tokenizer IDs or replace fragments; proposals are intentionally non-destructive until atomic tokenizer/embedding/optimizer remap exists |
+| Energy | Softmax allocation to delta/memory/head; entropy metric | Need verify entropy behavior and budget allocation across training |
+| Delta | Four per-layer 256×256 recurrent states; surprise threshold; learned decay; energy-scaled write; reset policy | Exact formula differs from hand sketch in normalization/clamping and initialization; stability and sequence semantics need tests |
+| Homeostasis | EMA activation, subtractive adaptive threshold, Top-K | Uses negative-feedback sign to avoid the positive-feedback issue in the literal pseudocode; owner must confirm this interpretation |
+| Memory | Elastic MLP; slow bank; similarity-based repeated-pattern consolidation | Slot collision/replacement, 512-token decay and exact 3-in-1000 window semantics are simplified or pending |
+| Heads | Router and interpolated spline KAN + GELU MLP | KAN is a compact spline head, not a validated general arithmetic solver; router may collapse without supervised task labels |
+| Sleep | 50 offline steps on slow-memory targets; only memory MLP optimized; reset fast states | Skips when no consolidated memories exist; needs non-degradation tests; sleep optimizer is recreated per sleep |
+| JEPA | Predictor trained against mean embedding of next eight tokens | Needs numerical tests and ablation; target masking/padding behavior requires review |
+| Repetition | Differentiable probability of a same-token triple | This is an auxiliary proxy, not the original argmax diagnostic; generation-time repetition still needs eval metrics |
+| Curriculum | Explicit phase windows; phase 2 stratified 70/30 sampler; fail-closed missing labels | Phase 1/3 labels and data quality must be audited; ORPO is explicitly rejected until pairs/objective are implemented |
+| Checkpoint | Model, optimizer, scheduler, global step, phase, config, corpus hash, Torch/Python/local sampler RNG | Delta is reset at every batch boundary; exact-resume equivalence test remains required; no multi-worker sampler state exists |
+| Quantization | Fake-int8 activation simulation hooks from step 5,000 on KAN and memory | Not int8 weight quantization, serialization or size reduction |
+| BPE | Corpus-only ByteLevel BPE training script with reserved PAD/UNK/BOS/EOS/SEP | Cannot run until final 25k dataset exists; verify vocab exactly 4096 |
+| Data | Deterministic source staging, final assembly script, holdout exact-hash gate | Source staging run in progress; 1k code rows need per-file license audit; 5k owner-curated rows absent |
+| Actions | CPU architecture/unit/smoke workflow and separate source-staging workflow | Latest runner jobs must pass; source workflow must produce and verify artifact |
+
+### Important implementation corrections
+
+- Delta state is a registered buffer and is reset at batch boundaries. Checkpoints therefore represent the declared reset policy, not a hidden live sequence state.
+- Pruning is a proposal only. Zeroing rows while the fixed BPE tokenizer can still emit those IDs would silently corrupt the model, so destructive pruning is blocked pending atomic vocabulary remapping.
+- The trainer refuses ORPO rather than pretending a `pass` is preference optimization.
+- Fake-int8 is clearly named activation simulation and does not claim model compression.
+- The loss includes a differentiable triple-repeat probability; the non-differentiable argmax statistic from the manual draft would not train the logits.
+- The trainer uses a fixed CPU device and a 500-step maximum block. The explicit dummy mode is limited to 10 steps and is not production data.
+
+### Runner and corpus status
+
+The CPU workflow is now running compile, parameter-count, unit-test and 10-step dummy-smoke gates. Earlier attempts failed because invoking `python train/train.py` placed the `train/` directory, not repository root, on `sys.path`; the workflow was corrected to invoke `python -m train.train`. Do not count those failed attempts as validation.
+
+The source-library workflow has passed dependency installation and downloader syntax validation and is currently sampling public datasets. No artifact is considered available until the workflow completes and the uploaded manifest/files are inspected. The final corpus remains blocked by missing owner data and the unresolved per-file code-license allocation.
+
+**The architecture is now implemented in first-pass code, not validated as a learning system. M2 integration work is underway by explicit owner instruction; training on real data, performance claims, holdout evaluation and merge remain gated.**

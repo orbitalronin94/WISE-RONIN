@@ -237,7 +237,8 @@ Antes de cambiar el entrenamiento longitudinal 3.000→6.000, se ejecuta una abl
 
 1. **No sleep:** control con pesos y banco idénticos.
 2. **Replay actual:** la implementación vigente, tres actualizaciones AdamW con ruido aleatorio como entrada y recuerdos como objetivo.
-3. **Denoising replay (candidato):** 50 actualizaciones sobre activaciones reales del corpus congelado, perturbadas con ruido como entrada y la activación original como objetivo.
+3. **Denoising replay (3 actualizaciones):** aísla el cambio de objetivo manteniendo el mismo número de actualizaciones que el método actual.
+4. **Denoising replay (50 actualizaciones):** mide además el presupuesto previsto en `CONFIG.sleep_steps`, que la implementación actual todavía no consume.
 
 Para que la prueba mida el mecanismo y no un banco vacío, el benchmark construye un banco diagnóstico con activaciones ocultas extraídas de filas del corpus de entrenamiento congelado. Reserva otras filas del mismo corpus para medir reconstrucción y pérdida next-token. No usa holdout, no escribe el banco diagnóstico en checkpoints y no cambia el workflow de entrenamiento activo.
 

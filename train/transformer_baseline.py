@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import logging
 import random
+import time
 from pathlib import Path
 
 import torch
@@ -13,6 +14,7 @@ from torch.nn import functional as F
 
 from model.config import CONFIG
 from train.dataset import BPETokenizer, collate_rows, load_jsonl
+from train.scheduler_transition import CosineTransitionScheduler
 
 LOG = logging.getLogger("lumen.baseline")
 ARCHITECTURE_ID = "decoder_transformer_4l_d192_h4_ff576_tied_v1"
@@ -105,7 +107,15 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args,
             "batch": args.batch, "max_len": args.max_len, "lr": args.lr,
             "warmup": args.warmup, "total_steps": args.total_steps,
             "weight_decay": CONFIG.weight_decay,
+            **({
+                "scheduler_mode": "cosine_transition_v1",
+                "transition_start": args.transition_start,
+                "transition_end": args.transition_end,
+                "warmup_transition": args.warmup_transition,
+                "grad_clip": args.grad_clip,
+            } if args.scheduler_transition else {}),
         },
+        "scheduler_transition": scheduler.state_dict() if args.scheduler_transition else None,
         "rng": capture_rng(local_rng),
         "torch_version": torch.__version__,
     }, path)
@@ -125,6 +135,11 @@ def main():
     p.add_argument("--lr", type=float, default=CONFIG.learning_rate)
     p.add_argument("--warmup", type=int, default=100)
     p.add_argument("--total-steps", type=int, default=10000)
+    p.add_argument("--grad-clip", type=float, default=1.0)
+    p.add_argument("--scheduler-transition", action="store_true")
+    p.add_argument("--transition-start", type=int, default=1000)
+    p.add_argument("--transition-end", type=int, default=2000)
+    p.add_argument("--warmup-transition", type=int, default=20)
     p.add_argument("--ckpt-dir", default="checkpoints/transformer")
     args = p.parse_args()
     if not 1 <= args.steps <= 500:
@@ -142,7 +157,7 @@ def main():
     model = SmallTransformerLM(CONFIG.vocab_size, args.max_len).cpu()
     params = sum(x.numel() for x in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay)
-    scheduler = make_scheduler(optimizer, args.warmup, args.total_steps)
+    scheduler = None if args.scheduler_transition else make_scheduler(optimizer, args.warmup, args.total_steps)
     local_rng = random.Random(args.seed)
     tokens_seen, start, state = 0, 0, None
 
@@ -152,7 +167,22 @@ def main():
             "batch": args.batch, "max_len": args.max_len, "lr": args.lr,
             "warmup": args.warmup, "total_steps": args.total_steps,
             "weight_decay": CONFIG.weight_decay,
+            **({
+                "scheduler_mode": "cosine_transition_v1",
+                "transition_start": args.transition_start,
+                "transition_end": args.transition_end,
+                "warmup_transition": args.warmup_transition,
+                "grad_clip": args.grad_clip,
+            } if args.scheduler_transition else {}),
         }
+        if args.scheduler_transition and not state.get("scheduler_transition") and int(state.get("step", -1)) == args.transition_start:
+            parent_config = {
+                "batch": args.batch, "max_len": args.max_len, "lr": 1.5e-4,
+                "warmup": 100, "total_steps": 10000,
+                "weight_decay": CONFIG.weight_decay,
+            }
+            if state.get("training_config") != parent_config:
+                raise ValueError("Step-1000 parent training config differs from the frozen baseline")
         checks = {
             "architecture_id": (state.get("architecture_id"), ARCHITECTURE_ID),
             "seed": (state.get("seed"), args.seed),
@@ -168,8 +198,33 @@ def main():
             raise ValueError("Checkpoint lacks optimizer/scheduler/RNG state; exact resume is impossible")
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
-        scheduler.load_state_dict(state["scheduler"])
         start = int(state["step"])
+        if args.scheduler_transition:
+            saved_transition = state.get("scheduler_transition")
+            if saved_transition:
+                scheduler = CosineTransitionScheduler(
+                    optimizer, start_step=saved_transition["start_step"],
+                    end_step=saved_transition["end_step"], old_lr=saved_transition["old_lr"],
+                    new_lr=saved_transition["new_lr"], warmup_steps=saved_transition["warmup_steps"],
+                    current_step=saved_transition["current_step"],
+                )
+                scheduler.load_state_dict(saved_transition)
+            elif start == args.transition_start:
+                old_lr = float(optimizer.param_groups[0]["lr"])
+                scheduler = CosineTransitionScheduler(
+                    optimizer, start_step=args.transition_start, end_step=args.transition_end,
+                    old_lr=old_lr, new_lr=args.lr, warmup_steps=args.warmup_transition,
+                )
+                LOG.info(
+                    "lr_transition: step=%d, from=%.8g to=%.8g (Transformer), "
+                    "weights_preserved=True, optimizer_moments_preserved=True",
+                    start, old_lr, args.lr,
+                )
+            else:
+                raise ValueError("scheduler-transition requires the exact step-1000 parent or a transition checkpoint")
+        else:
+            scheduler = make_scheduler(optimizer, args.warmup, args.total_steps)
+            scheduler.load_state_dict(state["scheduler"])
         tokens_seen = int(state["tokens_seen"])
         restore_rng(state["rng"], local_rng)
         LOG.info("resumed step=%d tokens_seen=%d", start, tokens_seen)
@@ -180,31 +235,59 @@ def main():
     LOG.info("baseline=decoder_transformer params=%d data_rows=%d data_sha256=%s tokenizer_sha256=%s",
              params, len(rows), data_hash, tokenizer_hash)
     model.train()
+    profile = {"forward": 0.0, "backward": 0.0, "sleep": 0.0,
+               "homeostasis_in_forward": 0.0, "wall": 0.0}
+    block_started = time.perf_counter()
+    reached_targets = set()
     for step in range(start + 1, start + args.steps + 1):
+        step_started = time.perf_counter()
         chosen = local_rng.choices(rows, k=args.batch)
         tokens = collate_rows(chosen, tokenizer, args.max_len)
         tokens_seen += int(tokens.ne(0).sum())
+        forward_started = time.perf_counter()
         logits = model(tokens)
+        profile["forward"] += time.perf_counter() - forward_started
         loss = F.cross_entropy(
             logits[:, :-1].reshape(-1, logits.size(-1)),
             tokens[:, 1:].reshape(-1),
             ignore_index=0,
         )
         optimizer.zero_grad(set_to_none=True)
+        backward_started = time.perf_counter()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        profile["backward"] += time.perf_counter() - backward_started
+        torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
         optimizer.step()
         scheduler.step()
-        if step == start + 1 or step % 50 == 0 or step == start + args.steps:
+        for target in (7.0, 6.0, 5.8):
+            if target not in reached_targets and loss.item() <= target:
+                elapsed = time.perf_counter() - block_started
+                reached_targets.add(target)
+                LOG.info("time_to_target: model=Transformer, target_loss=%.1f, step=%d, wall_seconds=%.3f",
+                         target, step, elapsed)
+        if step == start + 1 or step % 100 == 0 or step == start + args.steps:
             LOG.info("baseline=transformer step=%d loss=%.5f tokens_seen=%d lr=%.3e",
                      step, loss.item(), tokens_seen, scheduler.get_last_lr()[0])
-        if step % 500 == 0:
+        if step % 250 == 0:
             save_checkpoint(Path(args.ckpt_dir) / f"step_{step}.pt",
                             model, optimizer, scheduler, step, args, data_hash,
                             tokenizer_hash, local_rng, tokens_seen, params)
 
+        profile["wall"] += time.perf_counter() - step_started
+        if step % 100 == 0:
+            total = profile["wall"]
+            known = profile["forward"] + profile["backward"] + profile["sleep"]
+            LOG.info(
+                "profile_100: forward=%.3fs, backward=%.3fs, sleep=%.3fs, "
+                "homeostasis_in_forward=%.3fs, python_overhead=%.3fs, total=%.3fs",
+                profile["forward"], profile["backward"], profile["sleep"],
+                profile["homeostasis_in_forward"], max(0.0, total - known), total,
+            )
+            for key in profile:
+                profile[key] = 0.0
+
     final_step = start + args.steps
-    if final_step % 500:
+    if final_step % 250:
         save_checkpoint(Path(args.ckpt_dir) / f"step_{final_step}.pt",
                         model, optimizer, scheduler, final_step, args, data_hash,
                         tokenizer_hash, local_rng, tokens_seen, params)

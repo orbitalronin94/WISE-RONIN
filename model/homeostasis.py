@@ -7,6 +7,8 @@ class Homeostasis(nn.Module):
     def __init__(self, dim=256, m_target=0.05, eta=0.001, k_top=32):
         super().__init__()
         self.dim, self.m_target, self.eta, self.k_top = dim, m_target, eta, k_top
+        # Optional fused residual scatter path; parity-checked against the reference path.
+        self.fused_scatter_add = False
         self.bias = nn.Parameter(torch.zeros(dim))
         # Input activity is retained as a diagnostic, not as the control signal.
         self.register_buffer("m", torch.zeros(dim))
@@ -35,27 +37,32 @@ class Homeostasis(nn.Module):
         _, indices = torch.topk(y, k=k, dim=-1)
         selected = torch.gather(y, dim=-1, index=indices)
         selected_update = torch.relu(selected)
-        gated_update = torch.zeros_like(y).scatter_(-1, indices, selected_update)
         # Top-K sparsifies the homeostatic update, not the information stream.
-        # Bound residual gain to 10% of the incoming token norm; the previous
-        # unscaled addition could nearly double selected coordinates per layer.
-        update_norm = gated_update.norm(dim=-1, keepdim=True).clamp_min(1e-6)
-        max_update_norm = 0.1 * x.norm(dim=-1, keepdim=True)
-        gated_update = gated_update * (max_update_norm / update_norm).clamp(max=1.0)
-        output = x + gated_update
+        # Bound residual gain to 10% of the incoming token norm.
+        if self.fused_scatter_add:
+            update_norm = selected_update.norm(dim=-1, keepdim=True).clamp_min(1e-6)
+            max_update_norm = 0.1 * x.norm(dim=-1, keepdim=True)
+            scaled_selected = selected_update * (max_update_norm / update_norm).clamp(max=1.0)
+            output = x.scatter_add(-1, indices, scaled_selected)
+            # Exact per-unit activity counts without materializing a dense gated-update tensor.
+            effective_active = torch.bincount(
+                indices.reshape(-1),
+                weights=(scaled_selected.detach() > 0).to(x.dtype).reshape(-1),
+                minlength=self.dim,
+            ).to(x.dtype).div_(x.shape[0] * x.shape[1])
+        else:
+            gated_update = torch.zeros_like(y).scatter_(-1, indices, selected_update)
+            update_norm = gated_update.norm(dim=-1, keepdim=True).clamp_min(1e-6)
+            max_update_norm = 0.1 * x.norm(dim=-1, keepdim=True)
+            gated_update = gated_update * (max_update_norm / update_norm).clamp(max=1.0)
+            output = x + gated_update
+            effective_active = (gated_update.detach() > 0).float().mean(dim=(0, 1))
 
         if self.training:
             with torch.no_grad():
-                # Close the loop around the activity that actually survives
-                # ReLU + Top-K. Input positivity is not a valid proxy: the
-                # residual stream can remain active while every gated update
-                # is suppressed, which otherwise drives the threshold upward
-                # indefinitely and kills the sparse update path.
-                effective_active = (gated_update > 0).float().mean(dim=(0, 1))
+                # Close the loop around activity that survives ReLU + Top-K.
                 self.effective_m.mul_(0.99).add_(effective_active, alpha=0.01)
                 self.bias.add_(self.eta * (self.effective_m - self.m_target))
-        else:
-            effective_active = (gated_update.detach() > 0).float().mean(dim=(0, 1))
         # The health window needs per-unit activity each step, but scalar
         # summaries are only materialized on requested diagnostic steps.
         self.last_gate_activity_per_unit = effective_active.detach()

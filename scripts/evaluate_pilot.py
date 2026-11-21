@@ -140,7 +140,8 @@ def main():
     p.add_argument("--historical-holdout", default="data/holdout_500.jsonl")
     p.add_argument("--gsm8k-limit", type=int, default=100)
     p.add_argument("--max-new-tokens", type=int, default=64)
-    p.add_argument("--expected-step", type=int, default=500, help="Required global checkpoint step for both models")
+    p.add_argument("--expected-step", type=int, default=500, help="Required global checkpoint step for evaluated checkpoints")
+    p.add_argument("--lumen-only", action="store_true", help="Evaluate only LUMEN for a non-paired longitudinal checkpoint")
     p.add_argument("--output", default="artifacts/pilot-evaluation")
     args = p.parse_args()
     if args.expected_step < 1:
@@ -165,7 +166,8 @@ def main():
     )
     outdir = Path(args.output)
     outdir.mkdir(parents=True, exist_ok=True)
-    summary = {"data_sha256": data_hash, "tokenizer_sha256": tok_hash,
+    summary = {"evaluation_mode": "lumen_only_longitudinal" if args.lumen_only else "matched_pair",
+               "data_sha256": data_hash, "tokenizer_sha256": tok_hash,
                "gsm8k_test_questions": len(gsm), "historical_unique_prompts": len(historical),
                "max_new_tokens": args.max_new_tokens, "decoding": "greedy",
                "max_context_tokens": 128,
@@ -174,7 +176,8 @@ def main():
                "gsm8k_sample_seed": 42, "gsm8k_selected_ids": [r["id"] for r in gsm],
                "models": {}}
     all_predictions = []
-    for kind, checkpoint in (("lumen", args.lumen_ckpt), ("transformer", args.transformer_ckpt)):
+    models_to_eval = (("lumen", args.lumen_ckpt),) if args.lumen_only else (("lumen", args.lumen_ckpt), ("transformer", args.transformer_ckpt))
+    for kind, checkpoint in models_to_eval:
         model, state = load_model(kind, checkpoint, args.tokenizer)
         if state.get("data_sha256") != data_hash:
             raise ValueError(f"{kind}: checkpoint corpus hash mismatch")
@@ -240,17 +243,20 @@ def main():
         }
         del model
     lumen_tokens = summary["models"]["lumen"].get("tokens_seen")
-    transformer_tokens = summary["models"]["transformer"].get("tokens_seen")
-    if lumen_tokens != transformer_tokens:
-        raise ValueError(f"Token budgets differ: LUMEN={lumen_tokens}, Transformer={transformer_tokens}")
-    lumen_params = summary["models"]["lumen"]["parameters"]
-    transformer_params = summary["models"]["transformer"]["parameters"]
-    summary["parameter_gap_percent"] = round(
-        abs(lumen_params - transformer_params) / lumen_params * 100, 4
-    )
-    if summary["parameter_gap_percent"] >= 1.0:
-        raise ValueError("Parameter counts are not within the 1% matched-size tolerance")
-    summary["matched_token_budget"] = lumen_tokens
+    if not args.lumen_only:
+        transformer_tokens = summary["models"]["transformer"].get("tokens_seen")
+        if lumen_tokens != transformer_tokens:
+            raise ValueError(f"Token budgets differ: LUMEN={lumen_tokens}, Transformer={transformer_tokens}")
+        lumen_params = summary["models"]["lumen"]["parameters"]
+        transformer_params = summary["models"]["transformer"]["parameters"]
+        summary["parameter_gap_percent"] = round(
+            abs(lumen_params - transformer_params) / lumen_params * 100, 4
+        )
+        if summary["parameter_gap_percent"] >= 1.0:
+            raise ValueError("Parameter counts are not within the 1% matched-size tolerance")
+        summary["matched_token_budget"] = lumen_tokens
+    else:
+        summary["tokens_seen"] = lumen_tokens
     with (outdir / "predictions.jsonl").open("w", encoding="utf-8") as f:
         for row in all_predictions:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")

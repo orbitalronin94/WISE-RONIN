@@ -54,3 +54,31 @@ def test_transformer_resume_restores_sampler_and_torch_rng():
     assert random.random() == expected_python
     assert torch.equal(torch.rand(3), expected_torch)
     assert local_rng.random() == expected_local
+
+def test_transformer_checkpoint_persists_optimizer_scheduler_and_rng(tmp_path):
+    from types import SimpleNamespace
+
+    from train.transformer_baseline import make_scheduler, save_checkpoint
+
+    model = torch.nn.Linear(4, 4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    scheduler = make_scheduler(optimizer, warmup=2, total=20)
+    local_rng = random.Random(123)
+    args = SimpleNamespace(
+        seed=123, batch=2, max_len=8, lr=1e-3, warmup=2, total_steps=20
+    )
+    path = tmp_path / "transformer" / "step_5.pt"
+
+    save_checkpoint(
+        path, model, optimizer, scheduler, 5, args,
+        "corpus-hash", "tokenizer-hash", local_rng, 77,
+        sum(parameter.numel() for parameter in model.parameters()),
+    )
+    state = torch.load(path, map_location="cpu", weights_only=False)
+
+    assert state["step"] == 5
+    assert state["tokens_seen"] == 77
+    assert state["architecture_id"]
+    assert "optimizer" in state
+    assert "scheduler" in state
+    assert {"python", "torch_cpu", "local_sampler"} <= state["rng"].keys()

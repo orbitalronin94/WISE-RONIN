@@ -227,3 +227,23 @@ Aplicado aquí: CPU como objetivo, no como plan B; arquitectura antes que fuerza
 ---
 
 *RONIN-LUMEN no pretende imitar un cerebro ni demostrar que una arquitectura pequeña vence a una grande. Pretende convertir ideas sobre aprendizaje, estabilidad y memoria en mecanismos computables, baratos y falsables.*
+
+
+## Experimento de sueño: auditoría y benchmark aislado
+
+La consolidación no se presume por el mero hecho de que el trainer invoque `sueno()`. El checkpoint promocionado del paso 3.000 contiene **0/128 registros en memoria lenta**; sus eventos de sueño de los pasos 1.000, 1.500, 2.000, 2.500 y 3.000 registran cero recuerdos y retornos de aproximadamente 0,0002 s. En ese estado el sueño es un no-op, no una consolidación efectiva.
+
+Antes de cambiar el entrenamiento longitudinal 3.000→6.000, se ejecuta una ablación separada y no mutante sobre una copia del checkpoint:
+
+1. **No sleep:** control con pesos y banco idénticos.
+2. **Replay actual:** la implementación vigente, tres actualizaciones AdamW con ruido aleatorio como entrada y recuerdos como objetivo.
+3. **Denoising replay (3 actualizaciones):** aísla el cambio de objetivo manteniendo el mismo número de actualizaciones que el método actual.
+4. **Denoising replay (50 actualizaciones):** mide además el presupuesto previsto en `CONFIG.sleep_steps`, que la implementación actual todavía no consume.
+
+Para que la prueba mida el mecanismo y no un banco vacío, el benchmark construye un banco diagnóstico con activaciones ocultas extraídas de filas del corpus de entrenamiento congelado. Reserva otras filas del mismo corpus para medir reconstrucción y pérdida next-token. No usa holdout, no escribe el banco diagnóstico en checkpoints y no cambia el workflow de entrenamiento activo.
+
+Se informan tiempo de sueño, MSE de reconstrucción en activaciones reservadas, pérdida next-token, deriva de logits, número de actualizaciones y qué parámetros cambiaron. La comparación no demuestra todavía que el trainer produzca recuerdos de forma natural: esa cuestión permanece separada y debe resolverse midiendo las escrituras reales que genera el umbral de sorpresa.
+
+**Criterio de adopción:** no activar el candidato en el entrenamiento hasta comprobar que mejora la reconstrucción en datos reservados sin degradar la pérdida next-token ni alterar parámetros ajenos a la memoria. El benchmark se ejecuta en un runner independiente y se dispara al integrar cambios relevantes en `main`.
+
+Workflow: [benchmark-sleep.yml](.github/workflows/benchmark-sleep.yml). Script: [benchmark_sleep.py](scripts/benchmark_sleep.py).

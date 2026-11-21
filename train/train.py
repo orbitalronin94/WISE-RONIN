@@ -479,12 +479,14 @@ def main():
             not torch.isfinite(parameter.detach()).all()
             for parameter in model.parameters()
         )
-        invalid_optimizer_state = any(
-            isinstance(value, torch.Tensor) and value.is_floating_point()
-            and value.numel() and not torch.isfinite(value).all()
-            for state_values in optimizer.state.values()
-            for value in state_values.values()
-        )
+        invalid_optimizer_state = False
+        if step % args.log_every == 0:
+            invalid_optimizer_state = any(
+                isinstance(value, torch.Tensor) and value.is_floating_point()
+                and value.numel() and not torch.isfinite(value).all()
+                for state_values in optimizer.state.values()
+                for value in state_values.values()
+            )
         if invalid_parameters or invalid_optimizer_state:
             log_nonfinite_diagnostics(
                 model, output, metrics, loss, optimizer, step,

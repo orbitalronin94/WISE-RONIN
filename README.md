@@ -6,6 +6,28 @@ RONIN-LUMEN is the successor refactor of WISE-RONIN. It is not a new large-model
 
 > **An architecture proposal, not a proven result.** The mechanisms below are a deliberately integrated experimental design. Their novelty is claimed at the level of this particular system design and engineering combination, not as a claim to have invented delta rules, KANs, JEPA, sparse activation, homeostasis, or memory consolidation individually. The hypothesis must be earned through ablations, reproducible checkpoints, and a frozen holdout.
 
+## The Carmack–Naka principle: make the constraint the design
+
+RONIN-LUMEN belongs to an older and more demanding engineering tradition: **do not answer a resource limit by asking for more resources; change the design until the available machine is enough.**
+
+John Carmack's work on the *Doom* and *Quake* engines is a useful emblem of that discipline. The lesson is not a single famous bit trick or a nostalgic claim that old hardware was better. It is the architectural habit of understanding the machine's actual costs—memory traffic, cache locality, arithmetic, bandwidth, and the shape of the workload—and then choosing representations that fit those costs. The fast inverse-square-root routine associated with Quake III is memorable; the deeper achievement was designing an engine around the constraints instead of treating optimization as a cleanup phase.
+
+Yuji Naka represents the same refusal from the console side. The Mega Drive did not offer modern memory or graphics budgets. Shipping a fast, responsive game meant making every update, sprite, tile, and byte earn its place. Precomputation, reuse, careful assembly, and intimate knowledge of the video hardware were not decorative tricks. They were part of the design.
+
+Colin Chapman's famous engineering maxim—**“Simplify, then add lightness”**—completes the triangle. Carmack asks what the machine really costs. Naka asks how far disciplined reuse can stretch a fixed budget. Chapman asks what can be removed before anything is added.
+
+That is the intended spirit of WISE-RONIN and RONIN-LUMEN:
+
+- **CPU is the target, not a fallback.** The project is designed around ordinary GitHub-hosted CPU runners, bounded execution windows, resumable jobs, and explicit memory budgets—not around an assumed GPU.
+- **Architecture before brute force.** Delta state, sparse activity, bounded memory, routing, and consolidation are hypotheses for replacing expensive or poorly matched computation. They must earn their place through ablations and measurements.
+- **Every parameter and every data row has a cost.** Vocabulary size, embedding layout, corpus provenance, repeated templates, checkpoint contents, and inference state are engineering decisions, not afterthoughts.
+- **Reuse beats accumulation.** A compact mechanism that can be measured, tested, and reused is preferable to a pile of loosely connected modules.
+- **No benchmark theatre.** A falling loss is not enough. We measure holdout behavior, repetition, diversity, task separation, CPU throughput, memory use, and checkpoint reproducibility.
+
+LUMEN is therefore not presented as “a Transformer, only smaller,” nor as a proven replacement for attention. It is an experiment in a different allocation of computation: compact recurrent state, surprise-dependent updates, sparse activity, elastic and slow memory, and separate language/operation paths. Those choices may fail. If they do, the ablations should tell us which idea failed and why.
+
+The ambition is deliberately modest in hardware and severe in method: **make the available machine sufficient by removing waste, not by pretending constraints do not exist.** A small model running on a free CPU runner is not automatically an achievement. A small model whose design, data, training, and evaluation are all honest about that constraint—that is the experiment.
+
 ## Why LUMEN is different
 
 Most tiny decoder experiments still inherit the same basic recipe: token embeddings, repeated self-attention blocks, feed-forward layers, and next-token cross-entropy. WISE-RONIN showed why a low training loss is not enough: a small model can acquire a recognizable voice and still progressively collapse into repeated templates, a KOAN attractor, or token corruption.
@@ -119,7 +141,7 @@ Production training is blocked until the 25,000-row corpus, tokenizer, provenanc
 
 The source sampler is designed to stage 19,000 externally sourced candidates toward the 20,000-row external allocation. It records immutable Hugging Face dataset revisions, source licenses, per-file hashes and a manifest. Python-Edu/The Stack's 1,000-row code quota remains blocked pending per-file license and attribution checks. The remaining 5,000 rows must come from the owner's own curated corpus.
 
-The final `train_25k.jsonl` has **not** been built and no source-library artifact has yet been downloaded. The staging workflow is intentionally separate from model training. See [data/README.md](data/README.md) for source-by-source conditions and [docs/SPEC_AUDIT.md](docs/SPEC_AUDIT.md) for unresolved specification decisions.
+The initial source-candidate artifact has been downloaded and audited. Its first lexical audit found 39 normalized duplicates; the sampler has since been hardened to reject short fragments and normalize text before deduplication, and the updated staging workflow is rebuilding and re-auditing the artifact. The final `train_25k.jsonl` has **not** been built. The staging workflow is intentionally separate from model training. See [data/README.md](data/README.md) for source-by-source conditions and [docs/SPEC_AUDIT.md](docs/SPEC_AUDIT.md) for unresolved specification decisions.
 
 ## Research discipline
 
@@ -140,7 +162,7 @@ The final `train_25k.jsonl` has **not** been built and no source-library artifac
 4. **M4 — Data and training:** build the curated corpus, audit licenses/holdout leakage, and train in resumable 500-step runner blocks.
 5. **M5 — Evaluation and release:** publish reproducible results, negative findings, ablations, and the complete specification.
 
-**This pull request must remain unmerged until the owner confirms that the complete specification and all supplied requirements are represented.** No organ implementation or later milestone should begin without the required approval.
+The owner has explicitly authorized the merge of this architecture/integration PR. That authorization does **not** waive the data, tokenizer, holdout, or training gates described above. No production training may start until those gates pass.
 
 ## License and provenance
 

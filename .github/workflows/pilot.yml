@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/pilot.yml"
+      - "model/**"
+      - "train/**"
+      - "tests/**"
+      - "scripts/**"
   workflow_dispatch:
     inputs:
       start_step:

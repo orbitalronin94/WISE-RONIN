@@ -600,13 +600,18 @@ def main():
             LOG.info("vocabulary prune candidates=%d (tokenizer remap required before applying)",
                      len(candidates))
 
-        if step % 250 == 0:
+        if step % args.checkpoint_every == 0:
             save_checkpoint(Path(args.ckpt_dir) / f"step_{step}.pt",
                             model, optimizer, scheduler, step, args, data_hash, local_rng,
                             tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events)
 
+        if args.recovery_checkpoint_every and step % args.recovery_checkpoint_every == 0:
+            save_checkpoint(Path(args.ckpt_dir) / "latest_good.pt",
+                            model, optimizer, scheduler, step, args, data_hash, local_rng,
+                            tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events)
+
         profile["wall"] += time.perf_counter() - step_started
-        if step % 100 == 0:
+        if step % args.log_every == 0:
             total = profile["wall"]
             known = profile["forward"] + profile["backward"] + profile["sleep"]
             LOG.info(

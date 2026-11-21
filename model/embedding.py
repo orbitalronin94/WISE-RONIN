@@ -1,4 +1,4 @@
-"""Live vocabulary embeddings with usage accounting and safe pruning hooks."""
+"""Live vocabulary usage accounting with non-destructive prune proposals."""
 import torch
 from torch import nn
 
@@ -21,15 +21,13 @@ class VivoEmbedding(nn.Module):
 
     @torch.no_grad()
     def podar(self, max_porcentaje=None):
+        """Return dead-token candidates; never invalidate the frozen tokenizer in-place."""
         if self.pasos_desde_poda.item() < 1000:
             return []
         fraction = self.max_prune_fraction if max_porcentaje is None else min(float(max_porcentaje), self.max_prune_fraction)
-        # Never prune reserved control IDs 0..3.
         candidates = torch.nonzero(self.uso[4:] == 0, as_tuple=False).flatten() + 4
         n = min(int(self.vocab * fraction), candidates.numel())
-        pruned = candidates[:n]
-        if n:
-            self.emb.weight[pruned].zero_()
+        proposals = candidates[:n].cpu().tolist()
         self.uso.zero_()
         self.pasos_desde_poda.zero_()
-        return pruned.cpu().tolist()
+        return proposals

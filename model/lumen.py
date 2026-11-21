@@ -64,7 +64,10 @@ class RoninLumen(nn.Module):
             # Delta returns an associative-memory update, not a replacement
             # representation. Preserve the information stream through a
             # residual path so a cold/low-norm memory read cannot zero the stack.
-            delta_update, surprise = delta(h, e_delta, reset_state=reset_state)
+            delta_update, surprise = delta(
+                h, e_delta, reset_state=reset_state,
+                compute_complexity=self.v32_ze,
+            )
             h = homeo(h + delta_update)
             surprises.append(surprise)
             if self.v32_ze:

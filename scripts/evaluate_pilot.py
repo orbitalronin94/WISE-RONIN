@@ -48,9 +48,13 @@ def generate_batch(model, prompts, tokenizer, kind, max_new=64, max_context=128)
         sequences.append([bos] + fit_prompt(ids, max_context=max_context))
     initial_lengths = [len(s) for s in sequences]
     finished = [False] * len(sequences)
-    for _ in range(max_new):
-        # Both architectures receive at most the same 128-token sliding context.
-        contexts = [seq[-max_context:] for seq in sequences]
+    for generation_step in range(max_new):
+        # Transformer recomputes a sliding context. LUMEN prefills once, then
+        # consumes one token at a time so its recurrent Delta state is retained.
+        if kind == "lumen" and generation_step > 0:
+            contexts = [[seq[-1]] for seq in sequences]
+        else:
+            contexts = [seq[-max_context:] for seq in sequences]
         width = max(len(seq) for seq in contexts)
         batch = torch.full((len(sequences), width), pad, dtype=torch.long)
         lengths = []
@@ -58,7 +62,7 @@ def generate_batch(model, prompts, tokenizer, kind, max_new=64, max_context=128)
             lengths.append(len(seq))
             batch[i, :len(seq)] = torch.tensor(seq, dtype=torch.long)
         with torch.no_grad():
-            out = model(batch, reset_state=True) if kind == "lumen" else model(batch)
+            out = model(batch, reset_state=(generation_step == 0)) if kind == "lumen" else model(batch)
             logits = out["logits"] if kind == "lumen" else out
             positions = torch.tensor(lengths, dtype=torch.long) - 1
             next_ids = logits[torch.arange(len(sequences)), positions].argmax(dim=-1).tolist()
@@ -120,7 +124,7 @@ def main():
     outdir.mkdir(parents=True, exist_ok=True)
     summary = {"data_sha256": data_hash, "tokenizer_sha256": tok_hash,
                "gsm8k_test_questions": len(gsm), "historical_unique_prompts": len(historical),
-               "max_new_tokens": args.max_new_tokens, "decoding": "greedy",\n               "max_context_tokens": 128,\n               "prompt_truncation": "retain first and last tokens within 127-token prompt budget; sliding 128-token context during generation",
+               "max_new_tokens": args.max_new_tokens, "decoding": "greedy",\n               "max_context_tokens": 128,\n               "prompt_truncation": "retain first and last tokens within 127-token prompt budget; Transformer uses sliding 128-token context",\n               "lumen_decoding": "128-token prompt prefill then one-token stateful recurrent decoding",
                "gsm8k_sample_seed": 42, "gsm8k_selected_ids": [r["id"] for r in gsm],
                "models": {}}
     all_predictions = []

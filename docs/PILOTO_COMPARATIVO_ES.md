@@ -1,6 +1,6 @@
 # Piloto comparativo de razonamiento: RONIN-LUMEN frente a un Transformer de igual tamaño
 
-**Estado:** primer bloque de 500 pasos ejecutado; campaña longitudinal por bloques de 500 definida. Los resultados son preliminares y no demuestran superioridad.
+**Estado (21-11-2026):** piloto inicial ejecutado y campaña longitudinal en curso. La continuación 2.000 → 4.000 falló por valores no finitos en LUMEN desde el paso 3.100; el último estado sano observado fue el 3.000, cuyo artefacto no se publicó. La recuperación/replay y el holdout emparejado en 3.000 están propuestos en [PR #39](https://github.com/orbitalronin94/WISE-RONIN/pull/39), todavía pendientes. No existe un resultado de holdout válido para esa continuación. Los resultados siguen siendo preliminares y no demuestran superioridad.
 
 ## Objetivo
 
@@ -57,7 +57,7 @@ Ambos modelos se entrenan con:
 - AdamW, learning rate 1,5e-4, weight decay 0,01.
 - Warmup de 100 pasos y el mismo scheduler de 10.000 pasos.
 - Muestreo Python determinista y la misma función de codificación de batch.
-- CPU con dos hilos.
+- CPU con dos hilos **intra-op de PyTorch** como configuración base medida; los parámetros inter-op y afinidad se registran aparte. El perfil combinado más rápido del benchmark posterior se documenta como candidato experimental, no como configuración universal.
 
 El checkpoint registra parámetros, hash de datos, hash del tokenizer, semilla, pasos y tokens vistos. El evaluador rechaza checkpoints con hashes distintos o presupuestos de tokens diferentes.
 
@@ -90,6 +90,63 @@ Para el Transformer se guardará su configuración completa y las métricas de e
 Se permite encadenar varios bloques de 500 pasos en un mismo workflow para reutilizar preparación de datos y tokenizer. Cada bloque debe guardar un checkpoint atómico y superar validaciones de carga, hashes, paso global, tokens vistos, estado del optimizador/scheduler/RNG y salud del modelo. El bloque siguiente depende del éxito completo del anterior. Cualquier fallo detiene la cadena y conserva el último checkpoint válido.
 
 El encadenamiento conjunto está implementado en esta rama: ambos trainers guardan/restauran modelo, optimizador, scheduler y RNG; el evaluador acepta cualquier hito global coincidente; y el workflow puede ejecutar varios bloques consecutivos. La implementación todavía debe superar su primera validación integral en Actions. En el primer bootstrap desde el checkpoint histórico de 500 pasos, el baseline Transformer se reproduce determinísticamente para reconstruir el estado de optimizador/RNG que el artefacto original no guardó; se exige igualdad exacta de pesos antes de continuar.
+
+## Decisiones operativas adoptadas después del piloto inicial
+
+Esta sección recoge las decisiones posteriores que gobiernan la campaña actual. No reescribe los resultados históricos ni convierte un benchmark corto en una garantía de rendimiento.
+
+### Continuación, checkpoints y criterio de parada
+
+- Los hitos comparables siguen siendo pasos globales acumulativos cada 500 updates. Se permite que el workflow ejecute varios bloques en cadena, pero cada hito debe quedar recuperable.
+- La reanudación conserva el estado completo: pesos, optimizador, scheduler y RNG. No se reconstruye el estado a partir de pesos aislados ni se empalman momentos de optimizador de otra trayectoria.
+- Corpus, tokenizer, token cache y holdout se preparan una vez, se comparten entre los dos modelos y se validan por SHA-256. No se retokeniza ni se reconstruye el corpus en cada bloque si el artefacto inmutable ya existe.
+- El siguiente bloque solo comienza cuando ambos modelos han terminado el hito, los checkpoints se pueden cargar y las comprobaciones de integridad/salud pasan. Un valor no finito, colapso funcional o hash/paso incoherente detiene la cadena. Se conserva el último checkpoint sano; nunca se etiqueta como válido el checkpoint posterior al fallo.
+- Los bloques de entrenamiento largos se lanzan de forma explícita/manual. Los benchmarks de rendimiento pueden tener disparador automático al integrar su PR, tal como se pidió para acelerar la experimentación sin iniciar entrenamientos por accidente.
+
+### Separación estricta entre entrenamiento e inferencia
+
+El evaluador no debe modificar el modelo que mide. Por tanto:
+
+- La generación de holdout no ejecuta replay, sueño, consolidación, poda de vocabulario ni actualización de homeostasis.
+- No se conserva estado recurrente/memoria entre prompts independientes ni se escribe de vuelta al checkpoint durante inferencia.
+- Entrenamiento, evaluación determinista y pruebas generativas exploratorias son fases separadas, con entradas, configuración y artefactos identificables.
+- El holdout de comparación principal se mantiene greedy y con un máximo de 64 tokens para que la exactitud sea repetible. Las pruebas exploratorias de conducta/generación se informan aparte con la política de muestreo fijada: temperatura 0,8, top-p 0,9 y penalización de repetición 1,1.
+
+### Métricas de calidad y ablaciones
+
+La loss es necesaria para seguir la optimización, pero no basta para decidir si el modelo ha mejorado. En cada evaluación se conservarán, además de exactitud y métricas factuales:
+
+- tasa de EOS y longitud de respuesta;
+- repetición de n-gramas, bucles y plantillas;
+- diversidad léxica y variación entre respuestas;
+- ejemplos completos representativos, incluidos fallos;
+- para LUMEN, actividad efectiva post-ReLU/Top-K por capa/unidad, unidades funcionalmente muertas, actividad del update disperso frente a la ruta residual y eventos reales de consolidación.
+
+Las ablaciones se harán **una familia de mecanismos cada vez** para no mezclar causas. El orden de investigación acordado comienza por replay/consolidación y continúa con homeostasis. No se atribuirá una mejora al mecanismo sin una comparación que lo aísle.
+
+### Decisiones de rendimiento CPU posteriores al benchmark de dos hilos
+
+El benchmark de siete perfiles [44933048303](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44933048303) comparó configuraciones sobre el mismo tipo de runner, con 10 pasos de calentamiento, 50 medidos y tres repeticiones por modelo/perfil. Es cómputo de entrenamiento (forward, backward y optimizer step), sin carga de datos ni checkpoints.
+
+| Perfil | LUMEN (pasos/s) | Transformer (pasos/s) |
+|---|---:|---:|
+| Base: 2 intra-op | 1,1075 | 7,8618 |
+| Inter-op 2 | 0,9917 | 3,8790 |
+| MKLDNN off | 0,9715 | 3,9218 |
+| Foreach off | 0,6695 | 2,9076 |
+| OpenMP affinity | 0,9670 | 3,9315 |
+| CPU affinity | 0,7161 | 4,5807 |
+| **Combinado** | **1,6282** | **9,1558** |
+
+El perfil combinado fue el más rápido de esa tanda (+47,1 % LUMEN y +16,5 % Transformer frente al perfil base de la misma tanda). Su configuración: 2 intra-op, 2 inter-op, MKLDNN desactivado, `foreach` desactivado para AdamW/gradient clipping, proceso fijado a dos CPU disponibles y variables OpenMP/MKL configuradas. El resultado es una observación de microbenchmark; las pruebas individuales fueron más lentas y la interacción entre ajustes no está causalmente aislada. Debe validarse en un entrenamiento completo antes de adoptarlo como configuración por defecto.
+
+La siguiente tanda [44937990141](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44937990141) compara siete hipótesis más frente al perfil combinado de control: `torch.compile` normal, `torch.compile` con `reduce-overhead`, autocast BF16 en CPU, AdamW fused, `set_to_none=False`, flush de denormals y control combinado. En la última consulta de estado estaba en cola; no se atribuye ninguna mejora a esas hipótesis hasta que haya resultados completos y repetibles.
+
+### Incidencia 2.000 → 4.000 y recuperación
+
+El run [44936542271](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44936542271) retomó el par de checkpoints de 2.000. El Transformer llegó a 4.000; LUMEN mostró valores no finitos a partir de 3.100 y el detector detuvo la ejecución. El último estado sano observado en logs fue el 3.000, con pérdida registrada 6,26413 y 0 % de unidades muertas en las cuatro capas. El job fallido no publicó su checkpoint, por lo que no se debe fingir que ese archivo se ha recuperado del artefacto.
+
+La PR #39 propone reproducir únicamente LUMEN 2.000 → 3.000 desde el padre y los datos/tokenizer/cache congelados de ese run, comparar las métricas reproducidas con los logs originales y después ejecutar un único holdout emparejado usando LUMEN 3.000 y Transformer 3.000. La reproducción se etiquetará como replay, no como el checkpoint original. El holdout solo será interpretable si la reproducción pasa la comprobación de trayectoria y ambos checkpoints coinciden en paso global, datos, tokenizer y presupuesto de evaluación.
 
 ## Evaluación
 

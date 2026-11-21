@@ -29,7 +29,7 @@ class MemoriaElastica(nn.Module):
         vector = vector.detach().reshape(-1, self.dim).mean(0)
         if not torch.isfinite(vector).all():
             return False
-        norm = vector.norm()
+        norm = torch.linalg.vector_norm(vector.to(torch.float64))
         if norm <= 1e-8:
             return False
         # Prevent one anomalous activation from poisoning long-lived memory.

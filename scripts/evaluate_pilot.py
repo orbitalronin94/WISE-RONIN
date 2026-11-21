@@ -62,7 +62,11 @@ def generate_batch(model, prompts, tokenizer, kind, max_new=64, max_context=128)
     # Reset transient recurrent activity at every prompt boundary. State remains
     # active only while decoding tokens belonging to this prompt.
     if kind == "lumen":
-        model.reset_state()
+        reset = getattr(model, "reset_state", None)
+        if reset is None:
+            reset = getattr(model, "reset_states", None)
+        if reset is not None:
+            reset()
     # LUMEN carries recurrent state per batch row; sequential prompts avoid
     # right-padding contaminating a shorter prompt's recurrent prefill state.
     if kind == "lumen" and len(prompts) > 1:

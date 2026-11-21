@@ -114,9 +114,9 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args,
                 "transition_end": args.transition_end,
                 "warmup_transition": args.warmup_transition,
                 "grad_clip": args.grad_clip,
-            } if args.scheduler_transition else {}),
+            } if getattr(args, 'scheduler_transition', False) else {}),
         },
-        "scheduler_transition": scheduler.state_dict() if args.scheduler_transition else None,
+        "scheduler_transition": scheduler.state_dict() if getattr(args, 'scheduler_transition', False) else None,
         "rng": capture_rng(local_rng),
         "torch_version": torch.__version__,
     }, path)
@@ -146,7 +146,7 @@ def main():
     args = p.parse_args()
     if not 1 <= args.steps <= 500:
         p.error("--steps must be between 1 and 500")
-    if args.scheduler_transition and not args.resume:
+    if getattr(args, 'scheduler_transition', False) and not args.resume:
         p.error("--scheduler-transition requires an exact resumable parent checkpoint")
 
     torch.set_num_threads(2)
@@ -161,7 +161,7 @@ def main():
     model = SmallTransformerLM(CONFIG.vocab_size, args.max_len).cpu()
     params = sum(x.numel() for x in model.parameters())
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay)
-    scheduler = None if args.scheduler_transition else make_scheduler(optimizer, args.warmup, args.total_steps)
+    scheduler = None if getattr(args, 'scheduler_transition', False) else make_scheduler(optimizer, args.warmup, args.total_steps)
     local_rng = random.Random(args.seed)
     tokens_seen, start, state = 0, 0, None
 
@@ -177,10 +177,10 @@ def main():
                 "transition_end": args.transition_end,
                 "warmup_transition": args.warmup_transition,
                 "grad_clip": args.grad_clip,
-            } if args.scheduler_transition else {}),
+            } if getattr(args, 'scheduler_transition', False) else {}),
         }
         expected_resume_config = expected_config
-        if args.scheduler_transition and not state.get("scheduler_transition") and int(state.get("step", -1)) == args.transition_start:
+        if getattr(args, 'scheduler_transition', False) and not state.get("scheduler_transition") and int(state.get("step", -1)) == args.transition_start:
             parent_config = {
                 "batch": args.batch, "max_len": args.max_len, "lr": 1.5e-4,
                 "warmup": 100, "total_steps": 10000,
@@ -205,7 +205,7 @@ def main():
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
         start = int(state["step"])
-        if args.scheduler_transition:
+        if getattr(args, 'scheduler_transition', False):
             saved_transition = state.get("scheduler_transition")
             if saved_transition:
                 scheduler = CosineTransitionScheduler(

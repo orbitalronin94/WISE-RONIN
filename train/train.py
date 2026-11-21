@@ -182,6 +182,7 @@ def main():
         optimizer.step()
         scheduler.step()
 
+        # Consolidate only after backward: the slow bank participated in this forward graph.
         with torch.no_grad():
             if model.memoria.sorpresa_acum.item() >= CONFIG.elastic_memory_threshold:
                 model.memoria.consolidar(output["hidden"])

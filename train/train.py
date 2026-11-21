@@ -202,7 +202,7 @@ def main():
                 metrics["L_router"].item(), metrics["L_rep"].item(),
                 dead * 100, entropy, scheduler.get_last_lr()[0],
             )
-            if dead > 0.20:
+            if step >= 100 and dead > 0.20:
                 save_checkpoint(
                     Path(args.ckpt_dir) / f"step_{step}_STOP.pt",
                     model, optimizer, scheduler, step, args, data_hash, local_rng,

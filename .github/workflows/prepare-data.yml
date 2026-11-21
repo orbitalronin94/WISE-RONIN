@@ -30,11 +30,13 @@ jobs:
           cache: pip
 
       - name: Install data preparation dependency
-        run: python -m pip install --upgrade "datasets>=3,<5" zstandard
+        run: python -m pip install --upgrade "datasets>=3,<4" "huggingface_hub>=0.25,<1.0" zstandard
 
       - name: Validate downloader syntax
         run: python -m py_compile scripts/download_sources.py
       - name: Download and sample approved source datasets
+        env:
+          HF_HUB_DISABLE_XET: "1"
         run: |
           python scripts/download_sources.py \
             --output-dir artifacts/lumen-source-candidates

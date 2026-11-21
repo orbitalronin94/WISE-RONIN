@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       auto_merge:
-        description: Automatically merge a winning runtime profile after parity and tests pass
+        description: Automatically merge a winning runtime profile after parity and loss gates pass
         required: true
         type: boolean
         default: true
@@ -21,7 +21,7 @@ concurrency:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
         with:
@@ -70,8 +70,8 @@ jobs:
             --data data/pilot_train_19k.jsonl \
             --tokenizer data/pilot_tokenizer/tokenizer.json \
             --token-cache data/pilot_tokenized_128.pt \
-            --warmup 4 --steps 15 --repeats 3 \
-            --minimum-speedup 1.05 \
+            --warmup 6 --steps 25 --repeats 3 \
+            --minimum-speedup 1.05 --max-loss-regression 0.01 \
             --report artifacts/lumen_hotspot_benchmark.json
       - name: Upload full benchmark evidence
         uses: actions/upload-artifact@v4
@@ -95,9 +95,10 @@ jobs:
             Automated profile promotion from the frozen step-3000 LUMEN hotspot benchmark.
 
             Only runtime settings and exact-output/gradient-preserving fast paths are eligible.
+            Promotion requires >=5% median full-objective throughput gain AND median training loss within +0.01 of the current profile.
             Repetition-loss ablation is diagnostic only and is never promoted because it changes the training objective.
 
-            Full timing, profiler and ablation evidence is attached to workflow run ${{ github.run_id }}.
+            Full timing, profiler, loss-gate and ablation evidence is attached to workflow run ${{ github.run_id }}.
           add-paths: |
             config/lumen_cpu_profile.json
       - name: Auto-merge verified profile promotion

@@ -144,6 +144,11 @@ def main():
             raise ValueError("Checkpoint config or training corpus hash mismatch")
         if state["phase"] != args.phase:
             raise ValueError("Cannot change curriculum phase when resuming a checkpoint")
+        if args.pilot_all_rows and (
+            state.get("pilot_all_rows") is not True
+            or state.get("tokenizer_sha256") != tokenizer_hash
+        ):
+            raise ValueError("Pilot resume requires the same all-row mode and tokenizer hash")
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
         scheduler.load_state_dict(state["scheduler"])

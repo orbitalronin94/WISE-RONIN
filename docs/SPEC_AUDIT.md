@@ -2,7 +2,7 @@
 
 **Objeto:** contrastar el documento maestro de 16 secciones con los archivos de la PR #13 y separar requisitos incorporados, pruebas reales y decisiones todavía abiertas.
 
-**Estado:** especificación transcrita; especificación técnica todavía no congelable al 100% por contradicciones internas y decisiones sin resolver. Esta auditoría no cambia el documento maestro ni autoriza implementar órganos.
+**Estado:** auditoría iniciada antes de la integración. Las secciones 1–5 conservan la fotografía histórica de aquel momento; la sección 6 actualiza el estado comprobado al 2026-11-21. La especificación sigue teniendo decisiones técnicas pendientes.
 
 ## 1. Cobertura de las 16 secciones
 
@@ -123,7 +123,7 @@ Pendientes/bloqueadas:
 - Corpus original del propietario: 5.000 registros todavía no suministrados en el repo.
 - Licencias share-alike/atribución: mantener notices y procedencia en el artifact y en cualquier redistribución.
 
-El workflow de preparación se ha creado, pero aún no se ha ejecutado ni existe un artifact. Requiere una ejecución de Actions desde una rama donde GitHub tenga disponible el workflow. No se afirmará que los datasets están descargados hasta que exista un artifact con manifiesto, filas y hashes.
+Actualización posterior: el workflow [44890014413](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44890014413) terminó correctamente y publicó un artefacto con 19.000 candidatos externos, manifiesto y hashes. La auditoría automática registró cero duplicados normalizados, cero coincidencias exactas y cero coincidencias largas de subcadena con el holdout. Esto no sustituye la revisión humana de licencias, semántica y balance lingüístico.
 
 ## 5. Gate de cierre
 

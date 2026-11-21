@@ -1,0 +1,27 @@
+{
+  "status": "promoted_as_continuation_parent",
+  "global_step": 3000,
+  "workflow_run_id": 44940676355,
+  "workflow_url": "https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44940676355",
+  "artifact_id": 14721888628,
+  "artifact_name": "ronin-lumen-compiled-matched-3000-44940676355",
+  "checkpoint_path": "checkpoints/lumen/step_3000.pt",
+  "checkpoint_sha256": "fcfc740ae1db9e7055cba5dc39f58e9e19327a3baa78ddeb2493e9faa983e8f7",
+  "parent_step": 2000,
+  "seed": 42,
+  "tokens_seen": 2511433,
+  "corpus_sha256": "bca06a8f9a11d46bc91b79944243f37e1f0c902bd8a3c16c38dffcb05754c35c",
+  "tokenizer_sha256": "78b353e908b312722d8de24abce2b9bdc02168e4a2d4f78a7c5a109a2d65d99f",
+  "health": {
+    "dead_fraction_by_layer": [0.0, 0.0, 0.0, 0.0]
+  },
+  "holdout": {
+    "questions": 155,
+    "correct": 0,
+    "eos_terminated": 0,
+    "unique_responses": 5,
+    "unique_response_ratio": 0.0323,
+    "repeated_bigram_ratio": 0.9667
+  },
+  "promotion_reason": "Last verified healthy LUMEN checkpoint with full resume state and exact frozen data provenance; promoted only as a continuation parent, not as a quality/capability milestone."
+}

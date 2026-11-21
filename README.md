@@ -59,7 +59,22 @@ El benchmark de siete perfiles [44933048303](https://github.com/orbitalronin94/W
 
 Ese perfil ganador mantiene 2 hilos intra-op y añade 2 inter-op, MKLDNN desactivado, `foreach` desactivado y afinidad del proceso a dos CPU disponibles, con variables OpenMP/MKL fijadas. **Es el mejor candidato medido en el microbenchmark, no una mejora todavía demostrada en un entrenamiento completo**: la prueba excluye carga de datos, guardado de checkpoints y variación entre runners. Por eso se conserva como perfil candidato, no como una verdad universal ni como motivo para cambiar silenciosamente una ejecución en curso.
 
-La siguiente tanda [44937990141](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44937990141) compara siete hipótesis adicionales contra ese perfil de control: `torch.compile` por defecto, `torch.compile` con `reduce-overhead`, autocast BF16 CPU, AdamW fused, reutilización de gradientes (`set_to_none=False`), flush de denormals y control combinado. En la última consulta de estado seguía en cola; no hay resultados que permitan elegir ganador todavía. [Workflow de benchmark CPU](.github/workflows/benchmark-cpu-throughput.yml).
+La tanda de siete hipótesis [44937990141](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44937990141) encontró que `torch.compile` por defecto era prometedor en el microbenchmark, aunque aquella primera medición era corta y de cómputo sintético. Por eso no lo adoptamos solo con esa cifra: se preparó un perfil de pipeline real con muestreo del corpus y el mismo checkpoint padre.
+
+El benchmark de pipeline [44941514596](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44941514596) comparó cuatro perfiles desde el mismo paso 2.000, con el mismo corpus/tokenizer, batch 8, contexto 128 y muestreo real de batches (20 pasos medidos por perfil):
+
+| Perfil | Pasos/s | Tokens no PAD/s | Decisión |
+|---|---:|---:|---|
+| Eager de referencia | 0,9272 | 819,8 | Control |
+| Sin health snapshots | 1,2572 | 1.111,52 | No adoptado: reduce observabilidad |
+| Sin pérdidas auxiliares | 1,2973 | 1.147,04 | No adoptado: cambia el objetivo de aprendizaje |
+| **`torch.compile` default** | **1,9650** | **1.737,34** | **Adoptado provisionalmente** |
+
+`torch.compile` dio 2,12× los pasos/s del eager de referencia (+112 %). El perfil conservó snapshots de salud y pérdidas auxiliares. La compilación inicial registrada fue 2,211 s en ese benchmark. La comparación no es todavía una estimación universal: fueron 20 pasos, y la afinidad CPU del eager fue [0,2] frente a [0,1] en los otros perfiles. El resultado justifica una validación de entrenamiento más larga, no una afirmación de aceleración garantizada.
+
+La validación de entrenamiento [44940676355](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44940676355) completó 1.000 pasos compilados, del 2.000 al 3.000, con las pérdidas auxiliares y comprobaciones de salud activas. El tiempo total fue 1.022,17 s (incluida la compilación inicial); tras el arranque, los perfiles de 100 pasos rondaron 39,6–40,3 s. Las cuatro capas terminaron con 0 % de unidades muertas. Esta ejecución valida que el perfil puede entrenar y guardar checkpoints, aunque el coste frío de compilación debe contabilizarse en cualquier comparación de pared.
+
+**Decisión vigente para la continuación:** 2 hilos intra-op + 2 inter-op, MKLDNN desactivado, AdamW/grad clipping `foreach` desactivado, afinidad a las dos primeras CPU disponibles y `torch.compile(mode="default")` solo en forwards no diagnósticos. No desactivamos las pérdidas auxiliares ni los health snapshots. La continuación incorpora además una guarda fail-fast: pérdida no finita o gradiente no finito detiene el paso antes de actualizar el optimizador, evitando seguir entrenando sobre un estado corrupto. [Workflow de benchmark CPU](.github/workflows/benchmark-cpu-throughput.yml).
 
 
 
@@ -78,7 +93,13 @@ Las decisiones que afectan a la validez del experimento quedan separadas de las 
 
 ### Incidencia longitudinal más reciente
 
-La continuación 2.000 → 4.000 [run 44936542271](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44936542271) no produjo un hito válido completo: LUMEN registró valores no finitos desde el paso 3.100 y el detector detuvo la ejecución; el último estado sano observado en los logs fue el paso 3.000. El job fallido no publicó ese checkpoint. El Transformer sí llegó al paso 4.000, pero eso no crea un par emparejado válido en 4.000. La [PR #39](https://github.com/orbitalronin94/WISE-RONIN/pull/39) propone reproducir únicamente el tramo sano hasta 3.000 desde el padre 2.000 y, tras verificar la reproducción, ejecutar un único holdout emparejado en 3.000. Hasta que esa recuperación termine, no se declara un holdout de esta continuación ni se presenta el checkpoint reproducido como el original.
+La primera continuación 2.000 → 4.000 [run 44936542271](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44936542271) se detuvo al detectar valores no finitos desde el paso 3.100; no se publicó un checkpoint LUMEN válido de ese job. No se promovió el checkpoint posterior al fallo ni se rellenó el hueco con el Transformer.
+
+En su lugar se reprodujo el tramo sano desde el padre exacto 2.000 y se completó una ejecución compilada hasta 3.000: [run 44940676355](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44940676355), artefacto `ronin-lumen-compiled-matched-3000-44940676355`. El checkpoint LUMEN 3.000 tiene SHA-256 `fcfc740ae1db9e7055cba5dc39f58e9e19327a3baa78ddeb2493e9faa983e8f7`, conserva estado de optimizador/scheduler/RNG y muestra 0 % de unidades muertas en las cuatro capas. **Se promueve como padre de continuación**, no como modelo que ya haya demostrado calidad generativa.
+
+El holdout emparejado de 3.000 pasos evaluó 100 problemas GSM8K y 55 prompts históricos: ambos modelos obtuvieron 0/155 y EOS fue 0/155 en LUMEN frente a 2/155 en Transformer. LUMEN produjo 5 respuestas únicas frente a 3 y tuvo menos repetición de bigramas (96,67 % frente a 98 %), pero ambos colapsan generativamente. Es una diferencia descriptiva pequeña, no evidencia de razonamiento ni de superioridad general.
+
+La siguiente campaña continúa **solo LUMEN de 3.000 a 6.000**, en bloques reanudables de 500 y con un único holdout LUMEN al final. El checkpoint original 3.000 se verifica por hash; se crea una copia derivada que rebasa únicamente el scheduler: conserva el LR actual (≈1,0159×10⁻⁵), el estado del optimizador y todos los pesos, y aplica una caída coseno hasta el paso 6.000. Corpus, tokenizer, batch, contexto, semilla y objetivo permanecen congelados.
 
 
 ## Qué estamos intentando cambiar

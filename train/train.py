@@ -398,12 +398,17 @@ def main():
             beta=0.01,
             pad_id=0,
         )
+        if not torch.isfinite(loss.detach()).all():
+            raise FloatingPointError(
+                f"non-finite loss at global step {step}; optimizer update skipped"
+            )
         optimizer.zero_grad(set_to_none=True)
         backward_started = time.perf_counter()
         loss.backward()
         profile["backward"] += time.perf_counter() - backward_started
         torch.nn.utils.clip_grad_norm_(
-            model.parameters(), args.grad_clip, foreach=not args.disable_foreach
+            model.parameters(), args.grad_clip,
+            foreach=not args.disable_foreach, error_if_nonfinite=True,
         )
         optimizer.step()
         scheduler.step()

@@ -141,48 +141,51 @@ No se declara “spec completa y bibliotecas descargadas” hasta que:
 **No autoriza:** implementación de órganos, M2, entrenamiento, modificación del holdout ni merge de la PR.
 
 
-## 6. Actual implementation update — 2026-11-21
 
-Following the owner's explicit instruction to integrate the architecture, the branch now contains first-pass executable implementations in:
-- `model/embedding.py`, `energy.py`, `delta_state.py`, `homeostasis.py`, `memory.py`, `heads.py`, and `lumen.py`;
-- `train/loss.py`, `curriculum.py`, `dataset.py`, `sleep.py`, `quant.py`, and `train.py`;
-- `scripts/train_tokenizer.py` and `data/build_dataset.py`.
+## 6. Actualización de implementación — 2026-11-21
 
-The model has four recurrent Delta layers, tied input/output embeddings, one energy allocator, four homeostasis/Top-K stages, elastic/slow memory, routed KAN/MLP heads and a JEPA predictor. A first static count is **2,281,841 parameters**. This meets the hard 6M ceiling but not the 3–4M target band. The 20–30 MB model-storage requirement is also not demonstrated by this parameter count.
+Tras la instrucción expresa del propietario de integrar la arquitectura, la rama contiene primeras implementaciones ejecutables en:
+- `model/embedding.py`, `energy.py`, `delta_state.py`, `homeostasis.py`, `memory.py`, `heads.py` y `lumen.py`;
+- `train/loss.py`, `curriculum.py`, `dataset.py`, `sleep.py`, `quant.py` y `train.py`;
+- `scripts/train_tokenizer.py` y `data/build_dataset.py`.
 
-### Implementation status and explicit limitations
+El modelo tiene cuatro capas Delta recurrentes, embeddings de entrada/salida compartidos, un asignador de energía, cuatro etapas de homeostasis/Top-K, memoria elástica/lenta, cabezas KAN/MLP enrutadas y un predictor JEPA. El primer recuento estático es de **2.281.841 parámetros**. Cumple el techo de 6 millones, pero no la banda objetivo de 3–4 millones. El requisito de 20–30 MB de almacenamiento tampoco queda demostrado por este recuento.
 
-| Area | Implemented now | Not yet complete / validation gate |
+### Estado de implementación y limitaciones explícitas
+
+| Área | Implementado ahora | Incompleto / gate de validación |
 |---|---|---|
-| Embedding Vivo | Usage accounting; 1,000-forward cadence; up-to-5% dead-token candidate proposal | Does not rewrite tokenizer IDs or replace fragments; proposals are intentionally non-destructive until atomic tokenizer/embedding/optimizer remap exists |
-| Energy | Softmax allocation to delta/memory/head; entropy metric | Need verify entropy behavior and budget allocation across training |
-| Delta | Four per-layer 256×256 recurrent states; surprise threshold; learned decay; energy-scaled write; reset policy | Exact formula differs from hand sketch in normalization/clamping and initialization; stability and sequence semantics need tests |
-| Homeostasis | EMA activation, subtractive adaptive threshold, Top-K | Uses negative-feedback sign to avoid the positive-feedback issue in the literal pseudocode; owner must confirm this interpretation |
-| Memory | Elastic MLP; slow bank; similarity-based repeated-pattern consolidation | Slot collision/replacement, 512-token decay and exact 3-in-1000 window semantics are simplified or pending |
-| Heads | Router and interpolated spline KAN + GELU MLP | KAN is a compact spline head, not a validated general arithmetic solver; router may collapse without supervised task labels |
-| Sleep | 50 offline steps on slow-memory targets; only memory MLP optimized; reset fast states | Skips when no consolidated memories exist; needs non-degradation tests; sleep optimizer is recreated per sleep |
-| JEPA | Predictor trained against mean embedding of next eight tokens | Needs numerical tests and ablation; target masking/padding behavior requires review |
-| Repetition | Differentiable probability of a same-token triple | This is an auxiliary proxy, not the original argmax diagnostic; generation-time repetition still needs eval metrics |
-| Curriculum | Explicit phase windows; phase 2 stratified 70/30 sampler; fail-closed missing labels | Phase 1/3 labels and data quality must be audited; ORPO is explicitly rejected until pairs/objective are implemented |
-| Checkpoint | Model, optimizer, scheduler, global step, phase, config, corpus hash, Torch/Python/local sampler RNG | Delta is reset at every batch boundary; exact-resume equivalence test remains required; no multi-worker sampler state exists |
-| Quantization | Fake-int8 activation simulation hooks from step 5,000 on KAN and memory | Not int8 weight quantization, serialization or size reduction |
-| BPE | Corpus-only ByteLevel BPE training script with reserved PAD/UNK/BOS/EOS/SEP | Cannot run until final 25k dataset exists; verify vocab exactly 4096 |
-| Data | Deterministic source staging, final assembly script, holdout exact-hash gate | Source staging run in progress; 1k code rows need per-file license audit; 5k owner-curated rows absent |
-| Actions | CPU architecture/unit/smoke workflow and separate source-staging workflow | Latest runner jobs must pass; source workflow must produce and verify artifact |
+| Embedding Vivo | Contabilidad de uso; propuesta de tokens candidatos muertos cada 1.000 forwards, hasta el 5% | No reescribe IDs del tokenizer ni reemplaza fragmentos; las propuestas no son destructivas hasta disponer de remapeo atómico de tokenizer, embeddings y optimizador |
+| Energía | Reparto softmax entre Delta/memoria/cabeza; métrica de entropía | Hay que verificar el comportamiento de la entropía y la distribución del presupuesto durante el entrenamiento |
+| Delta | Cuatro estados recurrentes 256×256, umbral de sorpresa, decaimiento aprendido, escritura escalada por energía y política de reset | La fórmula exacta difiere del esquema manual en normalización, límites e inicialización; faltan pruebas de estabilidad y semántica de secuencia |
+| Homeostasis | Activación EMA, umbral adaptativo sustractivo y Top-K | Usa el signo de realimentación negativa para evitar el problema de realimentación positiva del pseudocódigo literal; esta interpretación debe confirmarse |
+| Memoria | MLP elástica, banco lento y creación de registros según sorpresa | Colisiones/reemplazo de slots, decaimiento a 512 tokens y semántica exacta de ventana 3/1.000 están simplificados o pendientes |
+| Cabezas | Router y KAN spline interpolada + MLP GELU | KAN es una cabeza spline compacta, no un solucionador aritmético general validado; el router puede colapsar sin etiquetas supervisadas de tarea |
+| Sueño | 50 pasos offline sobre objetivos de memoria lenta; solo se optimiza la MLP de memoria; se reinician estados rápidos | Se omite si no hay registros consolidados; faltan pruebas de no degradación; el optimizador del sueño se recrea en cada ciclo |
+| JEPA | Predictor entrenado contra la media del embedding de los ocho tokens siguientes | Faltan pruebas numéricas y ablación; hay que revisar el enmascarado de objetivos y padding |
+| Repetición | Probabilidad diferenciable de triplete del mismo token | Es un proxy auxiliar, no el diagnóstico argmax original; faltan métricas de repetición durante generación |
+| Curriculum | Ventanas explícitas por fase; sampler estratificado 70/30 en fase 2; fallo cerrado ante etiquetas ausentes | Hay que auditar etiquetas/calidad de fases 1 y 3; ORPO se rechaza explícitamente hasta implementar pares y objetivo |
+| Checkpoint | Modelo, optimizador, scheduler, paso global, fase, configuración, hash del corpus y RNG de Torch/Python/sampler local | Delta se reinicia en cada límite de batch; falta prueba de equivalencia de reanudación exacta; no existe estado de sampler multi-worker |
+| Cuantización | Simulación de activaciones fake-int8 desde el paso 5.000 en KAN y memoria | No es cuantización de pesos int8, serialización ni reducción del tamaño |
+| BPE | Script ByteLevel BPE entrenado solo con corpus y tokens reservados PAD/UNK/BOS/EOS/SEP | No puede ejecutarse hasta disponer del dataset final de 25k; hay que verificar vocabulario exacto de 4.096 |
+| Datos | Staging determinista, constructor final, gate de hash del holdout | El staging ha terminado: hay 19.000 candidatos externos; faltan 1.000 filas de código con licencia auditada por fichero y 5.000 filas propias |
+| Actions | Workflow CPU de arquitectura/tests/smoke y workflow separado de staging | El staging más reciente ha pasado; el entrenamiento real sigue sujeto a corpus, tokenizer y revisión manual |
 
-### Important implementation corrections
+### Correcciones importantes de implementación
 
-- Delta state is a registered buffer and is reset at batch boundaries. Checkpoints therefore represent the declared reset policy, not a hidden live sequence state.
-- Pruning is a proposal only. Zeroing rows while the fixed BPE tokenizer can still emit those IDs would silently corrupt the model, so destructive pruning is blocked pending atomic vocabulary remapping.
-- The trainer refuses ORPO rather than pretending a `pass` is preference optimization.
-- Fake-int8 is clearly named activation simulation and does not claim model compression.
-- The loss includes a differentiable triple-repeat probability; the non-differentiable argmax statistic from the manual draft would not train the logits.
-- The trainer uses a fixed CPU device and a 500-step maximum block. The explicit dummy mode is limited to 10 steps and is not production data.
+- El estado Delta es un buffer registrado y se reinicia en los límites de batch. Los checkpoints representan esa política declarada, no un estado de secuencia oculto.
+- La poda solo propone candidatos. Poner filas a cero mientras el BPE fijo todavía puede emitir esos IDs corrompería silenciosamente el modelo; la poda destructiva está bloqueada hasta disponer de remapeo atómico del vocabulario.
+- El trainer rechaza ORPO en lugar de fingir que un `pass` implementa optimización de preferencias.
+- Fake-int8 está identificado como simulación de activaciones y no afirma comprimir el modelo.
+- La pérdida incluye una probabilidad diferenciable de triple repetición; el estadístico argmax no diferenciable del borrador manual no entrenaría directamente los logits.
+- El trainer fija CPU y bloques máximos de 500 pasos. El modo dummy está limitado a 10 pasos y no usa datos de producción.
 
-### Runner and corpus status
+### Estado de runner y corpus
 
-The CPU workflow is now running compile, parameter-count, unit-test and 10-step dummy-smoke gates. Earlier attempts failed because invoking `python train/train.py` placed the `train/` directory, not repository root, on `sys.path`; the workflow was corrected to invoke `python -m train.train`. Do not count those failed attempts as validation.
+El workflow CPU compila el modelo, comprueba el techo de parámetros, ejecuta tests unitarios y realiza un smoke dummy de 10 pasos. Los primeros intentos fallaron porque ejecutar `python train/train.py` situaba el directorio `train/`, y no la raíz del repositorio, en `sys.path`; el workflow se corrigió para invocar `python -m train.train`. Esos intentos fallidos no cuentan como validación.
 
-The source-library workflow has passed dependency installation and downloader syntax validation and is currently sampling public datasets. No artifact is considered available until the workflow completes and the uploaded manifest/files are inspected. The final corpus remains blocked by missing owner data and the unresolved per-file code-license allocation.
+El staging de bibliotecas terminó correctamente en [Actions run 44890014413](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44890014413). Se subieron 19.000 candidatos externos con manifiesto y hashes. La auditoría automática informó 0 duplicados normalizados, 0 coincidencias exactas con el holdout y 0 coincidencias largas de subcadena de prompts. El holdout conserva 500 filas y 55 prompts únicos. Es una auditoría léxica, no una prueba semántica ni una aprobación de licencias.
 
-**The architecture is now implemented in first-pass code, not validated as a learning system. M2 integration work is underway by explicit owner instruction; training on real data, performance claims, holdout evaluation and merge remain gated.**
+El manifiesto mantiene `license_reviewed=false` y `rights_confirmed=false` para las fuentes descargadas. El corpus final continúa bloqueado: faltan las 5.000 filas propias y las 1.000 filas de código con licencia individual verificada, además de la revisión de idioma y del holdout. Todavía no existe el tokenizer final ni `train_25k.jsonl`.
+
+**La arquitectura está implementada en primera versión, pero aún no está validada como sistema de aprendizaje. El smoke dummy demuestra ejecución y reanudación básica, no aprendizaje. El entrenamiento real y las afirmaciones de rendimiento requieren un corpus autorizado, tokenizer fijado y evaluación congelada.**

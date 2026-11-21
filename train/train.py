@@ -14,7 +14,7 @@ from train.dataset import BPETokenizer, load_jsonl, collate
 from train.curriculum import datos_para_fase, sample_phase2
 from train.loss import perdida_total
 from train.sleep import sueno
-from train.quant import FakeInt8
+from train.quant import fake_int8_tensor
 
 LOG = logging.getLogger("lumen.train")
 

@@ -247,7 +247,8 @@ def main():
     elapsed_offset = 0.0
     if args.wall_clock_file and Path(args.wall_clock_file).is_file():
         elapsed_offset = float(json.loads(Path(args.wall_clock_file).read_text()).get("elapsed_seconds", 0.0))
-    reached_targets = set()
+    wall_state = json.loads(Path(args.wall_clock_file).read_text()) if args.wall_clock_file and Path(args.wall_clock_file).is_file() else {}
+    reached_targets = set(wall_state.get("reached_targets", []))
     for step in range(start + 1, start + args.steps + 1):
         step_started = time.perf_counter()
         chosen = local_rng.choices(rows, k=args.batch)
@@ -309,7 +310,8 @@ def main():
     if args.wall_clock_file:
         wall_path = Path(args.wall_clock_file)
         wall_path.parent.mkdir(parents=True, exist_ok=True)
-        wall_path.write_text(json.dumps({"model": "Transformer", "elapsed_seconds": total_elapsed}, indent=2) + "\n")
+        wall_path.write_text(json.dumps({"model": "Transformer", "elapsed_seconds": total_elapsed,
+                                         "reached_targets": sorted(reached_targets)}, indent=2) + "\n")
     LOG.info("wall_clock_accumulated: model=Transformer, seconds=%.3f", total_elapsed)
     LOG.info("completed step=%d device=cpu", final_step)
 

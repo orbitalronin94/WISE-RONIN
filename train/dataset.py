@@ -1,4 +1,4 @@
-"""Strict JSONL training data loading and BPE tokenization."""
+"""Strict JSONL training data loading and frozen BPE tokenization."""
 import hashlib
 import json
 from pathlib import Path
@@ -11,9 +11,9 @@ class BPETokenizer:
         except ImportError as exc:
             raise RuntimeError("Install tokenizers to use the trained BPE tokenizer") from exc
         self.tokenizer = Tokenizer.from_file(str(path))
+
     def encode(self, text, max_len):
-        ids = self.tokenizer.encode(text).ids[:max_len]
-        return ids
+        return self.tokenizer.encode(text).ids[:max_len]
 
 def load_jsonl(path):
     path = Path(path)
@@ -42,18 +42,15 @@ def collate(rows, tokenizer, batch_size, max_len, rng):
     for row in selected:
         text = (str(row["prompt"]) + "\n" + str(row["completion"])).strip()
         ids = tokenizer.encode(text, max_len)
-        if len(ids) < 2:
-            continue
-        encoded.append(ids)
+        if len(ids) >= 2:
+            encoded.append(ids)
     if not encoded:
         raise ValueError("Batch contains no sequences with at least two BPE tokens")
-    pad = tokenizer.tokenizer.token_to_id("[PAD]")
-    if pad is None:
-        raise ValueError("Tokenizer must define [PAD] control token")
+    pad_id = tokenizer.tokenizer.token_to_id("[PAD]")
+    if pad_id != 0:
+        raise ValueError("Tokenizer must define [PAD] at token ID 0")
     width = max(map(len, encoded))
-    width = min(width, max_len)
-    batch = torch.full((len(encoded), width), pad, dtype=torch.long)
-    for i, ids in enumerate(encoded):
-        ids = ids[:width]
-        batch[i, :len(ids)] = torch.tensor(ids)
+    batch = torch.full((len(encoded), width), pad_id, dtype=torch.long)
+    for index, ids in enumerate(encoded):
+        batch[index, :len(ids)] = torch.tensor(ids, dtype=torch.long)
     return batch

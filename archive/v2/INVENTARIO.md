@@ -79,3 +79,82 @@
 - Los ficheros V2 se archivan como blobs Git idénticos, sin reserialización.
 - Las líneas de fuentes y workflows no se han contado individualmente en esta pasada; los tamaños y hashes sí quedan registrados.
 - No se ha ejecutado ningún entrenamiento V2 ni se ha alterado el holdout.
+
+## Auditoría adicional de líneas e imports (complemento)
+
+Recuento calculado sobre los blobs archivados, no sobre los archivos activos de V1. Los recuentos de líneas corresponden a líneas de texto separadas por newline; los JSONL indican registros. Los archivos grandes que no pudieron materializarse completos se dejan explícitamente pendientes, sin estimar cifras.
+
+### Fuentes Python
+
+| Ruta | Líneas | Imports externos / internos observados |
+|---|---:|---|
+| `Train-Wise-Ronin (1).py` | 8 | `pathlib`, `runpy` |
+| `audit_wise_ronin_dataset.py` | 172 | Solo biblioteca estándar: argparse, collections, difflib, hashlib, json, math, re, unicodedata, pathlib |
+| `build_balanced_80k.py` | 179 | Solo biblioteca estándar: argparse, hashlib, json, random, collections, pathlib |
+| `build_wise_ronin_correction.py` | 158 | Solo biblioteca estándar: argparse, hashlib, json, random, collections, pathlib |
+| `build_wise_ronin_dataset.py` | 154 | Solo biblioteca estándar: argparse, collections, hashlib, json, re, pathlib |
+| `evaluate_wise_ronin.py` | 211 | torch, tokenizers; imports internos de train_wise_ronin |
+| `evaluate_wise_ronin_correction.py` | 136 | torch, torch.nn.functional, tokenizers; imports internos de train_wise_ronin |
+| `evaluate_wise_ronin_sampling.py` | 113 | torch, torch.nn.functional, tokenizers; imports internos de train_wise_ronin y generate_wise_ronin_expanded |
+| `generate_wise_ronin_capability.py` | 560 | Solo biblioteca estándar: argparse, hashlib, json, math, re, unicodedata, collections, pathlib |
+| `generate_wise_ronin_expanded.py` | 486 | Solo biblioteca estándar: argparse, base64, hashlib, json, random, re, tempfile, zlib, collections, pathlib |
+| `train_wise_ronin.py` | 416 | torch, torch.nn, torch.nn.functional, tokenizers; biblioteca estándar |
+| `validate_wise_ronin_correction.py` | 43 | Solo biblioteca estándar: json, pathlib |
+
+### Workflows V2
+
+| Ruta | Líneas | Actions / ejecución observada |
+|---|---:|---|
+| `.github/workflows/extract-best-holdout.yml` | 126 | download-artifact@v4, upload-artifact@v4 |
+| `.github/workflows/validate-expanded-corpus.yml` | 69 | checkout@v4, setup-python@v5; compila generador expandido |
+| `.github/workflows/validate-wise-ronin-capability.yml` | 47 | checkout@v4, setup-python@v5; genera y valida corpus capability |
+| `.github/workflows/wise-ronin-balanced-80k-validation.yml` | 44 | checkout@v4, setup-python@v5; compila trainer, builder y evaluator |
+| `.github/workflows/wise-ronin-balanced-80k.yml` | 129 | checkout@v4, download-artifact@v4, setup-python@v5, upload-artifact@v4 |
+| `.github/workflows/wise-ronin-capability-30k.yml` | 192 | checkout@v4, download-artifact@v4, setup-python@v5, upload-artifact@v4 |
+| `.github/workflows/wise-ronin-correction-sft.yml` | 171 | checkout@v4, download-artifact@v4, setup-python@v5, upload-artifact@v4 |
+| `.github/workflows/wise-ronin-correction-validation.yml` | 39 | checkout@v4, setup-python@v5, upload-artifact@v4 |
+| `.github/workflows/wise-ronin-dataset-audit.yml` | 108 | checkout@v4, setup-python@v5, upload-artifact@v4 |
+| `.github/workflows/wise-ronin-expand-dataset.yml` | 95 | checkout@v4, setup-python@v5, upload-artifact@v4 |
+| `.github/workflows/wise-ronin-expanded-50k.yml` | 131 | checkout@v4, download-artifact@v4, setup-python@v5, upload-artifact@v4 |
+| `.github/workflows/wise-ronin-first-10k.yml` | 136 | checkout@v4, download-artifact@v4, setup-python@v5, upload-artifact@v4 |
+| `.github/workflows/wise-ronin-frozen-30k-evaluation.yml` | 94 | checkout@v4, download-artifact@v4, setup-python@v5, upload-artifact@v4 |
+| `.github/workflows/wise-ronin-holdout-70k.yml` | 92 | checkout@v4, download-artifact@v4, upload-artifact@v4 |
+
+### Documentación y metadatos
+
+| Ruta | Líneas |
+|---|---:|
+| `README.md` | 10 |
+| `data/capability/README.md` | 31 |
+| `data/curated/README.md` | 55 |
+| `data/expanded/README.md` | 57 |
+| `docs/CORRECTION_BEFORE_30K.md` | 53 |
+| `docs/model-card-40k.md` | 140 |
+| `data/capability/wise_ronin_capability_report.json` | 46 |
+| `data/capability/wise_ronin_identity_manifest.json` | 32 |
+| `data/curated/wise_ronin_dataset_report.json` | 224 |
+| `data/expanded/wise_ronin_expanded_report.json` | 23 |
+
+### JSONL cuyo contenido se pudo contar
+
+| Ruta | Registros |
+|---|---:|
+| `holdout_wise_ronin_500.jsonl` | 500 |
+| `data/capability/wise_ronin_capability_holdout.jsonl` | 389 |
+| `data/capability/wise_ronin_capability_validation.jsonl` | 399 |
+| `data/curated/wise_ronin_antisycophancy.jsonl` | 20 |
+| `data/curated/wise_ronin_factual_clean.jsonl` | 30 |
+| `data/curated/wise_ronin_hybrid_controlled.jsonl` | 147 |
+| `data/curated/wise_ronin_koan_controlled.jsonl` | 30 |
+| `data/curated/wise_ronin_preferences.jsonl` | 30 |
+| `data/curated/wise_ronin_sft_balanced.jsonl` | 257 |
+
+### Pendiente de materialización completa
+
+- `data/capability/wise_ronin_capability_all.jsonl` y `wise_ronin_capability_train.jsonl`: blobs de varios MB; el conector no devolvió el contenido completo para contar registros.
+- `data/expanded/wise_ronin_expanded.jsonl`: 60.501.292 bytes.
+- `dataset_enano_70mb_parte1.jsonl`, `parte2`, `parte3`: aproximadamente 25 MB cada uno.
+- `wise-ronin_v2_pesos.npz`: binario; líneas no aplicables.
+- `data/seeds/gen_2mb_v2.py.zlib.b64`: artefacto comprimido codificado; no se interpreta como fuente Python ejecutable sin descompresión y auditoría.
+
+**Conclusión del inventario:** ya se han contado líneas e imports de los 12 scripts Python y de los 14 workflows, además de documentación y JSONL pequeños. El inventario sigue marcado como parcial hasta materializar y contar los seis JSONL grandes y clasificar los artefactos binarios. Los imports detectados son observaciones estáticas; no equivalen a una ejecución de todos los scripts.

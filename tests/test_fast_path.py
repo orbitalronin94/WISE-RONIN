@@ -11,6 +11,7 @@ def test_pre_tokenized_collation_and_cache_validation(tmp_path):
     assert batch.tolist() == [[1, 2, 3], [4, 5, 0]]
     path = tmp_path / "tokens.pt"
     torch.save({
+        "format": "ronin_token_cache_v1",
         "data_sha256": "data",
         "tokenizer_sha256": "tokenizer",
         "max_len": 128,

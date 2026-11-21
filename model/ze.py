@@ -73,4 +73,21 @@ class DualModelZe(nn.Module):
         scale = torch.clamp(max_change / change_norm, max=1.0)
         delta_state.copy_(delta_state + scale * change)
         self.erase_count.add_(1)
+        return float((scale * change).norm().item())    @torch.no_grad()
+    def operator_borrado(self, delta_state, context_direction):
+        """Remove a bounded rank-one context component from [B,D,D] Delta states."""
+        if context_direction.numel() == 0:
+            return 0.0
+        e = context_direction.detach()
+        if e.ndim == 1:
+            e = e.unsqueeze(0).expand(delta_state.shape[0], -1)
+        norm_sq = e.square().sum(dim=-1, keepdim=True).clamp_min(1e-8)
+        before = delta_state.norm(dim=(-2, -1), keepdim=True)
+        projected = torch.bmm(delta_state, e.unsqueeze(-1)).squeeze(-1)
+        cleaned = delta_state - projected.unsqueeze(-1) * e.unsqueeze(1) / norm_sq.unsqueeze(-1)
+        change = cleaned - delta_state
+        change_norm = change.norm(dim=(-2, -1), keepdim=True).clamp_min(1e-8)
+        scale = torch.clamp((0.25 * before) / change_norm, max=1.0)
+        delta_state.add_(scale * change)
+        self.erase_count.add_(1)
         return float((scale * change).norm().item())

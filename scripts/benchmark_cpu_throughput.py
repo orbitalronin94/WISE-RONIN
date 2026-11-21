@@ -3,8 +3,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
+
+# Running `python scripts/...` puts scripts/ (not the repository root) on
+# sys.path. Add the checkout root so project packages resolve in CI and locally.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import torch
 from torch.nn import functional as F

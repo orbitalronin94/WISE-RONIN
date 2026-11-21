@@ -22,7 +22,7 @@ class EstadoDelta(nn.Module):
     def reset(self, batch, device, dtype):
         self.state = torch.zeros(batch, self.dim, self.dim, device=device, dtype=dtype)
 
-    def forward(self, x, e_delta, reset_state=False, compute_complexity=False):
+    def forward(self, x, e_delta, reset_state=False, compute_complexity=False, collect_diagnostics=True):
         batch, steps, _ = x.shape
         if (reset_state or self.state.numel() == 0
                 or self.state.shape[0] != batch or self.state.device != x.device):
@@ -41,7 +41,7 @@ class EstadoDelta(nn.Module):
             decay = torch.sigmoid(self.a * surprise + self.b).clamp(0.90, 0.9999)
             write_lr = surprise.clamp(0.1, 1.0)
             gate = (surprise >= self.tau.clamp_min(0.0)).to(x.dtype)
-            if compute_complexity:
+            if collect_diagnostics:
                 write_rates.append(gate.mean().detach())
             S = S * decay.unsqueeze(-1)
             update = torch.einsum("bi,bj->bij", k, err)
@@ -56,7 +56,7 @@ class EstadoDelta(nn.Module):
         self.state = S
         self.last_complexity = torch.stack(complexities).mean() if compute_complexity else None
         output = torch.stack(outs, dim=1)
-        if compute_complexity:
+        if collect_diagnostics:
             self.last_write_rate = float(torch.stack(write_rates).mean().item())
             self.last_state_norm = float(S.detach().norm().item() / max(1, batch ** 0.5))
             self.last_output_norm = float(output.detach().norm().item() / max(1, (batch * steps) ** 0.5))

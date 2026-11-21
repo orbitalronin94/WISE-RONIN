@@ -1,4 +1,4 @@
-name: RONIN-LUMEN 500-step matched-size pilot
+name: RONIN-LUMEN 500-step matched-size pilot (import-path fix)
 
 on:
   push:

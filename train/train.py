@@ -475,6 +475,24 @@ def main():
                     LOG.error("NONFINITE_GRADIENT step=%d name=%s %s", step, name, _tensor_health(parameter.grad))
             raise
         optimizer.step()
+        invalid_parameters = any(
+            not torch.isfinite(parameter.detach()).all()
+            for parameter in model.parameters()
+        )
+        invalid_optimizer_state = any(
+            isinstance(value, torch.Tensor) and value.is_floating_point()
+            and value.numel() and not torch.isfinite(value).all()
+            for state_values in optimizer.state.values()
+            for value in state_values.values()
+        )
+        if invalid_parameters or invalid_optimizer_state:
+            log_nonfinite_diagnostics(
+                model, output, metrics, loss, optimizer, step,
+                "optimizer produced non-finite parameters or moments",
+            )
+            raise FloatingPointError(
+                f"optimizer produced non-finite state at global step {step}"
+            )
         scheduler.step()
         for target in (6.0, 5.8):
             if target not in reached_targets and loss.item() <= target:

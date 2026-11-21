@@ -18,7 +18,7 @@ def test_delta_sequence_normalization_matches_reference_outputs_and_gradients():
     candidate.pre_normalize_sequence = True
     x_ref = torch.randn(3, 17, 32, requires_grad=True)
     x_new = x_ref.detach().clone().requires_grad_(True)
-    energy = torch.rand(3, 17)
+    energy = torch.rand(3, 17, 1)
     out_ref, surprise_ref = reference(x_ref, energy, reset_state=True)
     out_new, surprise_new = candidate(x_new, energy, reset_state=True)
     torch.testing.assert_close(out_new, out_ref, atol=2e-6, rtol=2e-5)

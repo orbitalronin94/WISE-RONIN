@@ -1,21 +1,55 @@
-"""Minimal M1 model shell; V1 organs are deliberately not implemented yet."""
+"""RONIN-LUMEN recurrent CPU architecture: eight explicitly separated organs."""
 import torch
 from torch import nn
-from torch.nn import functional as F
 from .config import CONFIG, LumenConfig
+from .embedding import VivoEmbedding
+from .energy import Presupuesto
+from .delta_state import EstadoDelta
+from .homeostasis import Homeostasis
+from .memory import MemoriaElastica
+from .heads import Heads
 
 class RoninLumen(nn.Module):
-    """Embed token IDs and return vocabulary logits for the M1 smoke test."""
     def __init__(self, config: LumenConfig = CONFIG):
         super().__init__()
         self.config = config
-        self.embedding = nn.Embedding(config.vocab_size, config.model_dim)
-        self.projection = nn.Linear(config.model_dim, config.model_dim, bias=False)
-        self.norm = nn.LayerNorm(config.model_dim)
-        nn.init.normal_(self.embedding.weight, mean=0.0, std=0.02)
-        nn.init.normal_(self.projection.weight, mean=0.0, std=0.02)
+        self.emb = VivoEmbedding(config.vocab_size, config.model_dim)
+        self.presupuesto = Presupuesto(config.model_dim)
+        self.delta_layers = nn.ModuleList([EstadoDelta(config.model_dim, config.surprise_threshold) for _ in range(config.delta_layers)])
+        self.homeo = nn.ModuleList([
+            Homeostasis(config.model_dim, config.homeostasis_target, config.homeostasis_eta,
+                        config.top_k_low if i < 2 else config.top_k_high)
+            for i in range(config.delta_layers)
+        ])
+        self.memoria = MemoriaElastica(config.model_dim)
+        self.heads = Heads(config.model_dim)
+        self.head_out = nn.Linear(config.model_dim, config.vocab_size, bias=False)
+        self.head_out.weight = self.emb.emb.weight
+        self.jepa_predictor = nn.Sequential(nn.Linear(config.model_dim, config.model_dim), nn.GELU(), nn.Linear(config.model_dim, config.model_dim))
 
-    def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
-        hidden = self.embedding(token_ids)
-        hidden = self.norm(hidden + F.gelu(self.projection(hidden)))
-        return F.linear(hidden, self.embedding.weight)
+    @property
+    def delta(self):
+        return self.delta_layers[0]
+
+    def reset_states(self):
+        for layer in self.delta_layers:
+            layer.clear_state()
+
+    def forward(self, token_ids, reset_state=True):
+        h = self.emb(token_ids)
+        e_delta, e_mem, e_head, energy = self.presupuesto(h)
+        surprises = []
+        for delta, homeo in zip(self.delta_layers, self.homeo):
+            h, surprise = delta(h, e_delta, reset_state=reset_state)
+            h = homeo(h)
+            surprises.append(surprise)
+        surprise = torch.stack(surprises).mean(0)
+        mem = self.memoria(h, surprise, e_mem)
+        hidden = h + mem
+        headed, router = self.heads(hidden, e_head)
+        logits = self.head_out(headed)
+        return {"logits": logits, "router": router, "activations": h,
+                "surprise": surprise, "energy": energy, "hidden": hidden}
+
+    def predict_latent(self, hidden):
+        return self.jepa_predictor(hidden)

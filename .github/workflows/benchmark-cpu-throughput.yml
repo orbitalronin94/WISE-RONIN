@@ -16,29 +16,29 @@ jobs:
       matrix:
         include:
           - profile: baseline
-            omp_proc_bind: ""
-            omp_places: ""
-            kmp_affinity: ""
+            omp_proc_bind: "false"
+            omp_places: "cores"
+            kmp_affinity: "disabled"
           - profile: interop2
-            omp_proc_bind: ""
-            omp_places: ""
-            kmp_affinity: ""
+            omp_proc_bind: "false"
+            omp_places: "cores"
+            kmp_affinity: "disabled"
           - profile: mkldnn_off
-            omp_proc_bind: ""
-            omp_places: ""
-            kmp_affinity: ""
+            omp_proc_bind: "false"
+            omp_places: "cores"
+            kmp_affinity: "disabled"
           - profile: foreach_off
-            omp_proc_bind: ""
-            omp_places: ""
-            kmp_affinity: ""
+            omp_proc_bind: "false"
+            omp_places: "cores"
+            kmp_affinity: "disabled"
           - profile: omp_affinity
             omp_proc_bind: "close"
             omp_places: "cores"
             kmp_affinity: "granularity=fine,compact,1,0"
           - profile: cpu_affinity
-            omp_proc_bind: ""
-            omp_places: ""
-            kmp_affinity: ""
+            omp_proc_bind: "false"
+            omp_places: "cores"
+            kmp_affinity: "disabled"
           - profile: combined
             omp_proc_bind: "close"
             omp_places: "cores"

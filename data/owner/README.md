@@ -58,3 +58,10 @@ python -m data.build_dataset \
 The builder verifies source hashes/revisions, exact quotas, per-file provenance, duplicate text, repeated five-token prefixes, 500-row holdout integrity, exact overlap and long prompt substrings. It writes `train_25k.manifest.json` with row counts, source hashes, language estimates and the output SHA-256.
 
 The lexical overlap audit is conservative but not semantic proof. The final manifest must be reviewed manually before tokenizer training. Tokenizer training and model training remain separate operations.
+
+
+## Preserved V2 material available for review
+
+A 257-row conversion of `archive/v2/data/curated/wise_ronin_sft_balanced.jsonl` is present at `legacy_v2_curated_review.jsonl`. It includes 60 factual-anchor rows (30 canonical facts represented twice), 147 hybrid-style rows, 30 controlled KOAN rows and 20 anti-sycophancy rows.
+
+Every imported row is explicitly marked `rights_confirmed: false` and `review_status: manual_review_required`. These rows are a starting point for manual inspection, not automatically accepted owner material and not counted toward the 5,000-row final quota. The source archive's own report says it is a compact correction set with only 30 independent factual questions, not a broad knowledge corpus.

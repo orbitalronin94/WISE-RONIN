@@ -15,8 +15,12 @@ import argparse
 import json
 import random
 import statistics
+import sys
 import time
 from pathlib import Path
+
+# Running this file directly sets sys.path[0] to scripts/, not the repository root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import torch
 from torch.nn import functional as F

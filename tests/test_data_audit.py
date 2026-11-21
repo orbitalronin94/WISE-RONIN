@@ -51,3 +51,13 @@ def test_audit_rejects_non_500_or_duplicate_id_holdout():
     duplicate[-1]["id"] = duplicate[0]["id"]
     with pytest.raises(ValueError, match="unique"):
         audit_rows([], duplicate)
+
+
+def test_audit_marks_normalized_duplicate_candidates_as_integrity_failure():
+    rows = [
+        {"prompt": "", "completion": "A unique four word phrase for testing."},
+        {"prompt": "", "completion": "A unique four-word phrase for testing"},
+    ]
+    report = audit_rows(rows, holdout_rows())
+    assert report["duplicate_candidate_count"] == 1
+    assert report["candidate_integrity_pass"] is False

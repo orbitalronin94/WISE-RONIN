@@ -8,6 +8,8 @@ import json
 import logging
 import os
 import random
+import re
+import unicodedata
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -85,7 +87,10 @@ def convert(row: dict[str, Any], source: dict[str, Any]) -> dict[str, Any] | Non
         return None
     if source["kind"] == "mates" and (not prompt or not completion):
         return None
-    normalized = (prompt + "\n" + completion).strip().lower()
+    raw = unicodedata.normalize("NFKC", prompt + " " + completion).casefold()
+    normalized = " ".join(re.sub(r"[^\w]+", " ", raw).split())
+    if len(normalized) < MIN_TEXT_CHARS or len(normalized.split()) < MIN_TEXT_WORDS:
+        return None
     return {
         "prompt": prompt,
         "completion": completion,

@@ -132,8 +132,11 @@ def main():
     p.add_argument("--token-cache", help="Validated pre-tokenized corpus cache")
     p.add_argument("--steps", type=int, default=500,
                    help="Number of additional steps in this block (maximum 500)")
-    p.add_argument("--threads", type=int, default=2,
-                   help="PyTorch intra-op CPU threads; benchmark 1/2/4 on the target runner")
+    p.add_argument("--threads", type=int, default=2, help="PyTorch intra-op CPU threads")
+    p.add_argument("--interop-threads", type=int, default=1)
+    p.add_argument("--disable-mkldnn", action="store_true")
+    p.add_argument("--disable-foreach", action="store_true")
+    p.add_argument("--cpu-affinity", action="store_true")
     p.add_argument("--resume", help="Previous global-step checkpoint")
     p.add_argument("--batch", type=int, default=8)
     p.add_argument("--max-len", type=int, default=128)
@@ -151,13 +154,21 @@ def main():
     args = p.parse_args()
     if not 1 <= args.steps <= 500:
         p.error("--steps must be between 1 and 500")
-    if args.threads < 1:
-        p.error("--threads must be at least 1")
+    if args.threads < 1 or args.interop_threads < 1:
+        p.error("--threads and --interop-threads must be at least 1")
     if getattr(args, 'scheduler_transition', False) and not args.resume:
         p.error("--scheduler-transition requires an exact resumable parent checkpoint")
 
     torch.set_num_threads(args.threads)
-    LOG.info("cpu_runtime: intraop_threads=%d", args.threads)
+    torch.set_num_interop_threads(args.interop_threads)
+    torch.backends.mkldnn.enabled = not args.disable_mkldnn
+    affinity_cpus = None
+    if args.cpu_affinity and hasattr(os, "sched_getaffinity"):
+        affinity_cpus = sorted(os.sched_getaffinity(0))[:args.threads]
+        os.sched_setaffinity(0, set(affinity_cpus))
+    LOG.info("cpu_runtime: intraop_threads=%d interop_threads=%d mkldnn=%s foreach=%s affinity=%s",
+             args.threads, args.interop_threads, torch.backends.mkldnn.enabled,
+             not args.disable_foreach, affinity_cpus)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     rows, data_hash = load_jsonl(args.data)
@@ -180,7 +191,7 @@ def main():
     params = sum(x.numel() for x in model.parameters())
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay,
-        foreach=True,
+        foreach=not args.disable_foreach,
     )
     scheduler = None if getattr(args, 'scheduler_transition', False) else make_scheduler(optimizer, args.warmup, args.total_steps)
     local_rng = random.Random(args.seed)
@@ -226,7 +237,7 @@ def main():
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
         for group in optimizer.param_groups:
-            group["foreach"] = True
+            group["foreach"] = not args.disable_foreach
         start = int(state["step"])
         if getattr(args, 'scheduler_transition', False):
             saved_transition = state.get("scheduler_transition")
@@ -295,7 +306,7 @@ def main():
         backward_started = time.perf_counter()
         loss.backward()
         profile["backward"] += time.perf_counter() - backward_started
-        torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip, foreach=True)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip, foreach=not args.disable_foreach)
         optimizer.step()
         scheduler.step()
         for target in (7.0, 6.0, 5.8):

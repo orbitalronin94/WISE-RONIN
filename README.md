@@ -17,6 +17,17 @@ RONIN-LUMEN nace del refactor de WISE-RONIN V2. No es una carrera por entrenar e
 - [Reproducir el smoke test](#reproducir-el-smoke-test)
 - [Principios de ingeniería](#principios-de-ingeniería)
 
+
+## Protocolo longitudinal y trazabilidad arquitectónica
+
+La comparación se desarrollará en bloques acumulativos de 500 pasos: 500, 1.000, 1.500, 2.000 y sucesivos. Cada hito debe poder reconstruirse y compararse con el Transformer sin depender de notas manuales.
+
+Para cada ejecución se conservará un manifiesto que identifique el commit exacto, versión/configuración de cada arquitectura, módulos y flags activos, recuento de parámetros, hashes del corpus y tokenizer, semilla, presupuesto de tokens, checkpoint padre, hashes de checkpoints, estado de optimizador/scheduler/RNG, métricas de evaluación y coste de CPU/memoria.
+
+En LUMEN se registrará además la actividad efectiva post-ReLU/Top-K por capa y por unidad, estado y escrituras Delta, actividad de memoria y consolidación realmente ejecutada. En el Transformer se registrarán su configuración completa, parámetros, estado de entrenamiento y métricas equivalentes disponibles. Las diferencias arquitectónicas —incluidas las pérdidas auxiliares y el ciclo de sueño— quedarán explícitas, no ocultas bajo una etiqueta de «mismo entrenamiento».
+
+Se permite encadenar bloques de 500 pasos dentro de un workflow para reutilizar corpus y tokenizer, pero cada bloque debe validar su checkpoint, hashes, paso global, estado de reanudación y checks de salud antes de habilitar el siguiente. Un fallo detiene la cadena y conserva el último checkpoint válido. El encadenamiento conjunto no se activa hasta que ambos trainers y el evaluador soporten y validen reanudación e hitos acumulativos.
+
 ## Qué estamos intentando cambiar
 
 La receta dominante de muchos modelos de lenguaje sigue una familia arquitectónica cuyo punto de inflexión moderno fue el Transformer de 2017: capas apiladas de autoatención y redes feed-forward, entrenadas para predecir el siguiente token. Esa arquitectura fue un avance decisivo; no sostenemos que sea obsoleta ni que escalarla sea inútil. Lo que rechazamos es asumir que **más parámetros, más datos y más cómputo son la única respuesta** a los problemas de estabilidad y degradación de un modelo pequeño.
@@ -87,7 +98,7 @@ La prueba del mérito no será el lenguaje grandilocuente: será que las ablacio
 - **No es corpus final:** faltan 5.000 filas propias curadas y 1.000 filas de código con licencia comprobada. Las fuentes externas descargadas siguen con `license_reviewed=false` y `rights_confirmed=false`; el resultado léxico no sustituye revisión humana ni semántica.
 - **Tokenizer:** todavía no hay tokenizer final construido a partir del corpus aprobado.
 - **Piloto comparativo autorizado:** se ha preparado una campaña provisional de 500 pasos sobre las 19.000 filas externas. Compara LUMEN (2.281.841 parámetros) con un decoder Transformer de tamaño prácticamente idéntico (2.295.168), con tokenizer, datos, semilla y tokens equiparados. [Protocolo comparativo](docs/PILOTO_COMPARATIVO_ES.md) · [Workflow del piloto](.github/workflows/pilot.yml).
-- **Estado del piloto:** preparado en la rama `pilot/ronin-lumen-500`; aún no iniciado en Actions. No se presenta como entrenamiento completado hasta que exista una ejecución y sus checkpoints.
+- **Primer bloque comparativo:** el workflow [44900623884](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44900623884) completó los entrenamientos de 500 pasos de LUMEN y Transformer, preparó el holdout GSM8K, ejecutó la evaluación y publicó un artefacto. El diagnóstico mostró colapso progresivo de actividad en capas profundas de LUMEN; el siguiente bloque queda condicionado a corregirlo y validar la medición post-Top-K.
 - **Producción:** sigue bloqueada por las revisiones de licencias, las 5.000 filas propias, las 1.000 filas de código auditadas y el tokenizer final.
 
 El piloto provisional no reemplaza la campaña 80/20 definitiva. Sus resultados se publicarán con sus límites y no se confundirán con los del corpus de producción.
@@ -99,7 +110,7 @@ El [índice de documentación](docs/README.md) organiza las especificaciones, au
 - [Documento maestro V1](DOCUMENTO_MAESTRO_RONIN_LUMEN_V1.md)
 - [Especificación V1](SPEC_RONIN_LUMEN_V1.md)
 - [Neurociencia y decisiones de arquitectura](docs/NEUROCIENCIA_Y_ARQUITECTURA_ES.md)
-- [Protocolo del piloto comparativo de razonamiento](docs/PILOTO_COMPARATIVO_ES.md)
+- [Protocolo comparativo, longitudinal y de trazabilidad](docs/PILOTO_COMPARATIVO_ES.md)
 - [Auditoría de la especificación](docs/SPEC_AUDIT.md)
 - [Auditoría del bucle de entrenamiento](docs/TRAIN_LOOP_REFERENCE_AUDIT.md)
 - [Extensión experimental V3.2 ZE](docs/RONIN_LUMEN_V3_2_ZE.md)

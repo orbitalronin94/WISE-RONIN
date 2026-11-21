@@ -18,6 +18,11 @@ class DualModelZe(nn.Module):
         self.register_buffer("erase_count", torch.zeros((), dtype=torch.long))
 
     def forward(self, causal_hidden, causal_pe, reset_state=True):
+        if reset_state:
+            with torch.no_grad():
+                self.conflict_streak = torch.zeros(
+                    causal_hidden.shape[0], dtype=torch.long, device=causal_hidden.device
+                )
         b_input = self.to_b(causal_hidden)
         b_hidden, b_pe = self.delta_b(
             b_input, torch.ones_like(b_input[..., :1]), reset_state=reset_state

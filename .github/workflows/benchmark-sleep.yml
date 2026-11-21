@@ -94,10 +94,11 @@ jobs:
             --bank-size 96 --eval-size 32 --sleep-steps 50 \
             --output artifacts/benchmark/sleep-replay-step3000.json
 
-      - name: Upload sleep benchmark report
+      - name: Upload sleep benchmark report (including partial diagnostics)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: lumen-sleep-replay-benchmark-${{ github.run_id }}
           path: artifacts/benchmark/sleep-replay-step3000.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90

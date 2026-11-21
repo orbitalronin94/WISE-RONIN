@@ -34,3 +34,13 @@ def test_slow_memory_can_still_write_during_training():
     energy = torch.ones(1, 5, 1)
     memory(x, surprise, energy)
     assert memory.contador_lenta.sum().item() > 0
+
+
+
+def test_slow_memory_write_caps_extreme_activation_norm():
+    memory = MemoriaElastica(dim=16, slots=4)
+    wrote = memory.registrar_nueva(torch.full((3, 16), 1e20))
+
+    assert wrote
+    assert torch.isfinite(memory.lenta).all()
+    assert torch.allclose(memory.lenta[0].norm(), torch.tensor(10.0), atol=1e-4)

@@ -32,7 +32,7 @@ MIN_TEXT_WORDS = 4
 SOURCES = [
     dict(key="tinystories", repo="roneneldan/TinyStories", config=None, quota=4000,
          kind="lenguaje", license="CDLA-Sharing-1.0", license_url="https://cdla.dev/sharing-1-0/",
-         confirmed=False, license_reviewed=False, rights_confirmed=False, license_reviewed=False, rights_confirmed=False, text="text",
+         confirmed=False, license_reviewed=False, rights_confirmed=False, text="text",
          notes="Synthetic stories; preserve share-alike obligations."),
     dict(key="babylm_2026", repo="BabyLM-community/BabyLM-2026-Strict", config=None, quota=4000,
          kind="lenguaje", license="MIT", license_url="https://huggingface.co/datasets/BabyLM-community/BabyLM-2026-Strict",
@@ -52,7 +52,7 @@ SOURCES = [
          notes="Synthetic generated text only; prompt and seed_data are excluded."),
     dict(key="orca_math", repo="microsoft/orca-math-word-problems-200k", config=None, quota=1500,
          kind="mates", license="MIT", license_url="https://huggingface.co/datasets/microsoft/orca-math-word-problems-200k",
-         confirmed=False, license_reviewed=False, rights_confirmed=False, license_reviewed=False, rights_confirmed=False, question="question", answer="answer",
+         confirmed=False, license_reviewed=False, rights_confirmed=False, question="question", answer="answer",
          notes="GPT-4-Turbo-generated answers; correctness is not assumed."),
     dict(key="tinygsm", repo="TinyGSM/TinyGSM", config=None, quota=1500,
          kind="mates", license="MIT", license_url="https://huggingface.co/datasets/TinyGSM/TinyGSM",

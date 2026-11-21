@@ -55,15 +55,29 @@ class RoninLumen(nn.Module):
         h = self.emb(token_ids)
         e_delta, e_mem, e_head, energy = self.presupuesto(h)
         surprises = []
+        complexity_terms = []
         for delta, homeo in zip(self.delta_layers, self.homeo):
+            previous = delta.state.detach().clone() if delta.state.numel() and not reset_state else None
             h, surprise = delta(h, e_delta, reset_state=reset_state)
             h = homeo(h)
             surprises.append(surprise)
+            if self.v32_ze:
+                current = delta.state
+                if previous is None or previous.shape != current.shape:
+                    previous = torch.zeros_like(current)
+                log_q_prev = torch.log_softmax(previous.float(), dim=-1)
+                q_current = torch.softmax(current.float(), dim=-1)
+                log_q_current = torch.log_softmax(current.float(), dim=-1)
+                kl = (q_current * (log_q_current - log_q_prev)).sum(dim=-1).mean()
+                complexity_terms.append(kl.to(h.dtype))
         surprise = torch.stack(surprises).mean(0)
+        free_energy_complexity = (
+            torch.stack(complexity_terms).mean()
+            if complexity_terms else h.new_zeros(())
+        )
 
         ze_metrics = None
         if self.ze is not None:
-            causal_hidden = h
             h, ze_metrics = self.ze(h, surprise, reset_state=reset_state)
             triggered = ze_metrics["erase_trigger"].any(dim=1)
             if triggered.any():
@@ -79,7 +93,8 @@ class RoninLumen(nn.Module):
         logits = self.head_out(headed)
         return {
             "logits": logits, "router": router, "activations": h,
-            "surprise": surprise, "energy": energy, "hidden": hidden,\n            "free_energy_complexity": free_energy_complexity,
+            "surprise": surprise, "energy": energy, "hidden": hidden,
+            "free_energy_complexity": free_energy_complexity,
             "ze": ze_metrics,
         }
 

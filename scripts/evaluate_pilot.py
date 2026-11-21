@@ -91,6 +91,8 @@ def main():
     torch.set_num_threads(2)
     data_hash = hashlib.sha256(Path(args.data).read_bytes()).hexdigest()
     tok_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
+    gsm_hash = hashlib.sha256(Path(args.gsm8k).read_bytes()).hexdigest()
+    historical_hash = hashlib.sha256(Path(args.historical_holdout).read_bytes()).hexdigest()
     tokenizer = BPETokenizer(args.tokenizer)
 
     gsm_all = read_jsonl(args.gsm8k)
@@ -112,6 +114,8 @@ def main():
                "git_sha": __import__("os").environ.get("GITHUB_SHA"),
                "workflow_run_id": __import__("os").environ.get("GITHUB_RUN_ID"),
                "expected_global_step": args.expected_step,
+               "gsm8k_holdout_sha256": gsm_hash,
+               "historical_holdout_sha256": historical_hash,
                "gsm8k_test_questions": len(gsm), "historical_unique_prompts": len(historical),
                "max_new_tokens": args.max_new_tokens, "decoding": "greedy",
                "gsm8k_sample_seed": 42, "gsm8k_selected_ids": [r["id"] for r in gsm],

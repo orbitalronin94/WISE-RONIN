@@ -42,16 +42,10 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install CPU training and benchmark dependencies
+      - name: Install only runtime dependencies
         run: |
-          python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install "datasets>=3,<4" "huggingface_hub>=0.25,<1.0" tokenizers numpy tqdm pytest
-
-      - name: Compile and run tests
-        run: |
-          python -m compileall -q model train data scripts
-          PYTHONPATH=. pytest -q tests
+          python -m pip install tokenizers numpy tqdm
 
       - name: Validate requested longitudinal range
         id: plan
@@ -77,6 +71,13 @@ jobs:
           echo "end_step=$END" >> "$GITHUB_OUTPUT"
           echo "Longitudinal plan: $START -> $END in $BLOCKS blocks"
 
+      - name: Restore validation result for this exact code revision
+        id: test-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/ronin-tests-passed
+          key: ronin-lumen-tests-v1-${{ github.sha }}
+
       - name: Restore prepared corpus, tokenizer and reasoning holdout cache
         id: prepared-cache
         uses: actions/cache/restore@v4
@@ -88,6 +89,32 @@ jobs:
             artifacts/reasoning_gsm8k_500.jsonl
             artifacts/reasoning_gsm8k_500.manifest.json
           key: ronin-lumen-prepared-v2-${{ hashFiles('scripts/build_pilot_corpus.py', 'scripts/prepare_reasoning_holdout.py', 'data/audit_holdout.py', 'data/holdout_500.jsonl') }}
+
+      - name: Install one-time validation and data-preparation dependencies
+        if: steps.test-cache.outputs.cache-hit != 'true' || steps.prepared-cache.outputs.cache-hit != 'true'
+        run: |
+          if [ "${{ steps.test-cache.outputs.cache-hit }}" != "true" ]; then
+            python -m pip install pytest "datasets>=3,<4" "huggingface_hub>=0.25,<1.0"
+          elif [ "${{ steps.prepared-cache.outputs.cache-hit }}" != "true" ]; then
+            python -m pip install "datasets>=3,<4" "huggingface_hub>=0.25,<1.0"
+          fi
+
+      - name: Compile sources on every run
+        run: python -m compileall -q model train data scripts
+
+      - name: Run full test suite once per exact code revision
+        if: steps.test-cache.outputs.cache-hit != 'true'
+        run: |
+          PYTHONPATH=. pytest -q tests
+          mkdir -p .cache
+          printf '%s\\n' "${{ github.sha }}" > .cache/ronin-tests-passed
+
+      - name: Save successful test result for this code revision
+        if: success() && steps.test-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/ronin-tests-passed
+          key: ronin-lumen-tests-v1-${{ github.sha }}
 
       - name: Restore exact parent checkpoints
         id: checkpoint-cache

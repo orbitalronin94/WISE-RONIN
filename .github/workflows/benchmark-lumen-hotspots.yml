@@ -1,4 +1,4 @@
-name: LUMEN parallel seven-hypothesis CPU benchmark (MKLDNN baseline)
+name: LUMEN parallel 40-hypothesis CPU benchmark (4-thread winner baseline)
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: lumen-parallel-hotspot-benchmark
+  group: lumen-40-hypothesis-benchmark
   cancel-in-progress: false
 
 jobs:
@@ -63,27 +63,66 @@ jobs:
           test -s benchmark-inputs/data/pilot_tokenized_128.pt
       - name: Verify exact Delta and Homeostasis fast paths
         run: PYTHONPATH=. pytest -q tests/test_hotspot_fastpaths.py
-      - name: Build control plus seven one-factor hypotheses from promoted MKLDNN profile
+      - name: Build control plus 40 hypotheses around the measured 4-thread winner
         id: matrix
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
           from pathlib import Path
           base = json.loads(Path("config/lumen_cpu_profile.json").read_text())
-          profiles = [{"name": "control", "profile": base}]
-          hypotheses = [
-              ("hypothesis_threads_1", {"threads": 1, "interop_threads": 1}),
-              ("hypothesis_threads_4", {"threads": 4, "interop_threads": 2}),
-              ("hypothesis_mkldnn_toggle", {"mkldnn_enabled": not base["mkldnn_enabled"]}),
-              ("hypothesis_foreach_toggle", {"foreach": not base["foreach"]}),
-              ("hypothesis_affinity_toggle", {"cpu_affinity": not base["cpu_affinity"]}),
-              ("hypothesis_delta_pre_normalize", {"delta_pre_normalize": not base["delta_pre_normalize"]}),
-              ("hypothesis_homeostasis_fused_scatter", {"homeostasis_fused_scatter": not base["homeostasis_fused_scatter"]}),
+          # Anchor every candidate to the measured winner: 4 intra-op, 2 inter-op,
+          # MKLDNN on, foreach off, CPU affinity on, exact fast paths off.
+          base.update({"threads": 4, "interop_threads": 2, "mkldnn_enabled": True,
+                       "foreach": False, "cpu_affinity": True,
+                       "delta_pre_normalize": False, "homeostasis_fused_scatter": False})
+          variants = [
+              ("threads_2", {"threads": 2}),
+              ("threads_3", {"threads": 3}),
+              ("threads_5", {"threads": 5}),
+              ("threads_6", {"threads": 6}),
+              ("threads_8", {"threads": 8}),
+              ("interop_1", {"interop_threads": 1}),
+              ("interop_4", {"interop_threads": 4}),
+              ("interop_8", {"interop_threads": 8}),
+              ("affinity_off", {"cpu_affinity": False}),
+              ("mkldnn_off", {"mkldnn_enabled": False}),
+              ("foreach_on", {"foreach": True}),
+              ("delta_pre_norm_on", {"delta_pre_normalize": True}),
+              ("homeostasis_fused_on", {"homeostasis_fused_scatter": True}),
+              ("threads_3_interop_1", {"threads": 3, "interop_threads": 1}),
+              ("threads_3_interop_2", {"threads": 3, "interop_threads": 2}),
+              ("threads_3_interop_4", {"threads": 3, "interop_threads": 4}),
+              ("threads_5_interop_1", {"threads": 5, "interop_threads": 1}),
+              ("threads_5_interop_2", {"threads": 5, "interop_threads": 2}),
+              ("threads_5_interop_4", {"threads": 5, "interop_threads": 4}),
+              ("threads_6_interop_1", {"threads": 6, "interop_threads": 1}),
+              ("threads_6_interop_4", {"threads": 6, "interop_threads": 4}),
+              ("threads_8_interop_1", {"threads": 8, "interop_threads": 1}),
+              ("threads_8_interop_4", {"threads": 8, "interop_threads": 4}),
+              ("affinity_off_interop_1", {"cpu_affinity": False, "interop_threads": 1}),
+              ("affinity_off_interop_4", {"cpu_affinity": False, "interop_threads": 4}),
+              ("mkldnn_off_foreach_on", {"mkldnn_enabled": False, "foreach": True}),
+              ("mkldnn_off_affinity_off", {"mkldnn_enabled": False, "cpu_affinity": False}),
+              ("foreach_on_affinity_off", {"foreach": True, "cpu_affinity": False}),
+              ("foreach_on_interop_1", {"foreach": True, "interop_threads": 1}),
+              ("foreach_on_interop_4", {"foreach": True, "interop_threads": 4}),
+              ("delta_pre_norm_interop_1", {"delta_pre_normalize": True, "interop_threads": 1}),
+              ("delta_pre_norm_interop_4", {"delta_pre_normalize": True, "interop_threads": 4}),
+              ("homeostasis_fused_interop_1", {"homeostasis_fused_scatter": True, "interop_threads": 1}),
+              ("homeostasis_fused_interop_4", {"homeostasis_fused_scatter": True, "interop_threads": 4}),
+              ("threads_5_foreach_on", {"threads": 5, "foreach": True}),
+              ("threads_6_foreach_on", {"threads": 6, "foreach": True}),
+              ("threads_5_affinity_off", {"threads": 5, "cpu_affinity": False}),
+              ("threads_6_affinity_off", {"threads": 6, "cpu_affinity": False}),
+              ("mkldnn_off_foreach_affinity_off", {"mkldnn_enabled": False, "foreach": True, "cpu_affinity": False}),
+              ("foreach_homeostasis_fused", {"foreach": True, "homeostasis_fused_scatter": True}),
           ]
-          for name, changes in hypotheses:
+          assert len(variants) == 40 and len({name for name, _ in variants}) == 40
+          profiles = [{"name": "control", "profile": base}]
+          for name, changes in variants:
               candidate = dict(base)
               candidate.update(changes)
-              profiles.append({"name": name, "profile": candidate})
+              profiles.append({"name": "hypothesis_" + name, "profile": candidate})
           matrix = {"include": [{"name": item["name"], "profile": json.dumps(item["profile"], separators=(",", ":"))} for item in profiles]}
           print("matrix=" + json.dumps(matrix, separators=(",", ":")))
           PY
@@ -101,7 +140,7 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 20
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
@@ -155,7 +194,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Download control plus seven parallel hypotheses
+      - name: Download control plus 40 parallel hypotheses
         uses: actions/download-artifact@v4
         with:
           pattern: lumen-profile-*

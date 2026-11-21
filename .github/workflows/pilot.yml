@@ -1,10 +1,14 @@
-name: RONIN-LUMEN 500-step matched-size pilot (import-path fix)
+name: RONIN-LUMEN 500-step matched-size pilot (Delta cold-start fix)
 
 on:
   push:
     branches: [main, pilot/ronin-lumen-500]
     paths:
       - ".github/workflows/pilot.yml"
+      - "model/**"
+      - "train/**"
+      - "scripts/**"
+      - "tests/**"
   workflow_dispatch:
 
 permissions:

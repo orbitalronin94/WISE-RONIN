@@ -39,7 +39,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({
         "model": model.state_dict(),
-        "architecture_id": "ronin_lumen_v3_pilot",
+        "architecture_id": "ronin_lumen_v3_1_residual_homeostasis",
         "architecture": {
             "model": "RoninLumen", "config": CONFIG.to_dict(),
             "v32_ze": args.v32_ze, "pilot_all_rows": args.pilot_all_rows,
@@ -149,6 +149,18 @@ def main():
         tokenizer_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
     if args.resume:
         state = torch.load(args.resume, map_location="cpu", weights_only=False)
+        parent_arch = state.get("architecture_id", "legacy_preversioned")
+        allowed_parent_arches = {
+            "ronin_lumen_v3_1_residual_homeostasis",
+            "ronin_lumen_v3_pilot",
+            "legacy_preversioned",
+        }
+        if parent_arch not in allowed_parent_arches:
+            raise ValueError(f"Unsupported LUMEN parent architecture: {parent_arch}")
+        if parent_arch != "ronin_lumen_v3_1_residual_homeostasis" and int(state.get("step", 0)) != 500:
+            raise ValueError("Only the frozen 500-step pilot checkpoint may migrate to residual homeostasis")
+        if parent_arch != "ronin_lumen_v3_1_residual_homeostasis":
+            LOG.warning("Architecture transition at step 500: sparse homeostatic updates now preserve the residual stream")
         if state.get("v32_ze", False) != args.v32_ze:
             raise ValueError("Checkpoint V3.2 feature flag mismatch")
         if state["config"] != CONFIG.to_dict() or state["data_sha256"] != data_hash:

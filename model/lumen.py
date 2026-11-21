@@ -57,19 +57,11 @@ class RoninLumen(nn.Module):
         surprises = []
         complexity_terms = []
         for delta, homeo in zip(self.delta_layers, self.homeo):
-            previous = delta.state.detach().clone() if delta.state.numel() and not reset_state else None
             h, surprise = delta(h, e_delta, reset_state=reset_state)
             h = homeo(h)
             surprises.append(surprise)
             if self.v32_ze:
-                current = delta.state
-                if previous is None or previous.shape != current.shape:
-                    previous = torch.zeros_like(current)
-                log_q_prev = torch.log_softmax(previous.float(), dim=-1)
-                q_current = torch.softmax(current.float(), dim=-1)
-                log_q_current = torch.log_softmax(current.float(), dim=-1)
-                kl = (q_current * (log_q_current - log_q_prev)).sum(dim=-1).mean()
-                complexity_terms.append(kl.to(h.dtype))
+                complexity_terms.append(delta.last_complexity)
         surprise = torch.stack(surprises).mean(0)
         free_energy_complexity = (
             torch.stack(complexity_terms).mean()

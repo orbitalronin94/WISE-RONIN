@@ -18,7 +18,7 @@ from huggingface_hub import HfApi
 LOG = logging.getLogger("lumen.sources")
 SEED = 42
 MAX_CHARS = 12000
-READ_MULTIPLIER = 5
+READ_MULTIPLIER = 20
 
 # The external allocation is 80% of 25k. The remaining 5k must be supplied
 # from the owner's curated corpus; this script never fabricates those records.
@@ -29,7 +29,7 @@ SOURCES = [
          notes="Synthetic stories; preserve share-alike obligations."),
     dict(key="babylm_2026", repo="BabyLM-community/BabyLM-2026-Strict", config=None, quota=4000,
          kind="lenguaje", license="MIT", license_url="https://huggingface.co/datasets/BabyLM-community/BabyLM-2026-Strict",
-         confirmed=True, text="text",
+         confirmed=False, text="text",
          notes="English developmental corpus; source mix includes transcripts, books and web."),
     dict(key="fineweb_edu", repo="HuggingFaceFW/fineweb-edu", config="sample-10BT", quota=2000,
          kind="factual", license="ODC-By-1.0", license_url="https://opendatacommons.org/licenses/by/1-0/",
@@ -103,7 +103,7 @@ def stream_for(source: dict[str, Any]):
     return load_dataset(**args).shuffle(seed=SEED, buffer_size=10000), revision
 
 
-def sample(source: dict[str, Any]) -> list[dict[str, Any]]:
+def sample(source: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
     """Sample, exact-deduplicate and apply the five-token prefix rule."""
     wanted = source["quota"]
     candidates: list[dict[str, Any]] = []

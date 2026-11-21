@@ -79,7 +79,7 @@ class RoninLumen(nn.Module):
         logits = self.head_out(headed)
         return {
             "logits": logits, "router": router, "activations": h,
-            "surprise": surprise, "energy": energy, "hidden": hidden,
+            "surprise": surprise, "energy": energy, "hidden": hidden,\n            "free_energy_complexity": free_energy_complexity,
             "ze": ze_metrics,
         }
 

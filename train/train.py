@@ -11,7 +11,7 @@ import torch
 from model.config import CONFIG
 from model.lumen import RoninLumen
 from train.curriculum import datos_para_fase, sample_phase2
-from train.dataset import BPETokenizer, collate, load_jsonl
+from train.dataset import BPETokenizer, collate_rows, load_jsonl
 from train.loss import perdida_total
 from train.sleep import sueno
 from train.quant import fake_int8_tensor
@@ -92,6 +92,8 @@ def main():
     parser.add_argument("--orpo", action="store_true")
     parser.add_argument("--v32-ze", action="store_true",
                         help="Enable experimental V3.2 dual-state/LC-NE/energy mechanisms")
+    parser.add_argument("--pilot-all-rows", action="store_true",
+                        help="Use every row in the explicitly authorized provisional pilot corpus; phase 1 only")
     parser.add_argument("--dummy-m1", action="store_true",
                         help="Explicit synthetic smoke test only; never a training dataset")
     args = parser.parse_args()
@@ -102,6 +104,8 @@ def main():
         parser.error("ORPO is not implemented: preference pairs and objective need a separate approved specification")
     if args.dummy_m1 and args.steps > 10:
         parser.error("--dummy-m1 is limited to blocks of at most 10 steps")
+    if args.pilot_all_rows and (args.dummy_m1 or args.phase != 1):
+        parser.error("--pilot-all-rows is only valid for real-data phase 1")
 
     torch.set_num_threads(2)
     torch.manual_seed(args.seed)
@@ -118,7 +122,7 @@ def main():
             raise ValueError("Tokenizer vocabulary size must match model config")
         if tokenizer.tokenizer.token_to_id("[PAD]") != 0:
             raise ValueError("[PAD] must be token ID 0")
-        phase_data = datos_para_fase(rows, args.phase)
+        phase_data = rows if args.pilot_all_rows else datos_para_fase(rows, args.phase)
 
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay
@@ -164,7 +168,7 @@ def main():
         else:
             chosen = (sample_phase2(phase_data, args.batch, local_rng)
                       if args.phase == 2 else local_rng.choices(phase_data, k=args.batch))
-            tokens = collate(chosen, tokenizer, args.batch, args.max_len, local_rng)
+            tokens = collate_rows(chosen, tokenizer, args.max_len)
 
         output = model(tokens, reset_state=True)
         loss, metrics = perdida_total(

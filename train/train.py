@@ -48,7 +48,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "data_sha256": data_hash,
         "rng": capture_rng(local_rng),
         "torch_version": torch.__version__,
-        "delta_policy": "reset_at_each_batch_boundary",
+        "delta_policy": "reset_at_each_batch_boundary",\n        "v32_ze": args.v32_ze,
     }, path)
     LOG.info("checkpoint=%s step=%d", path, step)
 
@@ -91,7 +91,7 @@ def main():
     parser.add_argument("--no-jepa", action="store_true")
     parser.add_argument("--no-rep", action="store_true")
     parser.add_argument("--orpo", action="store_true")
-    parser.add_argument("--dummy-m1", action="store_true",
+    parser.add_argument("--v32-ze", action="store_true",\n                        help="Enable experimental V3.2 dual-state/LC-NE/energy mechanisms")\n    parser.add_argument("--dummy-m1", action="store_true",
                         help="Explicit synthetic smoke test only; never a training dataset")
     args = parser.parse_args()
 
@@ -106,7 +106,7 @@ def main():
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     device = torch.device("cpu")
-    model = RoninLumen().to(device)
+    model = RoninLumen(v32_ze=args.v32_ze).to(device)
 
     if args.dummy_m1:
         data_hash = "dummy-m1-no-corpus"
@@ -129,7 +129,7 @@ def main():
     state = None
     if args.resume:
         state = torch.load(args.resume, map_location="cpu", weights_only=False)
-        if state["config"] != CONFIG.to_dict() or state["data_sha256"] != data_hash:
+        if state.get("v32_ze", False) != args.v32_ze:\n            raise ValueError("Checkpoint V3.2 feature flag mismatch")\n        if state["config"] != CONFIG.to_dict() or state["data_sha256"] != data_hash:
             raise ValueError("Checkpoint config or training corpus hash mismatch")
         if state["phase"] != args.phase:
             raise ValueError("Cannot change curriculum phase when resuming a checkpoint")
@@ -197,7 +197,7 @@ def main():
             entropy = float(model.presupuesto.entropy(output["energy"]).detach())
             LOG.info(
                 "step=%d loss=%.5f token=%.5f latent=%.5f div=%.5f "
-                "router=%.5f rep=%.5f dead=%.2f%% energy_entropy=%.4f lr=%.3e",
+                "router=%.5f rep=%.5f F_complexity=%.5f dead=%.2f%% energy_entropy=%.4f lr=%.3e",
                 step, loss.item(), metrics["L_token"].item(),
                 metrics["L_latente"].item(), metrics["L_div"].item(),
                 metrics["L_router"].item(), metrics["L_rep"].item(),

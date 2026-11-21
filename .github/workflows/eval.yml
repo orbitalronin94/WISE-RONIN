@@ -1,1 +1,29 @@
-# M1 placeholder. Implement checkpoint evaluation only in the evaluation milestone.
+name: RONIN-LUMEN evaluation
+on:
+  workflow_dispatch:
+  push:
+    branches: [lumen-v1/m1-refactor]
+    paths: ["eval/**",".github/workflows/eval.yml"]
+permissions: {contents: read}
+jobs:
+  static-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: lumen-v1/m1-refactor}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Install CPU PyTorch
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy
+      - name: Compile project
+        run: python -m compileall -q model train eval data scripts
+      - name: Verify frozen holdout
+        run: |
+          python - <<'PY'
+          import json
+          rows=[json.loads(x) for x in open("data/holdout_500.jsonl",encoding="utf-8") if x.strip()]
+          assert len(rows)==500, len(rows)
+          print("holdout_rows",len(rows))
+          PY

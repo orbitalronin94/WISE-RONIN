@@ -61,6 +61,11 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "pilot_all_rows": args.pilot_all_rows,
         "tokens_seen": tokens_seen,
         "tokenizer_sha256": tokenizer_hash,
+        "training_config": {
+            "batch": args.batch, "max_len": args.max_len, "lr": args.lr,
+            "warmup": args.warmup, "total_steps": args.total_steps,
+            "weight_decay": CONFIG.weight_decay,
+        },
         "layer_diagnostics_history": list(layer_diagnostics_history),
         "sleep_events": list(sleep_events),
     }, path)
@@ -163,6 +168,15 @@ def main():
             LOG.warning("Architecture transition at step 500: sparse homeostatic updates now preserve the residual stream")
         if state.get("v32_ze", False) != args.v32_ze:
             raise ValueError("Checkpoint V3.2 feature flag mismatch")
+        expected_training_config = {
+            "batch": args.batch, "max_len": args.max_len, "lr": args.lr,
+            "warmup": args.warmup, "total_steps": args.total_steps,
+            "weight_decay": CONFIG.weight_decay,
+        }
+        if state.get("training_config") not in (None, expected_training_config):
+            raise ValueError("Checkpoint training hyperparameters mismatch")
+        if state.get("seed", args.seed) != args.seed:
+            raise ValueError("Checkpoint seed mismatch")
         if state["config"] != CONFIG.to_dict() or state["data_sha256"] != data_hash:
             raise ValueError("Checkpoint config or training corpus hash mismatch")
         if state["phase"] != args.phase:

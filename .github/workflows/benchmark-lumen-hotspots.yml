@@ -39,17 +39,17 @@ jobs:
         with:
           name: ronin-lumen-compiled-matched-3000-44940676355
           path: artifacts/promoted-step-3000
-          repository: \${{ github.repository }}
+          repository: ${{ github.repository }}
           run-id: 44940676355
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download frozen training inputs
         uses: actions/download-artifact@v4
         with:
           name: ronin-lumen-continuation-inputs-44936542271
           path: artifacts/frozen-inputs
-          repository: \${{ github.repository }}
+          repository: ${{ github.repository }}
           run-id: 44936542271
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Assemble frozen benchmark inputs
         run: |
           set -euo pipefail
@@ -76,7 +76,7 @@ jobs:
       - name: Upload full benchmark evidence
         uses: actions/upload-artifact@v4
         with:
-          name: lumen-hotspot-benchmark-\${{ github.run_id }}
+          name: lumen-hotspot-benchmark-${{ github.run_id }}
           path: |
             artifacts/lumen_hotspot_benchmark.json
             config/lumen_cpu_profile.json
@@ -86,7 +86,7 @@ jobs:
         id: cpr
         uses: peter-evans/create-pull-request@v7
         with:
-          token: \${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           branch: automation/lumen-cpu-profile
           delete-branch: true
           commit-message: "Promote benchmarked LUMEN CPU runtime profile"
@@ -97,14 +97,14 @@ jobs:
             Only runtime settings and exact-output/gradient-preserving fast paths are eligible.
             Repetition-loss ablation is diagnostic only and is never promoted because it changes the training objective.
 
-            Full timing, profiler and ablation evidence is attached to workflow run \${{ github.run_id }}.
+            Full timing, profiler and ablation evidence is attached to workflow run ${{ github.run_id }}.
           add-paths: |
             config/lumen_cpu_profile.json
       - name: Auto-merge verified profile promotion
-        if: \${{ inputs.auto_merge && steps.cpr.outputs.pull-request-number != '' }}
+        if: ${{ inputs.auto_merge && steps.cpr.outputs.pull-request-number != '' }}
         env:
-          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: \${{ steps.cpr.outputs.pull-request-number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
         run: |
           set -euo pipefail
           gh pr merge "$PR_NUMBER" --squash --delete-branch

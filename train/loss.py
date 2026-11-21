@@ -1,8 +1,10 @@
-"""Combined token, JEPA latent, diversity, router and differentiable repetition losses."""
+"""Token, JEPA, diversity, router, repetition and optional variational-inspired losses."""
 import torch
 from torch.nn import functional as F
 
-def perdida_total(output, targets, model, use_jepa=True, use_rep=True, pad_id=0):
+
+def perdida_total(output, targets, model, use_jepa=True, use_rep=True,
+                  use_free_energy=False, beta=0.01, pad_id=0):
     logits = output["logits"]
     _, steps, vocab = logits.shape
     token_loss = F.cross_entropy(
@@ -36,9 +38,14 @@ def perdida_total(output, targets, model, use_jepa=True, use_rep=True, pad_id=0)
         ).sum(dim=-1)
         repetition_loss = triple_repeat_probability.mean()
 
+    complexity = output.get("free_energy_complexity", logits.new_zeros(()))
+    if not use_free_energy:
+        complexity = complexity.detach() * 0.0
+
     total = (
         token_loss + 0.3 * latent_loss + 0.01 * diversity_loss
         + 0.01 * router_loss + 0.05 * repetition_loss
+        + (beta * complexity if use_free_energy else 0.0)
     )
     return total, {
         "L_token": token_loss.detach(),
@@ -46,4 +53,5 @@ def perdida_total(output, targets, model, use_jepa=True, use_rep=True, pad_id=0)
         "L_div": diversity_loss.detach(),
         "L_router": router_loss.detach(),
         "L_rep": repetition_loss.detach(),
+        "F_complexity": complexity.detach(),
     }

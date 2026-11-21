@@ -16,7 +16,7 @@ def main():
     p.add_argument("--train-data", default="data/pilot_train_19k.jsonl")
     p.add_argument("--output", default="artifacts/reasoning_gsm8k_100.jsonl")
     p.add_argument("--manifest", default="artifacts/reasoning_gsm8k_100.manifest.json")
-    p.add_argument("--count", type=int, default=100)
+    p.add_argument("--count", type=int, default=500)
     args = p.parse_args()
     train_rows = read_jsonl(args.train_data)
     train_texts = [norm(str(r.get("prompt", "")) + " " + str(r.get("completion", ""))) for r in train_rows]

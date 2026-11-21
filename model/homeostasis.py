@@ -12,6 +12,7 @@ class Homeostasis(nn.Module):
         self.register_buffer("effective_m", torch.zeros(dim))
         self.last_input_positive = 0.0
         self.last_output_positive = 0.0
+        self.last_gate_positive = 0.0
         self.last_output_norm = 0.0
 
     def forward(self, x):
@@ -28,12 +29,16 @@ class Homeostasis(nn.Module):
         k = min(self.k_top, self.dim)
         values, indices = torch.topk(y, k=k, dim=-1)
         mask = torch.zeros_like(y).scatter_(-1, indices, 1.0)
-        output = torch.relu(y) * mask
+        gated_update = torch.relu(y) * mask
+        # Top-K sparsifies the homeostatic update, not the information stream.
+        # Returning only gated_update erased most dimensions at every layer.
+        output = x + gated_update
+        self.last_gate_positive = float((gated_update.detach() > 0).float().mean().item())
         self.last_output_positive = float((output.detach() > 0).float().mean().item())
         self.last_output_norm = float(output.detach().norm().item() / max(1, (output.shape[0] * output.shape[1]) ** 0.5))
         if self.training:
             with torch.no_grad():
-                effective_active = (output > 0).float().mean(dim=(0, 1))
+                effective_active = (gated_update > 0).float().mean(dim=(0, 1))
                 self.effective_m.mul_(0.99).add_(effective_active, alpha=0.01)
         return output
 

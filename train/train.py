@@ -114,6 +114,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "rng": capture_rng(local_rng),
         "torch_version": torch.__version__,
         "cpu_threads": torch.get_num_threads(),
+        "runtime_profile": getattr(args, "runtime_profile_settings", {}),
         "delta_policy": "reset_at_each_batch_boundary",
         "v32_ze": args.v32_ze,
         "pilot_all_rows": args.pilot_all_rows,
@@ -255,6 +256,7 @@ def main():
         args.disable_mkldnn = not bool(runtime_profile.get("mkldnn_enabled", not args.disable_mkldnn))
         args.disable_foreach = not bool(runtime_profile.get("foreach", not args.disable_foreach))
         args.cpu_affinity = bool(runtime_profile.get("cpu_affinity", args.cpu_affinity))
+        args.runtime_profile_settings = dict(runtime_profile)
         LOG.info("runtime_profile loaded: %s", args.runtime_profile)
 
     torch.set_num_threads(args.threads)
@@ -276,6 +278,9 @@ def main():
         layer.pre_normalize_sequence = bool(runtime_profile.get("delta_pre_normalize", False))
     for organ in model.homeo:
         organ.fused_scatter_add = bool(runtime_profile.get("homeostasis_fused_scatter", False))
+    LOG.info("lumen_fastpaths: delta_pre_normalize=%s homeostasis_fused_scatter=%s",
+             bool(runtime_profile.get("delta_pre_normalize", False)),
+             bool(runtime_profile.get("homeostasis_fused_scatter", False)))
 
     if args.dummy_m1:
         data_hash, tokenizer, phase_data = "dummy-m1-no-corpus", None, None

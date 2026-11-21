@@ -36,10 +36,10 @@ def load_jsonl(path):
         raise ValueError("Training JSONL is empty")
     return rows, digest.hexdigest()
 
-def collate(rows, tokenizer, batch_size, max_len, rng):
-    selected = rng.choices(rows, k=batch_size)
+def collate_rows(rows, tokenizer, max_len):
+    """Encode an already selected batch; shared by both pilot architectures."""
     encoded = []
-    for row in selected:
+    for row in rows:
         text = (str(row["prompt"]) + "\n" + str(row["completion"])).strip()
         ids = tokenizer.encode(text, max_len)
         if len(ids) >= 2:
@@ -54,3 +54,8 @@ def collate(rows, tokenizer, batch_size, max_len, rng):
     for index, ids in enumerate(encoded):
         batch[index, :len(ids)] = torch.tensor(ids, dtype=torch.long)
     return batch
+
+
+def collate(rows, tokenizer, batch_size, max_len, rng):
+    """Backward-compatible random sampler plus deterministic batch encoder."""
+    return collate_rows(rng.choices(rows, k=batch_size), tokenizer, max_len)

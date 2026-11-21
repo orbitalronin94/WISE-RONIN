@@ -34,11 +34,19 @@ def restore_rng(state, local_rng):
     local_rng.setstate(state["local_sampler"])
 
 
-def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, local_rng, tokens_seen, tokenizer_hash):
+def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, local_rng, tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events):
     model.reset_states()
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({
         "model": model.state_dict(),
+        "architecture_id": "ronin_lumen_v3_pilot",
+        "architecture": {
+            "model": "RoninLumen", "config": CONFIG.to_dict(),
+            "v32_ze": args.v32_ze, "pilot_all_rows": args.pilot_all_rows,
+            "no_sleep": args.no_sleep, "no_jepa": args.no_jepa,
+            "no_rep": args.no_rep,
+        },
+        "params": sum(parameter.numel() for parameter in model.parameters()),
         "optimizer": optimizer.state_dict(),
         "scheduler": scheduler.state_dict(),
         "step": step,
@@ -53,6 +61,8 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "pilot_all_rows": args.pilot_all_rows,
         "tokens_seen": tokens_seen,
         "tokenizer_sha256": tokenizer_hash,
+        "layer_diagnostics_history": list(layer_diagnostics_history),
+        "sleep_events": list(sleep_events),
     }, path)
     LOG.info("checkpoint=%s step=%d", path, step)
 
@@ -134,6 +144,7 @@ def main():
     scheduler = make_scheduler(optimizer, args.warmup, args.total_steps)
     start, state = 0, None
     tokens_seen, tokenizer_hash = 0, "dummy-no-tokenizer"
+    layer_diagnostics_history, sleep_events = [], []
     if not args.dummy_m1:
         tokenizer_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
     if args.resume:
@@ -149,15 +160,28 @@ def main():
             or state.get("tokenizer_sha256") != tokenizer_hash
         ):
             raise ValueError("Pilot resume requires the same all-row mode and tokenizer hash")
-        model.load_state_dict(state["model"])
+        incompatible = model.load_state_dict(state["model"], strict=False)
+        allowed_missing = {f"homeo.{i}.effective_m" for i in range(len(model.homeo))}
+        missing = set(incompatible.missing_keys)
+        unexpected = set(incompatible.unexpected_keys)
+        if missing - allowed_missing or unexpected:
+            raise ValueError(
+                f"Checkpoint architecture mismatch: missing={sorted(missing - allowed_missing)}, "
+                f"unexpected={sorted(unexpected)}"
+            )
+        if missing:
+            LOG.warning("Migrated legacy checkpoint: initialized post-gate activity EMA for %d homeostasis layers",
+                        len(missing))
         optimizer.load_state_dict(state["optimizer"])
         scheduler.load_state_dict(state["scheduler"])
         start = int(state["step"])
         tokens_seen = int(state.get("tokens_seen", 0))
+        layer_diagnostics_history = list(state.get("layer_diagnostics_history", []))
+        sleep_events = list(state.get("sleep_events", []))
         LOG.info("resumed step=%d tokens_seen=%d", start, tokens_seen)
 
     phase_ranges = {1: (0, 2000), 2: (2000, 8000), 3: (8000, 10000)}
-    low, high = phase_ranges[args.phase]
+    low, high = ((0, args.total_steps) if args.pilot_all_rows else phase_ranges[args.phase])
     if not args.dummy_m1 and not (low <= start < high and start + args.steps <= high):
         raise ValueError(
             f"Phase {args.phase} accepts start in [{low},{high}) and must end by {high}; "
@@ -204,7 +228,8 @@ def main():
             quant_enabled = True
 
         if step % 100 == 0 or step == start + 1:
-            dead = max(organ.neuronas_muertas() for organ in model.homeo)
+            dead_by_layer = [organ.neuronas_muertas() for organ in model.homeo]
+            dead = max(dead_by_layer, default=1.0)
             entropy = float(model.presupuesto.entropy(output["energy"]).detach())
             ze_conflict = 0.0
             ze_erase = 0
@@ -222,23 +247,60 @@ def main():
                 float(output["surprise"].mean().detach()), ze_conflict, ze_erase,
                 tokens_seen, scheduler.get_last_lr()[0],
             )
+            layer_records = []
+            for i, (delta, homeo) in enumerate(zip(model.delta_layers, model.homeo)):
+                layer_records.append({
+                    "layer": i,
+                    "write_rate": delta.last_write_rate,
+                    "delta_state_norm": delta.last_state_norm,
+                    "delta_output_norm": delta.last_output_norm,
+                    "input_positive_rate": homeo.last_input_positive,
+                    "output_positive_rate": homeo.last_output_positive,
+                    "homeostasis_output_norm": homeo.last_output_norm,
+                    "effective_activity_mean": float(homeo.effective_m.mean().detach()),
+                    "effective_dead_fraction": homeo.neuronas_muertas(),
+                    "homeostasis_bias_norm": float(homeo.bias.detach().norm()),
+                    "homeostasis_bias_min": float(homeo.bias.detach().min()),
+                    "homeostasis_bias_max": float(homeo.bias.detach().max()),
+                })
+            layer_diagnostics_history.append({"step": step, "layers": layer_records})
+            layer_diag = " | ".join(
+                f"L{record['layer']}:write={record['write_rate']:.3f},"
+                f"state={record['delta_state_norm']:.3e},"
+                f"delta_out={record['delta_output_norm']:.3e},"
+                f"in+={record['input_positive_rate']:.3f},"
+                f"out+={record['output_positive_rate']:.3f},"
+                f"homeo_out={record['homeostasis_output_norm']:.3e},"
+                f"dead={record['effective_dead_fraction']:.1%},"
+                f"bias_norm={record['homeostasis_bias_norm']:.3e}"
+                for record in layer_records
+            )
+            LOG.info("layer_diagnostics step=%d %s", step, layer_diag)
+            LOG.info("effective_dead_by_layer step=%d values=%s", step,
+                     ",".join(f"{value:.3f}" for value in dead_by_layer))
             if step >= 100 and dead > 0.20:
                 save_checkpoint(
                     Path(args.ckpt_dir) / f"step_{step}_STOP.pt",
                     model, optimizer, scheduler, step, args, data_hash, local_rng,
-                    tokens_seen, tokenizer_hash,
+                    tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events,
                 )
                 raise RuntimeError(f"STOP: dead neurons {dead:.1%} exceeds 20%")
 
         if not args.no_sleep and not args.dummy_m1:
             if args.v32_ze:
                 if not sleep_done and model.memoria.occupancy() >= 0.8:
+                    records_before_sleep = int((model.memoria.contador_lenta > 0).sum().item())
                     sleep_loss = sueno(model, device="cpu")
+                    sleep_events.append({"step": step, "records": records_before_sleep,
+                                         "executed": records_before_sleep > 0, "loss": float(sleep_loss)})
                     sleep_done = True
                     LOG.info("adaptive IRI sleep step=%d occupancy=%.1f%% loss=%.6f",
                              step, model.memoria.occupancy() * 100, sleep_loss)
             elif step % CONFIG.sleep_interval_steps == 0:
+                records_before_sleep = int((model.memoria.contador_lenta > 0).sum().item())
                 sleep_loss = sueno(model, device="cpu")
+                sleep_events.append({"step": step, "records": records_before_sleep,
+                                     "executed": records_before_sleep > 0, "loss": float(sleep_loss)})
                 LOG.info("sleep step=%d loss=%.6f", step, sleep_loss)
 
         if step % 1000 == 0 and not args.dummy_m1:
@@ -249,13 +311,13 @@ def main():
         if step % 500 == 0:
             save_checkpoint(Path(args.ckpt_dir) / f"step_{step}.pt",
                             model, optimizer, scheduler, step, args, data_hash, local_rng,
-                            tokens_seen, tokenizer_hash)
+                            tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events)
 
     final_step = start + args.steps
     if final_step % 500:
         save_checkpoint(Path(args.ckpt_dir) / f"step_{final_step}.pt",
                         model, optimizer, scheduler, final_step, args, data_hash, local_rng,
-                        tokens_seen, tokenizer_hash)
+                        tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events)
     LOG.info("completed step=%d device=cpu", final_step)
 
 

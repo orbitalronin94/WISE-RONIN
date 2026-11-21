@@ -6,11 +6,14 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import random
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 from datasets import load_dataset
 from huggingface_hub import HfApi

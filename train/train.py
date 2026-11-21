@@ -31,7 +31,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, rn
         "model": model.state_dict(), "optimizer": optimizer.state_dict(),
         "scheduler": scheduler.state_dict(), "step": step, "phase": args.phase,
         "seed": args.seed, "config": CONFIG.to_dict(), "data_sha256": data_hash,
-        "rng": rng_state(), "torch_version": torch.__version__,
+        "rng": rng_state(rng), "torch_version": torch.__version__,
         "delta_policy": "reset_at_each_batch_boundary",
     }, path)
     LOG.info("checkpoint=%s step=%d", path, step)
@@ -110,7 +110,7 @@ def main():
         LOG.info("fake-int8 activation simulation enabled at step >=5000")
 
     model.train()
-    rng = random.Random(args.seed + start)
+    rng = random.Random(args.seed + start)\n    if args.resume and state.get("rng", {}).get("local") is not None:\n        rng.setstate(state["rng"]["local"])
     for step in range(start + 1, start + args.steps + 1):
         if args.dummy_m1:
             tokens = torch.randint(4, CONFIG.vocab_size, (args.batch, args.max_len))

@@ -45,14 +45,15 @@ La columna `confirmed` es una etiqueta de procedencia del pipeline, no una garan
 
 - Seed congelada: `42`.
 - Lectura mediante Hugging Face Datasets en streaming.
-- Deduplicación exacta por SHA-256 del texto normalizado.
-- Filtro de prefijo de cinco tokens: si un grupo supera diez registros, se conserva uno.
+- Resolución de la revisión actual de cada dataset a un commit SHA inmutable, registrado en el manifiesto.
+- Deduplicación exacta por SHA-256 del texto normalizado, compartida entre fuentes.
+- Filtro de prefijo de cinco tokens por fuente durante el staging: si un grupo supera diez registros, se conserva uno. El builder final aún debe repetir la auditoría de prefijos sobre la mezcla completa.
 - Cada fichero JSONL tiene su SHA-256 en `manifest.json`.
 - Los candidatos se almacenan como artefacto de GitHub Actions, no en Git.
 - El muestreador falla si no alcanza la cuota; no reduce cuotas silenciosamente.
 - El holdout `holdout_500.jsonl` no se lee ni se modifica durante esta preparación.
 
-Ejecutar manualmente en GitHub Actions: workflow **Prepare RONIN-LUMEN source libraries**. El artefacto se llama `lumen-source-candidates-seed-42`.
+Workflow disponible en GitHub Actions: **Prepare RONIN-LUMEN source libraries**. El artefacto esperado se llama `lumen-source-candidates-seed-42`. Todavía no hay ejecución ni artifact publicados; el archivo de workflow está en la rama draft de esta PR.
 
 ## Pendientes antes de crear `train_25k.jsonl`
 

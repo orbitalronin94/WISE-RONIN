@@ -83,6 +83,8 @@ def main():
     p.add_argument("--gsm8k", default="artifacts/reasoning_gsm8k_500.jsonl")
     p.add_argument("--historical-holdout", default="data/holdout_500.jsonl")
     p.add_argument("--gsm8k-limit", type=int, default=100)
+    p.add_argument("--expected-step", type=int, default=500,
+                   help="Expected matched global checkpoint step for both models")
     p.add_argument("--max-new-tokens", type=int, default=64)
     p.add_argument("--output", default="artifacts/pilot-evaluation")
     args = p.parse_args()
@@ -107,6 +109,9 @@ def main():
     outdir = Path(args.output)
     outdir.mkdir(parents=True, exist_ok=True)
     summary = {"data_sha256": data_hash, "tokenizer_sha256": tok_hash,
+               "git_sha": __import__("os").environ.get("GITHUB_SHA"),
+               "workflow_run_id": __import__("os").environ.get("GITHUB_RUN_ID"),
+               "expected_global_step": args.expected_step,
                "gsm8k_test_questions": len(gsm), "historical_unique_prompts": len(historical),
                "max_new_tokens": args.max_new_tokens, "decoding": "greedy",
                "gsm8k_sample_seed": 42, "gsm8k_selected_ids": [r["id"] for r in gsm],
@@ -118,8 +123,8 @@ def main():
             raise ValueError(f"{kind}: checkpoint corpus hash mismatch")
         if state.get("tokenizer_sha256") != tok_hash:
             raise ValueError(f"{kind}: checkpoint tokenizer hash mismatch")
-        if state.get("step") != 500 or state.get("seed") != 42:
-            raise ValueError(f"{kind}: expected the matched 500-step seed-42 checkpoint")
+        if state.get("step") != args.expected_step or state.get("seed") != 42:
+            raise ValueError(f"{kind}: expected matched step={args.expected_step}, seed=42")
         predictions = []
         for start in range(0, len(tasks), 8):
             batch_tasks = tasks[start:start+8]
@@ -150,6 +155,9 @@ def main():
                     "accuracy": round(sum(r["correct"] for r in subset) / len(subset), 4),
                 }
         summary["models"][kind] = {
+            "architecture_id": state.get("architecture_id", "legacy_unversioned"),
+            "architecture": state.get("architecture", state.get("architecture_id")),
+            "training_config": state.get("training_config"),
             "parameters": sum(p.numel() for p in model.parameters()),
             "training_steps": state.get("step"),
             "tokens_seen": state.get("tokens_seen"),

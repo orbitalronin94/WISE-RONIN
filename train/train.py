@@ -157,7 +157,18 @@ def main():
             or state.get("tokenizer_sha256") != tokenizer_hash
         ):
             raise ValueError("Pilot resume requires the same all-row mode and tokenizer hash")
-        model.load_state_dict(state["model"])
+        incompatible = model.load_state_dict(state["model"], strict=False)
+        allowed_missing = {f"homeo.{i}.effective_m" for i in range(len(model.homeo))}
+        missing = set(incompatible.missing_keys)
+        unexpected = set(incompatible.unexpected_keys)
+        if missing - allowed_missing or unexpected:
+            raise ValueError(
+                f"Checkpoint architecture mismatch: missing={sorted(missing - allowed_missing)}, "
+                f"unexpected={sorted(unexpected)}"
+            )
+        if missing:
+            LOG.warning("Migrated legacy checkpoint: initialized post-gate activity EMA for %d homeostasis layers",
+                        len(missing))
         optimizer.load_state_dict(state["optimizer"])
         scheduler.load_state_dict(state["scheduler"])
         start = int(state["step"])

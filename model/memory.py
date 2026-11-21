@@ -33,7 +33,7 @@ class MemoriaElastica(nn.Module):
         if norm <= 1e-8:
             return False
         # Prevent one anomalous activation from poisoning long-lived memory.
-        vector = vector * (10.0 / norm).clamp(max=1.0)
+        vector = vector * (10.0 / norm).clamp(max=1.0).to(vector.dtype)
         empty = torch.nonzero(self.contador_lenta == 0, as_tuple=False).flatten()
         if empty.numel():
             slot = int(empty[0].item())

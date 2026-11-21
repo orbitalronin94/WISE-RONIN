@@ -51,9 +51,9 @@ def make_model(ckpt,p):
   for group in opt.param_groups: group["foreach"]=bool(p["foreach"])
  return model,opt
 
-def update(model,opt,tokens,use_rep=True):
+def update(model,opt,tokens,use_rep=True,collect_diagnostics=False):
  opt.zero_grad(set_to_none=True)
- output=model(tokens,reset_state=True,collect_diagnostics=False)
+ output=model(tokens,reset_state=True,collect_diagnostics=collect_diagnostics)
  loss,_=perdida_total(output,tokens,model,use_jepa=True,use_rep=use_rep)
  if not torch.isfinite(loss): raise FloatingPointError("Non-finite benchmark loss")
  loss.backward()
@@ -61,13 +61,13 @@ def update(model,opt,tokens,use_rep=True):
  opt.step()
  return float(loss.detach())
 
-def trial(ckpt,tokens,p,warmup,steps,repeats,use_rep=True):
+def trial(ckpt,tokens,p,warmup,steps,repeats,use_rep=True,collect_diagnostics=False):
  samples=[]
  for _ in range(repeats):
   model,opt=make_model(ckpt,p)
-  for _ in range(warmup): update(model,opt,tokens,use_rep)
+  for _ in range(warmup): update(model,opt,tokens,use_rep,collect_diagnostics)
   started=time.perf_counter(); losses=[]
-  for _ in range(steps): losses.append(update(model,opt,tokens,use_rep))
+  for _ in range(steps): losses.append(update(model,opt,tokens,use_rep,collect_diagnostics))
   elapsed=time.perf_counter()-started
   samples.append(dict(elapsed_seconds=elapsed,steps_per_second=steps/elapsed,
                       tokens_per_second=steps*int(tokens.ne(0).sum())/elapsed,last_loss=losses[-1]))
@@ -75,6 +75,16 @@ def trial(ckpt,tokens,p,warmup,steps,repeats,use_rep=True):
  return dict(runs=samples,median_steps_per_second=statistics.median(x["steps_per_second"] for x in samples),
              median_tokens_per_second=statistics.median(x["tokens_per_second"] for x in samples),
              median_elapsed_seconds=statistics.median(x["elapsed_seconds"] for x in samples))
+
+def checkpoint_save_cost(ckpt,p):
+ model,opt=make_model(ckpt,p)
+ payload={"model":model.state_dict(),"optimizer":opt.state_dict(),"step":int(ckpt["step"])}
+ samples=[]
+ with tempfile.TemporaryDirectory(prefix="lumen-ckpt-cost-") as tmp:
+  target=Path(tmp)/"checkpoint.pt"
+  for _ in range(2):
+   started=time.perf_counter(); torch.save(payload,target); samples.append(time.perf_counter()-started)
+ return {"median_seconds":statistics.median(samples),"file_bytes":target.stat().st_size,"repeats":len(samples)}
 
 def profiler_table(ckpt,tokens,p):
  from torch.profiler import ProfilerActivity, profile as torch_profile
@@ -85,7 +95,7 @@ def profiler_table(ckpt,tokens,p):
 def worker(a):
  p=json.loads(a.worker_profile); affinity=configure(p)
  ckpt=torch.load(a.checkpoint,map_location="cpu",weights_only=False); tokens=load_batch(a)
- result=dict(profile=p,affinity_cpus=affinity,full_objective=trial(ckpt,tokens,p,a.warmup,a.steps,a.repeats,True))
+ result=dict(profile=p,affinity_cpus=affinity,full_objective=trial(ckpt,tokens,p,a.warmup,a.steps,a.repeats,True),\n  diagnostic_collection_cost=trial(ckpt,tokens,p,max(2,a.warmup//2),max(8,a.steps//2),1,True,True),\n  checkpoint_save_cost=checkpoint_save_cost(ckpt,p))
  if a.measure_ablation:
   result["repetition_loss_ablation"]=trial(ckpt,tokens,p,max(2,a.warmup//2),max(8,a.steps//2),1,False)
   result["repetition_loss_ablation"]["promotion_eligible"]=False

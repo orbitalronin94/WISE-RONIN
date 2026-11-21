@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import random
 from pathlib import Path
@@ -33,7 +34,7 @@ def restore_rng(state, local_rng):
     local_rng.setstate(state["local_sampler"])
 
 
-def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, local_rng):
+def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, local_rng, tokens_seen, tokenizer_hash):
     model.reset_states()
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({
@@ -49,6 +50,9 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "torch_version": torch.__version__,
         "delta_policy": "reset_at_each_batch_boundary",
         "v32_ze": args.v32_ze,
+        "pilot_all_rows": args.pilot_all_rows,
+        "tokens_seen": tokens_seen,
+        "tokenizer_sha256": tokenizer_hash,
     }, path)
     LOG.info("checkpoint=%s step=%d", path, step)
 
@@ -129,6 +133,9 @@ def main():
     )
     scheduler = make_scheduler(optimizer, args.warmup, args.total_steps)
     start, state = 0, None
+    tokens_seen, tokenizer_hash = 0, "dummy-no-tokenizer"
+    if not args.dummy_m1:
+        tokenizer_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
     if args.resume:
         state = torch.load(args.resume, map_location="cpu", weights_only=False)
         if state.get("v32_ze", False) != args.v32_ze:
@@ -141,7 +148,8 @@ def main():
         optimizer.load_state_dict(state["optimizer"])
         scheduler.load_state_dict(state["scheduler"])
         start = int(state["step"])
-        LOG.info("resumed step=%d", start)
+        tokens_seen = int(state.get("tokens_seen", 0))
+        LOG.info("resumed step=%d tokens_seen=%d", start, tokens_seen)
 
     phase_ranges = {1: (0, 2000), 2: (2000, 8000), 3: (8000, 10000)}
     low, high = phase_ranges[args.phase]
@@ -170,6 +178,7 @@ def main():
                       if args.phase == 2 else local_rng.choices(phase_data, k=args.batch))
             tokens = collate_rows(chosen, tokenizer, args.max_len)
 
+        tokens_seen += int(tokens.ne(0).sum())
         output = model(tokens, reset_state=True)
         loss, metrics = perdida_total(
             output, tokens, model,
@@ -200,18 +209,19 @@ def main():
             LOG.info(
                 "step=%d loss=%.5f token=%.5f latent=%.5f div=%.5f "
                 "router=%.5f rep=%.5f F_complexity=%.5f dead=%.2f%% "
-                "energy_entropy=%.4f PE=%.4f ZE_conflict=%.4f ZE_erase=%d lr=%.3e",
+                "energy_entropy=%.4f PE=%.4f ZE_conflict=%.4f ZE_erase=%d tokens_seen=%d lr=%.3e",
                 step, loss.item(), metrics["L_token"].item(),
                 metrics["L_latente"].item(), metrics["L_div"].item(),
                 metrics["L_router"].item(), metrics["L_rep"].item(),
                 metrics["F_complexity"].item(), dead * 100, entropy,
                 float(output["surprise"].mean().detach()), ze_conflict, ze_erase,
-                scheduler.get_last_lr()[0],
+                tokens_seen, scheduler.get_last_lr()[0],
             )
             if step >= 100 and dead > 0.20:
                 save_checkpoint(
                     Path(args.ckpt_dir) / f"step_{step}_STOP.pt",
                     model, optimizer, scheduler, step, args, data_hash, local_rng,
+                    tokens_seen, tokenizer_hash,
                 )
                 raise RuntimeError(f"STOP: dead neurons {dead:.1%} exceeds 20%")
 
@@ -233,12 +243,14 @@ def main():
 
         if step % 500 == 0:
             save_checkpoint(Path(args.ckpt_dir) / f"step_{step}.pt",
-                            model, optimizer, scheduler, step, args, data_hash, local_rng)
+                            model, optimizer, scheduler, step, args, data_hash, local_rng,
+                            tokens_seen, tokenizer_hash)
 
     final_step = start + args.steps
     if final_step % 500:
         save_checkpoint(Path(args.ckpt_dir) / f"step_{final_step}.pt",
-                        model, optimizer, scheduler, final_step, args, data_hash, local_rng)
+                        model, optimizer, scheduler, final_step, args, data_hash, local_rng,
+                        tokens_seen, tokenizer_hash)
     LOG.info("completed step=%d device=cpu", final_step)
 
 

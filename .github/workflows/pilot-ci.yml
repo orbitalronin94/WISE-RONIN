@@ -13,6 +13,7 @@ on:
       - ".github/workflows/benchmark-cpu-throughput.yml"
       - ".github/workflows/lumen-2000-3000-compiled-holdout.yml"
       - ".github/workflows/lumen-3000-6000-compiled.yml"
+      - ".github/workflows/lumen-stability-ab.yml"
       - ".github/workflows/pilot.yml"
   pull_request:
     branches: [main]
@@ -25,6 +26,7 @@ on:
       - ".github/workflows/pilot-ci.yml"
       - ".github/workflows/benchmark-cpu-throughput.yml"
       - ".github/workflows/benchmark-sleep.yml"
+      - ".github/workflows/lumen-stability-ab.yml"
 
 permissions:
   contents: read
@@ -64,6 +66,7 @@ jobs:
               Path(".github/workflows/lumen-2000-3000-compiled-holdout.yml"),
               Path(".github/workflows/lumen-3000-6000-compiled.yml"),
               Path(".github/workflows/benchmark-sleep.yml"),
+              Path(".github/workflows/lumen-stability-ab.yml"),
           ):
               workflow = yaml.safe_load(workflow_path.read_text())
               for job_name, job in workflow.get("jobs", {}).items():

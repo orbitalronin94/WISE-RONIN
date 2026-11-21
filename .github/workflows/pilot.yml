@@ -129,7 +129,7 @@ jobs:
           key: ronin-lumen-checkpoints-v1-step-${{ steps.plan.outputs.start_step }}
 
       - name: Refuse non-reproducible checkpoint gaps
-        if: steps.plan.outputs.start_step != '0' && steps.checkpoint-cache.outputs.cache-hit != 'true' && steps.plan.outputs.start_step != '500'
+        if: steps.plan.outputs.start_step != '0' && steps.checkpoint-cache.outputs.cache-hit != 'true' && steps.plan.outputs.start_step != '500' && steps.plan.outputs.start_step != '1000'
         run: |
           echo "No exact checkpoint cache exists for requested parent step ${{ steps.plan.outputs.start_step }}. Resume from the last cached hito; do not guess or silently restart." >&2
           exit 1

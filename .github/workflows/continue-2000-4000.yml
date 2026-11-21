@@ -1,0 +1,287 @@
+name: RONIN-LUMEN continuation 2000 to 4000 (parallel models, final holdout)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-lumen-continuation-2000-4000
+  cancel-in-progress: false
+
+jobs:
+  prepare-parent:
+    name: Validate step-2000 parents and prepare frozen inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact experiment revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install preparation and holdout dependencies
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm "datasets>=3,<4" "huggingface_hub>=0.25,<1.0"
+
+      - name: Download exact step-2000 parent artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-longitudinal-44922965444
+          path: artifacts/parent-2000
+          repository: ${{ github.repository }}
+          run-id: 44922965444
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore exact prepared corpus and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-prepared-data-44905396366
+          path: artifacts/prepared-data
+          repository: ${{ github.repository }}
+          run-id: 44905396366
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Assemble immutable inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/lumen checkpoints/transformer data/pilot_tokenizer
+          cp artifacts/parent-2000/checkpoints/lumen/step_2000.pt checkpoints/lumen/step_2000.pt
+          cp artifacts/parent-2000/checkpoints/transformer/step_2000.pt checkpoints/transformer/step_2000.pt
+          cp artifacts/prepared-data/data/pilot_train_19k.jsonl data/pilot_train_19k.jsonl
+          cp artifacts/prepared-data/data/pilot_train_19k.manifest.json data/pilot_train_19k.manifest.json
+          cp -a artifacts/prepared-data/data/pilot_tokenizer/. data/pilot_tokenizer/
+          test -s checkpoints/lumen/step_2000.pt
+          test -s checkpoints/transformer/step_2000.pt
+          test -s data/pilot_train_19k.jsonl
+          test -s data/pilot_tokenizer/tokenizer.json
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          corpus = hashlib.sha256(Path("data/pilot_train_19k.jsonl").read_bytes()).hexdigest()
+          manifest = json.loads(Path("data/pilot_tokenizer/tokenizer.manifest.json").read_text())
+          tokenizer = hashlib.sha256(Path("data/pilot_tokenizer/tokenizer.json").read_bytes()).hexdigest()
+          if manifest.get("corpus_sha256") != corpus or manifest.get("tokenizer_sha256") != tokenizer:
+              raise SystemExit("Prepared corpus/tokenizer manifest mismatch")
+          print(f"Exact prepared inputs restored: corpus={corpus} tokenizer={tokenizer}")
+          PY
+
+      - name: Prepare the same pinned GSM8K test-only holdout
+        run: |
+          python scripts/prepare_reasoning_holdout.py \
+            --train-data data/pilot_train_19k.jsonl \
+            --output artifacts/reasoning_gsm8k_500.jsonl \
+            --manifest artifacts/reasoning_gsm8k_500.manifest.json \
+            --count 500
+
+      - name: Validate parents and rebase only the completed LR schedule
+        run: |
+          python scripts/prepare_step2000_continuation.py \
+            --lumen checkpoints/lumen/step_2000.pt \
+            --transformer checkpoints/transformer/step_2000.pt \
+            --data data/pilot_train_19k.jsonl \
+            --tokenizer data/pilot_tokenizer/tokenizer.json \
+            --output-dir checkpoints/continuation
+
+      - name: Upload immutable continuation inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ronin-lumen-continuation-inputs-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/step_2000.pt
+            checkpoints/transformer/step_2000.pt
+            checkpoints/continuation/
+            data/pilot_train_19k.jsonl
+            data/pilot_train_19k.manifest.json
+            data/pilot_tokenizer/
+            data/holdout_500.jsonl
+            artifacts/reasoning_gsm8k_500.jsonl
+            artifacts/reasoning_gsm8k_500.manifest.json
+          if-no-files-found: error
+          retention-days: 90
+
+  train:
+    name: Train ${{ matrix.model }} 2000 to 4000
+    needs: prepare-parent
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [lumen, transformer]
+    steps:
+      - name: Checkout exact experiment revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU training dependencies
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+
+      - name: Download frozen parent and shared data
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-continuation-inputs-${{ github.run_id }}
+          path: .
+
+      - name: Train only this model in four resumable 500-step blocks
+        env:
+          MODEL: ${{ matrix.model }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "checkpoints/$MODEL" artifacts/timing
+          for target in 2500 3000 3500 4000; do
+            previous=$((target - 500))
+            if (( previous == 2000 )); then
+              resume="checkpoints/continuation/${MODEL}_step_2000_continuation.pt"
+            else
+              resume="checkpoints/$MODEL/step_${previous}.pt"
+            fi
+            test -s "$resume"
+            echo "===== $MODEL: global step $previous -> $target (500 updates) ====="
+            if [[ "$MODEL" == "lumen" ]]; then
+              python -m train.train \
+                --steps 500 --phase 1 --pilot-all-rows \
+                --data data/pilot_train_19k.jsonl \
+                --tokenizer data/pilot_tokenizer/tokenizer.json \
+                --batch 8 --max-len 128 --seed 42 \
+                --lr 2e-5 --warmup 100 --total-steps 4000 \
+                --scheduler-transition --transition-start 2000 --transition-end 4000 \
+                --warmup-transition 20 --grad-clip 0.5 \
+                --wall-clock-file artifacts/timing/lumen.json \
+                --ckpt-dir checkpoints/lumen --resume "$resume"
+            else
+              python -m train.transformer_baseline \
+                --steps 500 \
+                --data data/pilot_train_19k.jsonl \
+                --tokenizer data/pilot_tokenizer/tokenizer.json \
+                --batch 8 --max-len 128 --seed 42 \
+                --lr 5e-5 --warmup 100 --total-steps 4000 \
+                --scheduler-transition --transition-start 2000 --transition-end 4000 \
+                --warmup-transition 20 --grad-clip 1.0 \
+                --wall-clock-file artifacts/timing/transformer.json \
+                --ckpt-dir checkpoints/transformer --resume "$resume"
+            fi
+            test -s "checkpoints/$MODEL/step_${target}.pt"
+          done
+
+      - name: Upload this model's checkpoints and timing
+        uses: actions/upload-artifact@v4
+        with:
+          name: ronin-lumen-4000-${{ matrix.model }}
+          path: |
+            checkpoints/${{ matrix.model }}/
+            artifacts/timing/
+          if-no-files-found: error
+          retention-days: 90
+
+  final-holdout:
+    name: Single matched holdout at step 4000
+    needs: [prepare-parent, train]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact experiment revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install evaluation dependencies
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+
+      - name: Download frozen parent and holdout inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-continuation-inputs-${{ github.run_id }}
+          path: .
+
+      - name: Download final LUMEN checkpoints
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-4000-lumen
+          path: artifacts/lumen-run
+
+      - name: Download final Transformer checkpoints
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-4000-transformer
+          path: artifacts/transformer-run
+
+      - name: Assemble final checkpoint pair
+        run: |
+          set -euo pipefail
+          cp -a artifacts/lumen-run/checkpoints/lumen/. checkpoints/lumen/
+          cp -a artifacts/transformer-run/checkpoints/transformer/. checkpoints/transformer/
+          mkdir -p artifacts/timing artifacts/evaluations/final_4000 artifacts/manifests artifacts/continuation
+          cp artifacts/lumen-run/artifacts/timing/lumen.json artifacts/timing/lumen.json
+          cp artifacts/transformer-run/artifacts/timing/transformer.json artifacts/timing/transformer.json
+          cp checkpoints/continuation/parent_validation.json artifacts/continuation/parent_validation.json
+          test -s checkpoints/lumen/step_4000.pt
+          test -s checkpoints/transformer/step_4000.pt
+
+      - name: Run the only holdout evaluation, after both trainings finish
+        run: |
+          python scripts/evaluate_pilot.py \
+            --data data/pilot_train_19k.jsonl \
+            --tokenizer data/pilot_tokenizer/tokenizer.json \
+            --lumen-ckpt checkpoints/lumen/step_4000.pt \
+            --transformer-ckpt checkpoints/transformer/step_4000.pt \
+            --gsm8k artifacts/reasoning_gsm8k_500.jsonl \
+            --historical-holdout data/holdout_500.jsonl \
+            --gsm8k-limit 100 --max-new-tokens 64 \
+            --expected-step 4000 \
+            --output artifacts/evaluations/final_4000
+
+      - name: Write final reproducibility manifest
+        run: |
+          python scripts/write_experiment_manifest.py \
+            --lumen checkpoints/lumen/step_4000.pt \
+            --transformer checkpoints/transformer/step_4000.pt \
+            --data data/pilot_train_19k.jsonl \
+            --tokenizer data/pilot_tokenizer/tokenizer.json \
+            --evaluation artifacts/evaluations/final_4000/summary.json \
+            --gsm8k-holdout artifacts/reasoning_gsm8k_500.jsonl \
+            --historical-holdout data/holdout_500.jsonl \
+            --lumen-parent checkpoints/lumen/step_2000.pt \
+            --transformer-parent checkpoints/transformer/step_2000.pt \
+            --output artifacts/manifests/step_4000.json
+
+      - name: Upload final checkpoints, single holdout and manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: ronin-lumen-longitudinal-2000-4000-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/
+            checkpoints/transformer/
+            artifacts/continuation/
+            artifacts/evaluations/final_4000/
+            artifacts/manifests/step_4000.json
+            artifacts/timing/
+            artifacts/reasoning_gsm8k_500.jsonl
+            artifacts/reasoning_gsm8k_500.manifest.json
+          if-no-files-found: error
+          retention-days: 90

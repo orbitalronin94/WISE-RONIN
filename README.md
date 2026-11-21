@@ -264,3 +264,23 @@ No se atribuye todavía el fallo a `torch.compile`, a la memoria ni a una capa c
 Workflow diagnóstico: [lumen-stability-ab.yml](.github/workflows/lumen-stability-ab.yml). No usa holdout ni modifica el entrenamiento longitudinal.
 
 **Regla para futuras continuaciones:** no volver a lanzar una tirada larga compilada hasta comparar ambos brazos y localizar el primer tensor que deja de ser finito. Los workflows de producción deben conservar un checkpoint recuperable y subir los artefactos parciales con `if: always()`, también cuando falle el entrenamiento. El fallo no se arregla ocultando el guardarraíl ni omitiendo pérdidas auxiliares; primero se identifica el origen numérico.
+
+
+## Resultado del benchmark de sueño y prueba integrada 3.000→4.000
+
+El benchmark aislado [44945963150](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44945963150) terminó correctamente sobre el checkpoint 3.000. El banco diagnóstico se pobló con 96 activaciones del corpus de entrenamiento y se reservaron 32 registros distintos para evaluación; el checkpoint original tenía 0/128 recuerdos, por lo que su llamada de sueño real era un no-op.
+
+| Variante | MSE de reconstrucción (mediana) | Loss next-token (mediana) |
+|---|---:|---:|
+| Sin sueño | 0,07127 | **5,98454** |
+| Replay actual, 3 updates | 0,07068 | 5,98745 |
+| Denoising, 3 updates | 0,06796 | 6,00197 |
+| Denoising, 50 updates | **0,03526** | 7,71245 |
+
+El replay actual reduce el MSE solo ligeramente y eleva la loss next-token en 0,00291. El denoising de 3 updates mejora más la reconstrucción, pero eleva la loss en 0,01743. Cincuenta updates reducen mucho el MSE, pero elevan la loss next-token en 1,72791 (≈28,9 %). Por tanto, no se adopta el denoising de 50 pasos; el resultado es una señal de interferencia/olvido, no una mejora global.
+
+La prueba integrada [lumen-memory-sleep-3000-4000.yml](.github/workflows/lumen-memory-sleep-3000-4000.yml) continúa ahora 1.000 pasos desde el checkpoint exacto 3.000 con la memoria de producción y el sueño vigente habilitados. Es una ejecución eager, no compilada, para no mezclar la hipótesis de memoria con el fallo numérico de torch.compile. Conserva el scheduler 2.000→4.000 del checkpoint sin rebase, los pesos, momentos del optimizador y RNG. Se divide en dos bloques de 500; el sueño se invoca en los pasos globales 3.500 y 4.000. El umbral actual de escritura lenta (sorpresa >0,8) no se modifica: se observará si el entrenamiento lo activa de forma natural.
+
+El workflow registra ocupación y escrituras de memoria, eventos de sueño y sus pérdidas/duración; guarda checkpoints cada 250 pasos y un latest_good.pt recuperable cada 25. Si alcanza 4.000 sin violar los guardarraíles, ejecuta un único holdout LUMEN (100 GSM8K + 55 históricos). Si falla, publica igualmente los diagnósticos y el último checkpoint sano; no se promociona un estado posterior al fallo.
+
+**Pregunta falsable:** ¿las escrituras naturales de sorpresa producen un banco útil y el replay de tres actualizaciones consolida sin degradar la pérdida lingüística ni la generación? Este entrenamiento lo mide en condiciones reales; el benchmark anterior, por sí solo, no lo demostraba.

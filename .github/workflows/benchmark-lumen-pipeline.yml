@@ -1,6 +1,7 @@
 name: RONIN-LUMEN real pipeline bottleneck benchmark
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:

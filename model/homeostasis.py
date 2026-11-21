@@ -8,6 +8,8 @@ class Homeostasis(nn.Module):
         self.dim, self.m_target, self.eta, self.k_top = dim, m_target, eta, k_top
         self.bias = nn.Parameter(torch.zeros(dim))
         self.register_buffer("m", torch.zeros(dim))
+        # EMA of units that survive the actual ReLU + Top-K output gate.
+        self.register_buffer("effective_m", torch.zeros(dim))
         self.last_input_positive = 0.0
         self.last_output_positive = 0.0
         self.last_output_norm = 0.0
@@ -29,7 +31,12 @@ class Homeostasis(nn.Module):
         output = torch.relu(y) * mask
         self.last_output_positive = float((output.detach() > 0).float().mean().item())
         self.last_output_norm = float(output.detach().norm().item() / max(1, (output.shape[0] * output.shape[1]) ** 0.5))
+        if self.training:
+            with torch.no_grad():
+                effective_active = (output > 0).float().mean(dim=(0, 1))
+                self.effective_m.mul_(0.99).add_(effective_active, alpha=0.01)
         return output
 
     def neuronas_muertas(self):
-        return (self.m < 0.001).float().mean().item()
+        """Fraction of units with no sustained post-ReLU/Top-K activity."""
+        return (self.effective_m < 0.001).float().mean().item()

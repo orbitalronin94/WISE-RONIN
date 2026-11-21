@@ -28,9 +28,14 @@ class Homeostasis(nn.Module):
 
         y = x - self.bias
         k = min(self.k_top, self.dim)
+        # Event-driven Top-K path: only gather and apply ReLU to selected
+        # coordinates. The previous dense ReLU + dense mask multiplication
+        # performed elementwise work over all dim coordinates even though
+        # only k_top coordinates can contribute to the update.
         _, indices = torch.topk(y, k=k, dim=-1)
-        mask = torch.zeros_like(y).scatter_(-1, indices, 1.0)
-        gated_update = torch.relu(y) * mask
+        selected = torch.gather(y, dim=-1, index=indices)
+        selected_update = torch.relu(selected)
+        gated_update = torch.zeros_like(y).scatter_(-1, indices, selected_update)
         # Top-K sparsifies the homeostatic update, not the information stream.
         # Bound residual gain to 10% of the incoming token norm; the previous
         # unscaled addition could nearly double selected coordinates per layer.

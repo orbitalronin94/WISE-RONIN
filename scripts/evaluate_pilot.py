@@ -28,21 +28,33 @@ def numeric(s):
         value = value[:-2]
     return value
 
-def generate_batch(model, prompts, tokenizer, kind, max_new=64, max_prompt=63):
+def fit_prompt(ids, max_context=128):
+    """Keep both the question opening and its final answer cue within context."""
+    budget = max_context - 1  # reserve one position for BOS
+    if len(ids) <= budget:
+        return list(ids)
+    head = budget // 2
+    tail = budget - head
+    return list(ids[:head]) + list(ids[-tail:])
+
+
+def generate_batch(model, prompts, tokenizer, kind, max_new=64, max_context=128):
     bos = tokenizer.tokenizer.token_to_id("[BOS]")
     eos = tokenizer.tokenizer.token_to_id("[EOS]")
     pad = tokenizer.tokenizer.token_to_id("[PAD]")
     sequences = []
     for prompt in prompts:
-        ids = tokenizer.tokenizer.encode(str(prompt), add_special_tokens=False).ids[:max_prompt]
-        sequences.append([bos] + ids)
+        ids = tokenizer.tokenizer.encode(str(prompt), add_special_tokens=False).ids
+        sequences.append([bos] + fit_prompt(ids, max_context=max_context))
     initial_lengths = [len(s) for s in sequences]
     finished = [False] * len(sequences)
     for _ in range(max_new):
-        width = max(len(s) for s in sequences)
+        # Both architectures receive at most the same 128-token sliding context.
+        contexts = [seq[-max_context:] for seq in sequences]
+        width = max(len(seq) for seq in contexts)
         batch = torch.full((len(sequences), width), pad, dtype=torch.long)
         lengths = []
-        for i, seq in enumerate(sequences):
+        for i, seq in enumerate(contexts):
             lengths.append(len(seq))
             batch[i, :len(seq)] = torch.tensor(seq, dtype=torch.long)
         with torch.no_grad():
@@ -108,7 +120,7 @@ def main():
     outdir.mkdir(parents=True, exist_ok=True)
     summary = {"data_sha256": data_hash, "tokenizer_sha256": tok_hash,
                "gsm8k_test_questions": len(gsm), "historical_unique_prompts": len(historical),
-               "max_new_tokens": args.max_new_tokens, "decoding": "greedy",
+               "max_new_tokens": args.max_new_tokens, "decoding": "greedy",\n               "max_context_tokens": 128,\n               "prompt_truncation": "retain first and last tokens within 127-token prompt budget; sliding 128-token context during generation",
                "gsm8k_sample_seed": 42, "gsm8k_selected_ids": [r["id"] for r in gsm],
                "models": {}}
     all_predictions = []

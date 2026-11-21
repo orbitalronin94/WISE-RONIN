@@ -34,7 +34,7 @@ jobs:
           PYTHONPATH=. pytest -q tests
       - name: M1 smoke test on code pushes
         if: github.event_name == 'push'
-        run: python -m train.train --dummy-m1 --steps 10 --phase 1
+        run: |\n          python -m train.train --dummy-m1 --steps 10 --phase 1\n          python -m train.train --dummy-m1 --resume checkpoints/step_10.pt --steps 10 --phase 1
       - name: Requested training block
         if: github.event_name == 'workflow_dispatch'
         env:

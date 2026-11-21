@@ -136,8 +136,11 @@ def migrate_legacy_homeostasis(model, optimizer):
 def main():
     parser = argparse.ArgumentParser(description="RONIN-LUMEN CPU training")
     parser.add_argument("--steps", type=int, default=500)
-    parser.add_argument("--threads", type=int, default=2,
-                        help="PyTorch intra-op CPU threads; benchmark 1/2/4 on the target runner")
+    parser.add_argument("--threads", type=int, default=2, help="PyTorch intra-op CPU threads")
+    parser.add_argument("--interop-threads", type=int, default=1)
+    parser.add_argument("--disable-mkldnn", action="store_true")
+    parser.add_argument("--disable-foreach", action="store_true")
+    parser.add_argument("--cpu-affinity", action="store_true")
     parser.add_argument("--phase", type=int, choices=(1, 2, 3), required=True)
     parser.add_argument("--resume")
     parser.add_argument("--data", default="data/train_25k.jsonl")
@@ -170,8 +173,8 @@ def main():
 
     if args.steps < 1 or (args.steps > 500 and not args.dummy_m1):
         parser.error("--steps must be between 1 and 500")
-    if args.threads < 1:
-        parser.error("--threads must be at least 1")
+    if args.threads < 1 or args.interop_threads < 1:
+        parser.error("--threads and --interop-threads must be at least 1")
     if args.orpo:
         parser.error("ORPO is not implemented: preference pairs and objective need a separate approved specification")
     if args.dummy_m1 and args.steps > 10:
@@ -182,7 +185,15 @@ def main():
         parser.error("--scheduler-transition requires an exact resumable parent checkpoint")
 
     torch.set_num_threads(args.threads)
-    LOG.info("cpu_runtime: intraop_threads=%d", args.threads)
+    torch.set_num_interop_threads(args.interop_threads)
+    torch.backends.mkldnn.enabled = not args.disable_mkldnn
+    affinity_cpus = None
+    if args.cpu_affinity and hasattr(os, "sched_getaffinity"):
+        affinity_cpus = sorted(os.sched_getaffinity(0))[:args.threads]
+        os.sched_setaffinity(0, set(affinity_cpus))
+    LOG.info("cpu_runtime: intraop_threads=%d interop_threads=%d mkldnn=%s foreach=%s affinity=%s",
+             args.threads, args.interop_threads, torch.backends.mkldnn.enabled,
+             not args.disable_foreach, affinity_cpus)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     device = torch.device("cpu")
@@ -201,7 +212,7 @@ def main():
 
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay,
-        foreach=True,
+        foreach=not args.disable_foreach,
     )
     scheduler = None if args.scheduler_transition else make_scheduler(optimizer, args.warmup, args.total_steps)
     start, state = 0, None
@@ -284,7 +295,7 @@ def main():
                         len(missing))
         optimizer.load_state_dict(state["optimizer"])
         for group in optimizer.param_groups:
-            group["foreach"] = True
+            group["foreach"] = not args.disable_foreach
         if parent_arch != "ronin_lumen_v3_1_residual_homeostasis":
             migrate_legacy_homeostasis(model, optimizer)
         start = int(state["step"])
@@ -381,7 +392,7 @@ def main():
         backward_started = time.perf_counter()
         loss.backward()
         profile["backward"] += time.perf_counter() - backward_started
-        torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip, foreach=True)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip, foreach=not args.disable_foreach)
         optimizer.step()
         scheduler.step()
         for target in (6.0, 5.8):

@@ -12,7 +12,6 @@ The diagnostic bank is explicitly not written back to a training checkpoint.
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import random
 import statistics
@@ -106,6 +105,8 @@ def main():
         raise ValueError(f"Need {needed} frozen training rows; found {len(rows)}")
     indices = list(range(needed))
     tokens = collate_cached_indices(packed, lengths, indices)
+    if tokens.shape[0] != needed:
+        raise ValueError(f"Expected {needed} usable corpus rows after padding; got {tokens.shape[0]}")
     with torch.no_grad():
         reference_output = reference(tokens, reset_state=True, collect_diagnostics=False)
         vectors = pooled_activations(reference_output["activations"], tokens)
@@ -132,7 +133,6 @@ def main():
     baseline = make_variant()
     baseline_loss, baseline_logits, _ = eval_metrics(baseline, tokens[args.bank_size:], tokens[args.bank_size:])
     baseline_recon = reconstruction_mse(baseline, eval_records)
-    baseline_mlp = {k: v.detach().clone() for k, v in baseline.memoria.mlp.state_dict().items()}
 
     variants = {}
     variant_specs = {
@@ -198,7 +198,7 @@ def main():
         "diagnostic_only": True,
         "diagnostic_bank_source": "pooled hidden activations from frozen training-corpus rows; no holdout rows",
         "original_checkpoint_slow_memory_records": original_count,
-        "original_checkpoint_occupancy": original_count / 128,
+        "original_checkpoint_occupancy": original_count / int(reference.memoria.contador_lenta.numel()),
         "original_checkpoint_sleep_noop": {
             "loss": float(original_noop_loss),
             "duration_seconds": original_noop_seconds,

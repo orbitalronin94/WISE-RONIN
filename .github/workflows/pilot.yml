@@ -2,7 +2,7 @@ name: RONIN-LUMEN 500-step matched-size pilot
 
 on:
   push:
-    branches: [pilot/ronin-lumen-500]
+    branches: [main, pilot/ronin-lumen-500]
     paths:
       - ".github/workflows/pilot.yml"
   workflow_dispatch:

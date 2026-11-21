@@ -204,7 +204,8 @@ def main():
             quant_enabled = True
 
         if step % 100 == 0 or step == start + 1:
-            dead = max(organ.neuronas_muertas() for organ in model.homeo)
+            dead_by_layer = [organ.neuronas_muertas() for organ in model.homeo]
+            dead = max(dead_by_layer, default=1.0)
             entropy = float(model.presupuesto.entropy(output["energy"]).detach())
             ze_conflict = 0.0
             ze_erase = 0
@@ -233,6 +234,8 @@ def main():
                 for i, (delta, homeo) in enumerate(zip(model.delta_layers, model.homeo))
             )
             LOG.info("layer_diagnostics step=%d %s", step, layer_diag)
+            LOG.info("effective_dead_by_layer step=%d values=%s", step,
+                     ",".join(f"{value:.3f}" for value in dead_by_layer))
             if step >= 100 and dead > 0.20:
                 save_checkpoint(
                     Path(args.ckpt_dir) / f"step_{step}_STOP.pt",

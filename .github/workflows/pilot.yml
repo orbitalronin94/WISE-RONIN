@@ -14,12 +14,12 @@ on:
       start_step:
         description: "Último hito válido compartido (0 para empezar; después 500, 1000...)"
         required: true
-        default: "500"
+        default: "1000"
         type: string
       blocks:
         description: "Número de bloques consecutivos de 500 pasos"
         required: true
-        default: "5"
+        default: "10"
         type: string
 
 permissions:
@@ -55,8 +55,8 @@ jobs:
         id: plan
         shell: bash
         run: |
-          START="${{ inputs.start_step || '500' }}"
-          BLOCKS="${{ inputs.blocks || '5' }}"
+          START="${{ inputs.start_step || '1000' }}"
+          BLOCKS="${{ inputs.blocks || '10' }}"
           if ! [[ "$START" =~ ^[0-9]+$ && "$BLOCKS" =~ ^[0-9]+$ ]]; then
             echo "start_step and blocks must be non-negative/positive integers" >&2
             exit 1
@@ -209,6 +209,35 @@ jobs:
           if manifest.get("tokenizer_sha256") != tokenizer:
               raise SystemExit("Reusable tokenizer SHA-256 mismatch")
           print(f"Reused existing tokenizer {tokenizer} for corpus {corpus}")
+          PY
+
+      - name: Download exact step-1000 checkpoints from completed longitudinal run
+        if: steps.plan.outputs.start_step == '1000' && steps.checkpoint-cache.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-longitudinal-44911588828
+          path: artifacts/step-1000-bootstrap
+          repository: ${{ github.repository }}
+          run-id: 44911588828
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore exact step-1000 checkpoint pair
+        if: steps.plan.outputs.start_step == '1000' && steps.checkpoint-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/lumen checkpoints/transformer
+          cp artifacts/step-1000-bootstrap/checkpoints/lumen/step_1000.pt checkpoints/lumen/step_1000.pt
+          cp artifacts/step-1000-bootstrap/checkpoints/transformer/step_1000.pt checkpoints/transformer/step_1000.pt
+          test -s checkpoints/lumen/step_1000.pt
+          test -s checkpoints/transformer/step_1000.pt
+          python - <<'PY'
+          import torch
+          for name in ("lumen", "transformer"):
+              path = f"checkpoints/{name}/step_1000.pt"
+              state = torch.load(path, map_location="cpu", weights_only=False)
+              if state.get("step") != 1000 or not state.get("optimizer") or not state.get("scheduler") or not state.get("rng"):
+                  raise SystemExit(f"{name}: step-1000 checkpoint is not resumable")
+              print(f"{name}: exact step={state['step']} tokens={state.get('tokens_seen')}")
           PY
 
       - name: Restore first 500-step checkpoints from original pilot (bootstrap only)

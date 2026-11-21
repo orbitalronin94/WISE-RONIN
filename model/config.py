@@ -11,7 +11,9 @@ class LumenConfig:
     top_k_high: int = 32
     homeostasis_target: float = 0.05
     homeostasis_eta: float = 0.001
-    surprise_threshold: float = 0.15
+    # Pilot logs show mean prediction error ~0.003 at steps 1-100.
+    # The previous 0.15 gate prevented every recurrent Delta write at cold start.
+    surprise_threshold: float = 0.001
     elastic_memory_threshold: float = 2.0
     sleep_interval_steps: int = 500
     sleep_steps: int = 50

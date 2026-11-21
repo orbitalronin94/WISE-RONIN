@@ -80,6 +80,14 @@ jobs:
           print(f"Exact prepared inputs restored: corpus={corpus} tokenizer={tokenizer}")
           PY
 
+      - name: Pre-tokenize the immutable corpus once
+        run: |
+          python scripts/prepare_token_cache.py \
+            --data data/pilot_train_19k.jsonl \
+            --tokenizer data/pilot_tokenizer/tokenizer.json \
+            --max-len 128 \
+            --output data/pilot_tokenized_128.pt
+
       - name: Prepare the same pinned GSM8K test-only holdout
         run: |
           python scripts/prepare_reasoning_holdout.py \
@@ -107,6 +115,7 @@ jobs:
             checkpoints/continuation/
             data/pilot_train_19k.jsonl
             data/pilot_train_19k.manifest.json
+            data/pilot_tokenized_128.pt
             data/pilot_tokenizer/
             data/holdout_500.jsonl
             artifacts/reasoning_gsm8k_500.jsonl
@@ -166,7 +175,7 @@ jobs:
                 --steps 500 --phase 1 --pilot-all-rows \
                 --data data/pilot_train_19k.jsonl \
                 --tokenizer data/pilot_tokenizer/tokenizer.json \
-                --batch 8 --max-len 128 --seed 42 \
+                --token-cache data/pilot_tokenized_128.pt --batch 8 --max-len 128 --seed 42 \
                 --lr 2e-5 --warmup 100 --total-steps 4000 \
                 --scheduler-transition --transition-start 2000 --transition-end 4000 \
                 --warmup-transition 20 --grad-clip 0.5 \
@@ -177,7 +186,7 @@ jobs:
                 --steps 500 \
                 --data data/pilot_train_19k.jsonl \
                 --tokenizer data/pilot_tokenizer/tokenizer.json \
-                --batch 8 --max-len 128 --seed 42 \
+                --token-cache data/pilot_tokenized_128.pt --batch 8 --max-len 128 --seed 42 \
                 --lr 5e-5 --warmup 100 --total-steps 4000 \
                 --scheduler-transition --transition-start 2000 --transition-end 4000 \
                 --warmup-transition 20 --grad-clip 1.0 \

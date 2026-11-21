@@ -51,12 +51,14 @@ class MemoriaElastica(nn.Module):
             elastic.register_hook(lambda grad: grad * 0.01)
         elastic = elastic * small.unsqueeze(-1).to(elastic.dtype)
 
-        # Large PE creates a new record; medium PE is deliberately ignored.
-        with torch.no_grad():
-            for batch_index in range(x.shape[0]):
-                selected = x[batch_index][large[batch_index]]
-                if selected.numel():
-                    self.registrar_nueva(selected)
+        # Memory writes are a training-time plasticity operation. Evaluation
+        # must retrieve from the frozen learned bank without cross-prompt mutation.
+        if self.training:
+            with torch.no_grad():
+                for batch_index in range(x.shape[0]):
+                    selected = x[batch_index][large[batch_index]]
+                    if selected.numel():
+                        self.registrar_nueva(selected)
 
         valid = self.contador_lenta > 0
         if not valid.any():
@@ -68,16 +70,17 @@ class MemoriaElastica(nn.Module):
                 dim=-1,
             )
             slow = torch.einsum("bts,sd->btd", weights, bank)
-            with torch.no_grad():
-                usage = torch.zeros_like(self.usage_ema)
-                valid_indices = torch.nonzero(valid, as_tuple=False).flatten()
-                usage[valid_indices] = weights.detach().mean((0, 1))
-                self.usage_ema.mul_(0.99).add_(usage, alpha=0.01)
-                self.tokens_since_decay.add_(x.shape[1])
-                while self.tokens_since_decay.item() >= 512:
-                    unused = (self.contador_lenta > 0) & (self.usage_ema < 0.001)
-                    self.lenta[unused] = self.lenta[unused] * 0.99
-                    self.tokens_since_decay.sub_(512)
+            if self.training:
+                with torch.no_grad():
+                    usage = torch.zeros_like(self.usage_ema)
+                    valid_indices = torch.nonzero(valid, as_tuple=False).flatten()
+                    usage[valid_indices] = weights.detach().mean((0, 1))
+                    self.usage_ema.mul_(0.99).add_(usage, alpha=0.01)
+                    self.tokens_since_decay.add_(x.shape[1])
+                    while self.tokens_since_decay.item() >= 512:
+                        unused = (self.contador_lenta > 0) & (self.usage_ema < 0.001)
+                        self.lenta[unused] = self.lenta[unused] * 0.99
+                        self.tokens_since_decay.sub_(512)
         return (0.7 * elastic + 0.3 * slow) * e_mem
 
     @torch.no_grad()

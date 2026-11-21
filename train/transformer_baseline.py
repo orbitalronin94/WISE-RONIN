@@ -1,14 +1,22 @@
-"""Matched-size decoder-only Transformer baseline for RONIN-LUMEN pilot."""
+"""Matched-size decoder-only Transformer baseline with exact block-boundary resume."""
 from __future__ import annotations
-import argparse, hashlib, logging, random
+
+import argparse
+import hashlib
+import logging
+import random
 from pathlib import Path
+
 import torch
 from torch import nn
 from torch.nn import functional as F
+
 from model.config import CONFIG
 from train.dataset import BPETokenizer, collate_rows, load_jsonl
 
 LOG = logging.getLogger("lumen.baseline")
+ARCHITECTURE_ID = "decoder_transformer_4l_d192_h4_ff576_tied_v1"
+
 
 class CausalBlock(nn.Module):
     def __init__(self, width=192, heads=4, ff_width=576):
@@ -29,6 +37,7 @@ class CausalBlock(nn.Module):
         attended = attended.transpose(1, 2).contiguous().view(b, t, c)
         x = x + self.proj(attended)
         return x + self.ff2(F.gelu(self.ff1(self.norm2(x))))
+
 
 class SmallTransformerLM(nn.Module):
     """2,295,168 parameters at the frozen 4k vocabulary and 128 context."""
@@ -53,6 +62,7 @@ class SmallTransformerLM(nn.Module):
             x = block(x)
         return self.lm_head(self.norm(x))
 
+
 def make_scheduler(optimizer, warmup=100, total=10000):
     def scale(step):
         if step < warmup:
@@ -61,11 +71,54 @@ def make_scheduler(optimizer, warmup=100, total=10000):
         return 0.5 * (1.0 + torch.cos(torch.tensor(progress * torch.pi)).item())
     return torch.optim.lr_scheduler.LambdaLR(optimizer, scale)
 
+
+def capture_rng(local_rng):
+    return {
+        "python": random.getstate(),
+        "torch_cpu": torch.get_rng_state(),
+        "local_sampler": local_rng.getstate(),
+    }
+
+
+def restore_rng(state, local_rng):
+    random.setstate(state["python"])
+    torch.set_rng_state(state["torch_cpu"])
+    local_rng.setstate(state["local_sampler"])
+
+
+def save_checkpoint(path, model, optimizer, scheduler, step, args,
+                    data_hash, tokenizer_hash, local_rng, tokens_seen, params):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save({
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "scheduler": scheduler.state_dict(),
+        "step": step,
+        "seed": args.seed,
+        "data_sha256": data_hash,
+        "tokenizer_sha256": tokenizer_hash,
+        "tokens_seen": tokens_seen,
+        "params": params,
+        "architecture_id": ARCHITECTURE_ID,
+        "architecture": "4-layer decoder-only Transformer, d_model=192, heads=4, ffn=576, tied embeddings",
+        "training_config": {
+            "batch": args.batch, "max_len": args.max_len, "lr": args.lr,
+            "warmup": args.warmup, "total_steps": args.total_steps,
+            "weight_decay": CONFIG.weight_decay,
+        },
+        "rng": capture_rng(local_rng),
+        "torch_version": torch.__version__,
+    }, path)
+    LOG.info("checkpoint=%s step=%d", path, step)
+
+
 def main():
     p = argparse.ArgumentParser(description="Matched-size Transformer pilot baseline")
     p.add_argument("--data", default="data/pilot_train_19k.jsonl")
     p.add_argument("--tokenizer", default="data/pilot_tokenizer/tokenizer.json")
-    p.add_argument("--steps", type=int, default=500)
+    p.add_argument("--steps", type=int, default=500,
+                   help="Number of additional steps in this block (maximum 500)")
+    p.add_argument("--resume", help="Previous global-step checkpoint")
     p.add_argument("--batch", type=int, default=8)
     p.add_argument("--max-len", type=int, default=128)
     p.add_argument("--seed", type=int, default=42)
@@ -75,25 +128,60 @@ def main():
     p.add_argument("--ckpt-dir", default="checkpoints/transformer")
     args = p.parse_args()
     if not 1 <= args.steps <= 500:
-        p.error("Pilot baseline is limited to 1..500 steps")
+        p.error("--steps must be between 1 and 500")
+
     torch.set_num_threads(2)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     rows, data_hash = load_jsonl(args.data)
     tokenizer = BPETokenizer(args.tokenizer)
-    if tokenizer.tokenizer.get_vocab_size() != 4096 or tokenizer.tokenizer.token_to_id("[PAD]") != 0:
+    if tokenizer.tokenizer.get_vocab_size() != CONFIG.vocab_size or tokenizer.tokenizer.token_to_id("[PAD]") != 0:
         raise ValueError("Baseline requires the shared 4k pilot tokenizer with PAD=0")
+    tokenizer_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
+
     model = SmallTransformerLM(CONFIG.vocab_size, args.max_len).cpu()
     params = sum(x.numel() for x in model.parameters())
-    LOG.info("baseline=decoder_transformer params=%d data_rows=%d data_sha256=%s",
-             params, len(rows), data_hash)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay)
     scheduler = make_scheduler(optimizer, args.warmup, args.total_steps)
-    rng = random.Random(args.seed)
-    tokens_seen = 0
+    local_rng = random.Random(args.seed)
+    tokens_seen, start, state = 0, 0, None
+
+    if args.resume:
+        state = torch.load(args.resume, map_location="cpu", weights_only=False)
+        expected_config = {
+            "batch": args.batch, "max_len": args.max_len, "lr": args.lr,
+            "warmup": args.warmup, "total_steps": args.total_steps,
+            "weight_decay": CONFIG.weight_decay,
+        }
+        checks = {
+            "architecture_id": (state.get("architecture_id"), ARCHITECTURE_ID),
+            "seed": (state.get("seed"), args.seed),
+            "data_sha256": (state.get("data_sha256"), data_hash),
+            "tokenizer_sha256": (state.get("tokenizer_sha256"), tokenizer_hash),
+            "training_config": (state.get("training_config"), expected_config),
+            "params": (state.get("params"), params),
+        }
+        mismatches = [key for key, (actual, expected) in checks.items() if actual != expected]
+        if mismatches:
+            raise ValueError(f"Transformer resume metadata mismatch: {mismatches}")
+        if "optimizer" not in state or "scheduler" not in state or "rng" not in state:
+            raise ValueError("Checkpoint lacks optimizer/scheduler/RNG state; exact resume is impossible")
+        model.load_state_dict(state["model"])
+        optimizer.load_state_dict(state["optimizer"])
+        scheduler.load_state_dict(state["scheduler"])
+        start = int(state["step"])
+        tokens_seen = int(state["tokens_seen"])
+        restore_rng(state["rng"], local_rng)
+        LOG.info("resumed step=%d tokens_seen=%d", start, tokens_seen)
+
+    if start + args.steps > args.total_steps:
+        raise ValueError(f"Requested global step {start + args.steps} exceeds total_steps={args.total_steps}")
+
+    LOG.info("baseline=decoder_transformer params=%d data_rows=%d data_sha256=%s tokenizer_sha256=%s",
+             params, len(rows), data_hash, tokenizer_hash)
     model.train()
-    for step in range(1, args.steps + 1):
-        chosen = rng.choices(rows, k=args.batch)
+    for step in range(start + 1, start + args.steps + 1):
+        chosen = local_rng.choices(rows, k=args.batch)
         tokens = collate_rows(chosen, tokenizer, args.max_len)
         tokens_seen += int(tokens.ne(0).sum())
         logits = model(tokens)
@@ -107,19 +195,21 @@ def main():
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         scheduler.step()
-        if step == 1 or step % 50 == 0 or step == args.steps:
-            LOG.info("baseline=transformer step=%d/%d loss=%.5f tokens_seen=%d lr=%.3e",
-                     step, args.steps, loss.item(), tokens_seen, scheduler.get_last_lr()[0])
-    out = Path(args.ckpt_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    ckpt = out / f"step_{args.steps}.pt"
-    torch.save({
-        "model": model.state_dict(), "step": args.steps, "seed": args.seed,
-        "data_sha256": data_hash, "tokenizer_sha256": hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest(),
-        "params": params, "tokens_seen": tokens_seen,
-        "architecture": "4-layer decoder-only Transformer, d_model=192, heads=4, ffn=576, tied embeddings",
-    }, ckpt)
-    LOG.info("checkpoint=%s", ckpt)
+        if step == start + 1 or step % 50 == 0 or step == start + args.steps:
+            LOG.info("baseline=transformer step=%d loss=%.5f tokens_seen=%d lr=%.3e",
+                     step, loss.item(), tokens_seen, scheduler.get_last_lr()[0])
+        if step % 500 == 0:
+            save_checkpoint(Path(args.ckpt_dir) / f"step_{step}.pt",
+                            model, optimizer, scheduler, step, args, data_hash,
+                            tokenizer_hash, local_rng, tokens_seen, params)
+
+    final_step = start + args.steps
+    if final_step % 500:
+        save_checkpoint(Path(args.ckpt_dir) / f"step_{final_step}.pt",
+                        model, optimizer, scheduler, final_step, args, data_hash,
+                        tokenizer_hash, local_rng, tokens_seen, params)
+    LOG.info("completed step=%d device=cpu", final_step)
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")

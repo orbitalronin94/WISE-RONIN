@@ -130,8 +130,20 @@ jobs:
           echo "No exact checkpoint cache exists for requested parent step ${{ steps.plan.outputs.start_step }}. Resume from the last cached hito; do not guess or silently restart." >&2
           exit 1
 
-      - name: Download immutable source-candidate artifact (cache miss only)
+      - name: Restore previously prepared corpus and tokenizer artifact (cache miss only)
+        id: prepared-data-artifact
         if: steps.prepared-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-prepared-data-44905396366
+          path: artifacts/prepared-data-cache
+          repository: ${{ github.repository }}
+          run-id: 44905396366
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download immutable source-candidate artifact (fallback only)
+        if: steps.prepared-cache.outputs.cache-hit != 'true' && steps.prepared-data-artifact.outcome != 'success'
         uses: actions/download-artifact@v4
         with:
           name: lumen-source-candidates-seed-42
@@ -140,7 +152,7 @@ jobs:
           run-id: 44890014413
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download original pilot artifact for reusable tokenizer and checkpoint bootstrap
+      - name: Download original pilot artifact for checkpoint bootstrap
         if: steps.prepared-cache.outputs.cache-hit != 'true' || (steps.plan.outputs.start_step == '500' && steps.checkpoint-cache.outputs.cache-hit != 'true')
         uses: actions/download-artifact@v4
         with:
@@ -150,8 +162,28 @@ jobs:
           run-id: 44900623884
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build provisional corpus once from immutable source candidates
-        if: steps.prepared-cache.outputs.cache-hit != 'true'
+      - name: Restore corpus and tokenizer without rebuilding
+        if: steps.prepared-cache.outputs.cache-hit != 'true' && steps.prepared-data-artifact.outcome == 'success'
+        run: |
+          mkdir -p data/pilot_tokenizer
+          cp artifacts/prepared-data-cache/pilot_train_19k.jsonl data/pilot_train_19k.jsonl
+          cp artifacts/prepared-data-cache/pilot_train_19k.manifest.json data/pilot_train_19k.manifest.json
+          cp -a artifacts/prepared-data-cache/pilot_tokenizer/. data/pilot_tokenizer/
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          corpus = hashlib.sha256(Path("data/pilot_train_19k.jsonl").read_bytes()).hexdigest()
+          manifest = json.loads(Path("data/pilot_tokenizer/tokenizer.manifest.json").read_text())
+          if manifest.get("corpus_sha256") != corpus:
+              raise SystemExit("Prepared tokenizer belongs to a different corpus")
+          tokenizer = hashlib.sha256(Path("data/pilot_tokenizer/tokenizer.json").read_bytes()).hexdigest()
+          if manifest.get("tokenizer_sha256") != tokenizer:
+              raise SystemExit("Prepared tokenizer SHA-256 mismatch")
+          print(f"Restored prepared corpus {corpus} and tokenizer {tokenizer}; no rebuild or retokenization.")
+          PY
+
+      - name: Build provisional corpus once from immutable source candidates (fallback only)
+        if: steps.prepared-cache.outputs.cache-hit != 'true' && steps.prepared-data-artifact.outcome != 'success'
         run: |
           python scripts/build_pilot_corpus.py \
             --sources artifacts/source-candidates \
@@ -202,19 +234,22 @@ jobs:
               --batch 8 --max-len 128 --seed 42 \
               --lr 1.5e-4 --warmup 100 --total-steps 10000 \
               --ckpt-dir checkpoints/transformer
-            python - <<'PY'
-            import torch
-            old = torch.load("checkpoints/transformer/step_500_legacy.pt", map_location="cpu", weights_only=False)
-            new = torch.load("checkpoints/transformer/step_500.pt", map_location="cpu", weights_only=False)
-            if old["model"].keys() != new["model"].keys():
-                raise SystemExit("Transformer bootstrap replay changed model state keys")
-            mismatches = [k for k in old["model"] if not torch.equal(old["model"][k], new["model"][k])]
-            if mismatches:
-                raise SystemExit(f"Deterministic bootstrap replay differs in tensors: {mismatches[:8]}")
-            print("Transformer replay exactly reproduced the existing 500-step weights; optimizer/RNG state is now resumable.")
-            PY
-            rm checkpoints/transformer/step_500_legacy.pt
           fi
+          python - <<'PY'
+          from pathlib import Path
+          import torch
+          legacy_path = Path("checkpoints/transformer/step_500_legacy.pt")
+          if legacy_path.exists():
+              old = torch.load(legacy_path, map_location="cpu", weights_only=False)
+              new = torch.load("checkpoints/transformer/step_500.pt", map_location="cpu", weights_only=False)
+              if old["model"].keys() != new["model"].keys():
+                  raise SystemExit("Transformer bootstrap replay changed model state keys")
+              mismatches = [key for key in old["model"] if not torch.equal(old["model"][key], new["model"][key])]
+              if mismatches:
+                  raise SystemExit(f"Deterministic bootstrap replay differs in tensors: {mismatches[:8]}")
+              print("Transformer replay exactly reproduced the existing 500-step weights; optimizer/RNG state is now resumable.")
+              legacy_path.unlink()
+          PY
 
       - name: Prepare frozen GSM8K test-only holdout once
         if: hashFiles('artifacts/reasoning_gsm8k_500.jsonl') == ''

@@ -62,6 +62,8 @@ def collate_token_ids(encoded_rows, pad_id=0):
 def load_token_cache(path, data_hash, tokenizer_hash, max_len, row_count):
     """Load a cache only when it is tied to the exact corpus/tokenizer/length."""
     cache = torch.load(path, map_location="cpu", weights_only=False)
+    if cache.get("format") != "ronin_token_cache_v1":
+        raise ValueError("Unsupported token cache format")
     expected = {
         "data_sha256": data_hash,
         "tokenizer_sha256": tokenizer_hash,
@@ -79,7 +81,10 @@ def load_token_cache(path, data_hash, tokenizer_hash, max_len, row_count):
 
 def collate_rows(rows, tokenizer, max_len):
     """Backward-compatible encoder for callers without a frozen token cache."""
-    return collate_token_ids(encode_rows(rows, tokenizer, max_len))
+    pad_id = tokenizer.tokenizer.token_to_id("[PAD]")
+    if pad_id != 0:
+        raise ValueError("Tokenizer must define [PAD] at token ID 0")
+    return collate_token_ids(encode_rows(rows, tokenizer, max_len), pad_id=pad_id)
 
 
 def collate(rows, tokenizer, batch_size, max_len, rng):

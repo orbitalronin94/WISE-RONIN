@@ -1,1 +1,52 @@
-# M1 placeholder. Implement the 500-step CPU workflow only in the CI milestone.
+name: RONIN-LUMEN CPU training
+on:
+  workflow_dispatch:
+    inputs:
+      steps: {description: "Steps (10/100/500)", required: true, default: "500", type: choice, options: ["10","100","500"]}
+      phase: {description: "Curriculum phase", required: true, default: "1", type: choice, options: ["1","2","3"]}
+      no_sleep: {description: "Disable sleep", required: false, default: false, type: boolean}
+      no_jepa: {description: "Disable JEPA", required: false, default: false, type: boolean}
+  push:
+    branches: [lumen-v1/m1-refactor]
+    paths: ["model/**","train/**",".github/workflows/train.yml"]
+permissions: {contents: read}
+jobs:
+  cpu-train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: lumen-v1/m1-refactor}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Install CPU dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Compile and count parameters
+        run: |
+          python -m compileall -q model train
+          python -c "from model.lumen import RoninLumen; m=RoninLumen(); n=sum(p.numel() for p in m.parameters()); print('parameters',n); assert n <= 6000000"
+      - name: M1 smoke test on code pushes
+        if: github.event_name == 'push'
+        run: python train/train.py --dummy-m1 --steps 10 --phase 1
+      - name: Requested training block
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          STEPS: ${{ inputs.steps }}
+          PHASE: ${{ inputs.phase }}
+          NO_SLEEP: ${{ inputs.no_sleep }}
+          NO_JEPA: ${{ inputs.no_jepa }}
+        run: |
+          EXTRA=""
+          [ "$NO_SLEEP" = "true" ] && EXTRA="$EXTRA --no-sleep"
+          [ "$NO_JEPA" = "true" ] && EXTRA="$EXTRA --no-jepa"
+          python train/train.py --steps "$STEPS" --phase "$PHASE" $EXTRA
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lumen-checkpoints-${{ github.run_id }}
+          path: checkpoints/
+          if-no-files-found: warn
+          retention-days: 30

@@ -95,7 +95,9 @@ def profiler_table(ckpt,tokens,p):
 def worker(a):
  p=json.loads(a.worker_profile); affinity=configure(p)
  ckpt=torch.load(a.checkpoint,map_location="cpu",weights_only=False); tokens=load_batch(a)
- result=dict(profile=p,affinity_cpus=affinity,full_objective=trial(ckpt,tokens,p,a.warmup,a.steps,a.repeats,True),\n  diagnostic_collection_cost=trial(ckpt,tokens,p,max(2,a.warmup//2),max(8,a.steps//2),1,True,True),\n  checkpoint_save_cost=checkpoint_save_cost(ckpt,p))
+ result=dict(profile=p,affinity_cpus=affinity,full_objective=trial(ckpt,tokens,p,a.warmup,a.steps,a.repeats,True),
+  diagnostic_collection_cost=trial(ckpt,tokens,p,max(2,a.warmup//2),max(8,a.steps//2),1,True,True),
+  checkpoint_save_cost=checkpoint_save_cost(ckpt,p))
  if a.measure_ablation:
   result["repetition_loss_ablation"]=trial(ckpt,tokens,p,max(2,a.warmup//2),max(8,a.steps//2),1,False)
   result["repetition_loss_ablation"]["promotion_eligible"]=False

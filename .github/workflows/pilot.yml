@@ -71,7 +71,7 @@ jobs:
           echo "end_step=$END" >> "$GITHUB_OUTPUT"
           echo "Longitudinal plan: $START -> $END in $BLOCKS blocks"
 
-      - name: Restore validation result for this exact code revision
+      - name: Restore validation result for this source and test revision
         id: test-cache
         uses: actions/cache/restore@v4
         with:
@@ -312,18 +312,27 @@ jobs:
             checkpoints/transformer/step_${{ steps.plan.outputs.end_step }}.pt
           key: ronin-lumen-checkpoints-v1-step-${{ steps.plan.outputs.end_step }}
 
-      - name: Upload checkpoints, manifests, predictions and reusable data
+      - name: Archive prepared corpus, tokenizer and holdout only when first built
+        if: always() && steps.prepared-cache.outputs.cache-hit != 'true' && hashFiles('data/pilot_train_19k.jsonl') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ronin-lumen-prepared-data-${{ github.run_id }}
+          path: |
+            data/pilot_train_19k.jsonl
+            data/pilot_train_19k.manifest.json
+            data/pilot_tokenizer/
+            artifacts/reasoning_gsm8k_500.jsonl
+            artifacts/reasoning_gsm8k_500.manifest.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Upload checkpoints, manifests and predictions
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ronin-lumen-longitudinal-${{ github.run_id }}
           path: |
             checkpoints/
-            data/pilot_train_19k.jsonl
-            data/pilot_train_19k.manifest.json
-            data/pilot_tokenizer/
-            artifacts/reasoning_gsm8k_500.jsonl
-            artifacts/reasoning_gsm8k_500.manifest.json
             artifacts/evaluations/
             artifacts/manifests/
           if-no-files-found: warn

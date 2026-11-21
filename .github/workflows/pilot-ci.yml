@@ -24,7 +24,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ronin-lumen-pilot-checks-${{ github.ref }}
+  # Shares the legacy training workflow group so this test-only run cancels
+  # obsolete queued/running full-train jobs from the pre-cache workflow.
+  group: ronin-lumen-matched-pilot
   cancel-in-progress: true
 
 jobs:

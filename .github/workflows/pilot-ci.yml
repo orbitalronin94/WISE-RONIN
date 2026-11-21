@@ -21,6 +21,7 @@ on:
       - "data/**"
       - "tests/**"
       - ".github/workflows/pilot-ci.yml"
+      - ".github/workflows/continue-2000-4000.yml"
 
 permissions:
   contents: read

@@ -256,6 +256,7 @@ def main():
                     "delta_output_norm": delta.last_output_norm,
                     "input_positive_rate": homeo.last_input_positive,
                     "output_positive_rate": homeo.last_output_positive,
+                    "gate_positive_rate": homeo.last_gate_positive,
                     "homeostasis_output_norm": homeo.last_output_norm,
                     "effective_activity_mean": float(homeo.effective_m.mean().detach()),
                     "effective_dead_fraction": homeo.neuronas_muertas(),
@@ -270,6 +271,7 @@ def main():
                 f"delta_out={record['delta_output_norm']:.3e},"
                 f"in+={record['input_positive_rate']:.3f},"
                 f"out+={record['output_positive_rate']:.3f},"
+                f"gate+={record['gate_positive_rate']:.3f},"
                 f"homeo_out={record['homeostasis_output_norm']:.3e},"
                 f"dead={record['effective_dead_fraction']:.1%},"
                 f"bias_norm={record['homeostasis_bias_norm']:.3e}"
@@ -278,7 +280,7 @@ def main():
             LOG.info("layer_diagnostics step=%d %s", step, layer_diag)
             LOG.info("effective_dead_by_layer step=%d values=%s", step,
                      ",".join(f"{value:.3f}" for value in dead_by_layer))
-            if step >= 100 and dead > 0.20:
+            if step >= start + 100 and dead > 0.20:
                 save_checkpoint(
                     Path(args.ckpt_dir) / f"step_{step}_STOP.pt",
                     model, optimizer, scheduler, step, args, data_hash, local_rng,

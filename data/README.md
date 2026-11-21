@@ -1,67 +1,97 @@
-# RONIN-LUMEN V1 — procedencia y preparación de datos
+# RONIN-LUMEN V1 — corpus, provenance and holdout gates
 
-## Estado
+## Status
 
-**No existe todavía un dataset final de entrenamiento.** El workflow `.github/workflows/prepare-data.yml` prepara un artefacto temporal de candidatos externos; no crea `train_25k.jsonl`, no modifica el holdout y no inicia entrenamiento.
+The 25,000-row training corpus is **not built**. The first 19,000-row staging artifact has been audited against the frozen holdout: 0 exact matches and 0 long prompt-substring matches, but 39 normalized duplicate rows. The sampler now performs Unicode-normalized deduplication and rejects very short fragments; the rebuilt artifact is being checked by the updated runner workflow.
 
-La receta de la especificación contiene una tensión que no se debe resolver en silencio:
+No training corpus, tokenizer, or production train is authorized merely because PR #13 was merged. The merge integrated the architecture and tooling; data and evaluation gates remain independent.
 
-- La tabla de §7.2 asigna los 25.000 registros a seis familias externas.
-- El párrafo anti-atractor exige que el 80% sea corpus probado y el 20% sea corpus propio.
-- Para respetar el 80/20, el muestreador reserva 20.000 filas externas y deja 5.000 para el corpus curado por el propietario.
-- No se fabricará ese 20% propio. Hasta recibirlo, el dataset final permanece bloqueado.
+## Resolving the 80/20 composition
 
-La asignación externa se escala proporcionalmente desde la tabla original. Las cuotas actualmente implementadas suman 19.000 filas; las 1.000 restantes corresponderían a Python-Edu/The Stack y están bloqueadas por auditoría de licencias por archivo.
+The master specification's source table describes a 25k all-tested-source recipe, while its anti-attractor paragraph separately requires 80% established external material and 20% owner-curated material. The correct interpretation for a 25,000-row final corpus is to scale the source table to 20,000 external rows (80%) and reserve 5,000 rows (20%) for the owner's corpus.
 
-## Fuentes externas y condiciones
+| Source family | Master-spec share | Scaled final quota |
+|---|---:|---:|
+| TinyStories-style | 20% | 4,000 |
+| BabyLM-style | 20% | 4,000 |
+| FineWeb-Edu / DCLM | 20% | 4,000 |
+| Cosmopedia-style | 20% | 4,000 |
+| Orca-Math / TinyGSM | 15% | 3,000 |
+| Python-Edu / individually licensed code | 5% | 1,000 |
+| **External total** | **80%** | **20,000** |
+| **Owner-curated corpus** | **20%** | **5,000** |
+| **Final total** | **100%** | **25,000** |
 
-| Fuente | Dataset / subset | Cuota externa | Licencia declarada | Estado |
+The current source sampler supplies 19,000 of the 20,000 external quota. The remaining 1,000 code rows are blocked until individual source-file licenses and attribution are verified. No synthetic data is fabricated to fill the gap.
+
+## External sources and rights
+
+| Source | Dataset / subset | Current staged quota | Declared license | Gate |
 |---|---|---:|---|---|
-| TinyStories | `roneneldan/TinyStories` | 4.000 | CDLA-Sharing-1.0 | Muestreo permitido sujeto a obligaciones share-alike |
-| BabyLM | `BabyLM-community/BabyLM-2026-Strict` | 4.000 | MIT | Muestreo habilitado |
-| FineWeb-Edu | `HuggingFaceFW/fineweb-edu`, `sample-10BT` | 2.000 | ODC-By-1.0 | Muestreo habilitado; atribución obligatoria |
-| DCLM | `mlfoundations/dclm-baseline-1.0` | 2.000 | CC-BY-4.0 | Muestreo habilitado; atribución obligatoria |
-| Cosmopedia v2 | `HuggingFaceTB/smollm-corpus`, `cosmopedia-v2` | 4.000 | ODC-By-1.0 (tarjeta del corpus) | Muestreo de `text` solamente; excluir `prompt` y `seed_data` |
-| Orca-Math | `microsoft/orca-math-word-problems-200k` | 1.500 | MIT | Muestreo habilitado; validar soluciones |
-| TinyGSM | `TinyGSM/TinyGSM` | 1.500 | MIT (tarjeta del dataset) | Muestreo habilitado; validar código/soluciones |
-| Python-Edu / The Stack V2 | `HuggingFaceTB/smollm-corpus`, `python-edu` | 1.000 | ODC-By a nivel de corpus; licencias originales por fichero | **Bloqueado** hasta resolver atribución y licencia individual |
-| GSM8K | `openai/gsm8k` | 0 | MIT | **Solo benchmark/evaluación**, nunca entrenamiento |
+| TinyStories | `roneneldan/TinyStories` | 4,000 | CDLA-Sharing-1.0 | Human rights review required |
+| BabyLM | `BabyLM-community/BabyLM-2026-Strict` | 4,000 | MIT | Human rights review required |
+| FineWeb-Edu | `HuggingFaceFW/fineweb-edu`, `sample-10BT` | 2,000 | ODC-By-1.0 | Human rights review required |
+| DCLM | `mlfoundations/dclm-baseline-1.0` | 2,000 | CC-BY-4.0 | Human rights review required |
+| Cosmopedia v2 | `HuggingFaceTB/smollm-corpus`, `cosmopedia-v2` | 4,000 | ODC-By-1.0 (dataset card) | Human rights review required |
+| Orca-Math | `microsoft/orca-math-word-problems-200k` | 1,500 | MIT (dataset card) | Validate solutions and rights |
+| TinyGSM | `TinyGSM/TinyGSM` | 1,500 | MIT (dataset card) | Validate code/solutions and rights |
+| Python-Edu / The Stack V2 | `HuggingFaceTB/smollm-corpus`, `python-edu` | 0 / 1,000 target | Dataset-level ODC-By; underlying files vary | Blocked pending per-file audit |
+| GSM8K | `openai/gsm8k` | 0 | MIT | Benchmark only; never train |
 
-Las licencias anteriores son las declaradas en las tarjetas oficiales consultadas. No equivalen a una opinión legal ni eliminan las condiciones de las obras subyacentes. En particular:
+A dataset-card license is not treated as blanket legal clearance of every underlying work. The final builder now fails closed unless each staged source has both `license_reviewed: true` and `rights_confirmed: true` in its manifest. Those flags must only be set after human review of the relevant terms and obligations. The sampler's `confirmed` field is separate: it describes epistemic/factual confirmation, not copyright clearance.
 
-- ODC-By requiere atribución de la base de datos.
-- CDLA-Sharing incorpora obligaciones de compartir bajo sus condiciones.
-- The Stack exige respetar las licencias originales de cada repositorio y mantener la información de procedencia. No se incluirá código solo porque la colección agregada tenga una etiqueta abierta.
-- El corpus FineWeb-Edu deriva de Common Crawl y está sujeto también a sus términos.
-- Los textos sintéticos no se marcarán como hechos verificados por el mero hecho de proceder de un dataset educativo.
+The 1,000 code rows must each include an immutable repository commit, exact file path, source-file SHA-256, license evidence path and SHA-256, license URL, attribution, and explicit human `license_audited: true` / `rights_confirmed: true` attestations. No corpus-level license label can substitute for this evidence.
 
-## Idioma y calidad: limitación visible
+## Owner-curated 5,000 rows
 
-Las fuentes públicas seleccionadas son mayoritariamente inglesas. La especificación no define una cuota lingüística explícita ni una fuente española concreta. El corpus propio de 5.000 filas será decisivo para la voz española, pero no se asumirá que compensa por sí solo el desequilibrio lingüístico. Debe revisarse la composición real antes de congelar el dataset.
+The owner corpus is intentionally not generated by the pipeline. It should carry the distinctive Spanish material described by the specification: original factual/educational material, esperpento, KOAN examples, lexicon, and anti-attractor variety. Keep factual assertions, rumor, fiction, and behavioral examples explicitly typed; do not silently promote synthetic or unverified statements to confirmed facts.
 
-La columna `confirmed` es una etiqueta de procedencia del pipeline, no una garantía epistemológica de que cada afirmación sea verdadera. En la primera preparación se marca como `false` todo texto que no haya sido verificado individualmente; FineWeb-Edu y DCLM no se tratan como fuentes de hechos confirmados.
+Required file: `data/owner/curated_5000.jsonl`. Each row needs non-empty `prompt` and `completion`, `origin: "owner_curated"`, an actual license/permission declaration, `rights_confirmed: true`, and preferably a manually reviewed ISO language label. The builder checks exact count, rights flag, duplicates, repeated prefixes and holdout overlap.
 
-## Reproducibilidad
+## Language balance
 
-- Seed congelada: `42`.
-- Lectura mediante Hugging Face Datasets en streaming.
-- Resolución de la revisión actual de cada dataset a un commit SHA inmutable, registrado en el manifiesto.
-- Deduplicación exacta por SHA-256 del texto normalizado, compartida entre fuentes.
-- Filtro de prefijo de cinco tokens por fuente durante el staging: si un grupo supera diez registros, se conserva uno. El builder final aún debe repetir la auditoría de prefijos sobre la mezcla completa.
-- Cada fichero JSONL tiene su SHA-256 en `manifest.json`.
-- Los candidatos se almacenan como artefacto de GitHub Actions, no en Git.
-- El muestreador falla si no alcanza la cuota; no reduce cuotas silenciosamente.
-- El holdout `holdout_500.jsonl` no se lee ni se modifica durante esta preparación.
+The staged public sources are predominantly English. The specification calls for Spanish to be part of the distinctive 20% owner corpus but does not state a numerical minimum Spanish percentage. We will not invent one. The builder reports per-language counts and a rough heuristic Spanish share; the heuristic is only a triage signal, not a reliable language identifier. Ambiguous and multilingual records need manual labels. Before the corpus is frozen, the owner must approve a concrete Spanish-language target and set `--min-spanish-share` accordingly.
 
-Workflow disponible en GitHub Actions: **Prepare RONIN-LUMEN source libraries**. El artefacto esperado se llama `lumen-source-candidates-seed-42`. Ejecución completada: [run 44887381117](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44887381117). Se generó el artifact `lumen-source-candidates-seed-42` (artifact ID `14700701424`, ZIP SHA-256 `ff8a1ad08626429f704e01ebd70f9915b5e58071c9f2d3ca0a3d8f4d777670c8`). Se verificaron los siete recuentos de filas y los siete SHA-256 internos contra `data/source_manifest_seed42.json`. El artifact contiene 19.000 candidatos externos, no el dataset final de 25.000.
+## Frozen holdout
 
-## Pendientes antes de crear `train_25k.jsonl`
+`data/holdout_500.jsonl` remains unchanged: 500 rows, 55 unique user prompts. The audit compares normalized candidate text against the historical `user` and `hecho_esperado` fields, checks long embedded user prompts, validates candidate hashes and duplicates, and records the report as an Actions artifact.
 
-1. Conseguir y auditar los 1.000 ejemplos Python-Edu/The Stack o autorizar una sustitución compatible.
-2. Incorporar las 5.000 filas originales curadas por el propietario.
-3. Resolver explícitamente la tensión entre la tabla de cuotas de §7.2 y el reparto 80/20.
-4. Revisar la cuota de español y el balance por idioma.
-5. Validar matemáticas, código, deduplicación semántica y contaminación del holdout.
-6. Registrar licencias y atribuciones finales por fuente en el manifiesto.
+The first audit found no exact or long-substring holdout overlap, but 39 normalized duplicate candidate rows. That is a failed candidate-integrity gate, not a clean dataset. The revised sampler and audit must produce a new artifact with zero duplicates before it can pass. Lexical matching is not semantic proof; final manual review remains required.
 
-**No se entrena con este staging. No se marca el dataset como listo hasta cerrar todos los puntos anteriores.**
+## Reproducibility and artifacts
+
+- Sampling seed: `42`.
+- Hugging Face dataset revisions resolved to immutable commit SHAs.
+- Per-source JSONL SHA-256 recorded in `manifest.json`.
+- Text normalized with Unicode NFKC and casefolding for duplicate detection.
+- Minimum fragment filter: 24 normalized characters and 4 words.
+- Prefix rule: if a five-token prefix group exceeds ten candidates, only one is retained during source staging; the final builder repeats the check across the full corpus.
+- Artifacts are stored in GitHub Actions, not committed as data blobs.
+- The holdout is not used for training or tokenizer fitting.
+
+## Build and tokenizer gates
+
+After supplying the 5,000 owner rows, 1,000 individually audited code rows, and human-approved source rights, run:
+
+```bash
+python data/build_dataset.py \
+  --sources artifacts/lumen-source-candidates \
+  --owner data/owner \
+  --holdout data/holdout_500.jsonl \
+  --output data/train_25k.jsonl \
+  --min-spanish-share <approved-fraction>
+```
+
+The builder writes `train_25k.manifest.json` with the corpus SHA-256, exact 80/20 composition, language estimates, source revisions, and explicit review gates. The review gates default to false and must be completed before tokenizer fitting.
+
+Only after manual source-license, owner-rights, code-file-license, holdout, language-balance, and tokenizer approvals are recorded may the tokenizer be trained:
+
+```bash
+python scripts/train_tokenizer.py \
+  --data data/train_25k.jsonl \
+  --manifest data/train_25k.manifest.json \
+  --output data/tokenizer/tokenizer.json \
+  --vocab-size 4096
+```
+
+The tokenizer script verifies the reviewed corpus hash and row count, requires all review gates, enforces exactly 4,096 BPE tokens and the fixed special-token IDs, checks byte-level encode/decode round trips, and writes a tokenizer manifest. Training remains separately blocked until model-level validation and explicit production authorization.

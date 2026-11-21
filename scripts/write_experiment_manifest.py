@@ -65,6 +65,35 @@ def main() -> None:
     if gap >= 1.0:
         raise ValueError(f"Parameter gap {gap:.4f}% exceeds 1% matched-size tolerance")
 
+    def lumen_health(state: dict) -> dict:
+        tensors = state["model"]
+        layer_ids = sorted({
+            int(key.split(".")[1])
+            for key in tensors
+            if key.startswith("homeo.") and key.split(".")[1].isdigit()
+        })
+        layers = []
+        for index in layer_ids:
+            prefix = f"homeo.{index}."
+            effective = tensors.get(prefix + "effective_m")
+            pre_gate = tensors.get(prefix + "m")
+            bias = tensors.get(prefix + "bias")
+            layers.append({
+                "layer": index,
+                "effective_activity_ema_mean": float(effective.float().mean()) if effective is not None else None,
+                "effective_dead_fraction": float((effective < 0.001).float().mean()) if effective is not None else None,
+                "pre_gate_activity_ema_mean": float(pre_gate.float().mean()) if pre_gate is not None else None,
+                "homeostasis_bias_norm": float(bias.float().norm()) if bias is not None else None,
+                "homeostasis_bias_min": float(bias.float().min()) if bias is not None else None,
+                "homeostasis_bias_max": float(bias.float().max()) if bias is not None else None,
+            })
+        return {
+            "homeostasis_by_layer": layers,
+            "layer_diagnostics_history": state.get("layer_diagnostics_history", []),
+            "sleep_events": state.get("sleep_events", []),
+            "sleep_executed_events": sum(bool(event.get("executed")) for event in state.get("sleep_events", [])),
+        }
+
     def parent_record(raw_path: str | None):
         if not raw_path:
             return None
@@ -106,6 +135,7 @@ def main() -> None:
                 "parameters": lumen_params,
                 "checkpoint": {"path": str(paths["lumen"]), "sha256": sha256(paths["lumen"])},
                 "parent_checkpoint": parent_record(args.lumen_parent),
+                "health_and_memory_diagnostics": lumen_health(lumen),
                 "training_config": {
                     "phase": lumen.get("phase"),
                     "pilot_all_rows": lumen.get("pilot_all_rows"),

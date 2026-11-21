@@ -112,8 +112,11 @@ def main():
     p.add_argument("--historical-holdout", default="data/holdout_500.jsonl")
     p.add_argument("--gsm8k-limit", type=int, default=100)
     p.add_argument("--max-new-tokens", type=int, default=64)
+    p.add_argument("--expected-step", type=int, default=500, help="Required global checkpoint step for both models")
     p.add_argument("--output", default="artifacts/pilot-evaluation")
     args = p.parse_args()
+    if args.expected_step < 1:
+        p.error("--expected-step must be positive")
     torch.set_num_threads(2)
     data_hash = hashlib.sha256(Path(args.data).read_bytes()).hexdigest()
     tok_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
@@ -149,8 +152,8 @@ def main():
             raise ValueError(f"{kind}: checkpoint corpus hash mismatch")
         if state.get("tokenizer_sha256") != tok_hash:
             raise ValueError(f"{kind}: checkpoint tokenizer hash mismatch")
-        if state.get("step") != 500 or state.get("seed") != 42:
-            raise ValueError(f"{kind}: expected the matched 500-step seed-42 checkpoint")
+        if state.get("step") != args.expected_step or state.get("seed") != 42:
+            raise ValueError(f"{kind}: expected matched step-{args.expected_step} seed-42 checkpoint; got step={state.get('step')} seed={state.get('seed')}")
         predictions = []
         for start in range(0, len(tasks), 8):
             batch_tasks = tasks[start:start+8]

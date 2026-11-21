@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import logging
 import random
 import time
@@ -149,6 +150,7 @@ def main():
     parser.add_argument("--transition-start", type=int, default=1000)
     parser.add_argument("--transition-end", type=int, default=2000)
     parser.add_argument("--warmup-transition", type=int, default=20)
+    parser.add_argument("--wall-clock-file")
     parser.add_argument("--no-sleep", action="store_true")
     parser.add_argument("--no-jepa", action="store_true")
     parser.add_argument("--no-rep", action="store_true")
@@ -325,6 +327,9 @@ def main():
         hook_handles.append(organ.register_forward_pre_hook(homeo_pre))
         hook_handles.append(organ.register_forward_hook(homeo_post))
     block_started = time.perf_counter()
+    elapsed_offset = 0.0
+    if args.wall_clock_file and Path(args.wall_clock_file).is_file():
+        elapsed_offset = float(json.loads(Path(args.wall_clock_file).read_text()).get("elapsed_seconds", 0.0))
     reached_targets = set()
     for step in range(start + 1, start + args.steps + 1):
         step_started = time.perf_counter()
@@ -360,9 +365,9 @@ def main():
         scheduler.step()
         for target in (6.0, 5.8):
             if target not in reached_targets and loss.item() <= target:
-                elapsed = time.perf_counter() - block_started
+                elapsed = elapsed_offset + time.perf_counter() - block_started
                 reached_targets.add(target)
-                LOG.info("time_to_target: model=LUMEN, target_loss=%.1f, step=%d, wall_seconds=%.3f",
+                LOG.info("time_to_target: model=LUMEN, target_loss=%.1f, step=%d, reached=True, wall_seconds=%.3f",
                          target, step, elapsed)
 
         if step >= 5000 and not quant_enabled and not args.dummy_m1:
@@ -507,6 +512,17 @@ def main():
         save_checkpoint(Path(args.ckpt_dir) / f"step_{final_step}.pt",
                         model, optimizer, scheduler, final_step, args, data_hash, local_rng,
                         tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events)
+    block_elapsed = time.perf_counter() - block_started
+    total_elapsed = elapsed_offset + block_elapsed
+    for target in (6.0, 5.8):
+        if target not in reached_targets:
+            LOG.info("time_to_target: model=LUMEN, target_loss=%.1f, reached=False, wall_seconds=%.3f",
+                     target, total_elapsed)
+    if args.wall_clock_file:
+        wall_path = Path(args.wall_clock_file)
+        wall_path.parent.mkdir(parents=True, exist_ok=True)
+        wall_path.write_text(json.dumps({"model": "LUMEN", "elapsed_seconds": total_elapsed}, indent=2) + "\n")
+    LOG.info("wall_clock_accumulated: model=LUMEN, seconds=%.3f", total_elapsed)
     LOG.info("completed step=%d device=cpu", final_step)
 
 

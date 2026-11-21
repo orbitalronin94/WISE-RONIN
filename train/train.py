@@ -171,6 +171,8 @@ def main():
         parser.error("--dummy-m1 is limited to blocks of at most 10 steps")
     if args.pilot_all_rows and (args.dummy_m1 or args.phase != 1):
         parser.error("--pilot-all-rows is only valid for real-data phase 1")
+    if args.scheduler_transition and not args.resume:
+        parser.error("--scheduler-transition requires an exact resumable parent checkpoint")
 
     torch.set_num_threads(2)
     torch.manual_seed(args.seed)

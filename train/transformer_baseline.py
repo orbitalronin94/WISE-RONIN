@@ -146,6 +146,8 @@ def main():
     args = p.parse_args()
     if not 1 <= args.steps <= 500:
         p.error("--steps must be between 1 and 500")
+    if args.scheduler_transition and not args.resume:
+        p.error("--scheduler-transition requires an exact resumable parent checkpoint")
 
     torch.set_num_threads(2)
     torch.manual_seed(args.seed)

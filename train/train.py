@@ -422,33 +422,33 @@ def main():
             LOG.info("layer_diagnostics step=%d %s", step, layer_diag)
             LOG.info("effective_dead_by_layer step=%d values=%s", step,
                      ",".join(f"{value:.3f}" for value in dead_by_layer))
-            if step % 250 == 0:
-                rolling_dead = []
-                for window in activity_windows:
-                    if len(window) < 100:
-                        rolling_dead.append(None)
-                    else:
-                        mean_activity = torch.stack(list(window)).mean(dim=0)
-                        rolling_dead.append(float((mean_activity < 1e-4).float().mean().item()))
-                LOG.info(
-                    "health_250: step=%d loss=%.5f dead_by_layer=%s gate_plus=%s wall_seconds=%.1f",
-                    step, loss.item(),
-                    ",".join("na" if value is None else f"{value:.4f}" for value in rolling_dead),
-                    ",".join(f"{organ.last_gate_positive:.4f}" for organ in model.homeo),
-                    time.perf_counter() - block_started,
+        if step % 250 == 0:
+            rolling_dead = []
+            for window in activity_windows:
+                if len(window) < 100:
+                    rolling_dead.append(None)
+                else:
+                    mean_activity = torch.stack(list(window)).mean(dim=0)
+                    rolling_dead.append(float((mean_activity < 1e-4).float().mean().item()))
+            LOG.info(
+                "health_250: step=%d loss=%.5f dead_by_layer=%s gate_plus=%s wall_seconds=%.1f",
+                step, loss.item(),
+                ",".join("na" if value is None else f"{value:.4f}" for value in rolling_dead),
+                ",".join(f"{organ.last_gate_positive:.4f}" for organ in model.homeo),
+                time.perf_counter() - block_started,
+            )
+            if rolling_dead and rolling_dead[0] is not None and rolling_dead[0] > 0.20:
+                LOG.warning("WARNING layer0_dead>20%% step=%d dead=%.2f%%",
+                            step, rolling_dead[0] * 100)
+            over_limit = [i for i, value in enumerate(rolling_dead)
+                          if value is not None and value > 0.40]
+            if over_limit:
+                save_checkpoint(
+                    Path(args.ckpt_dir) / f"step_{step}_STOP.pt",
+                    model, optimizer, scheduler, step, args, data_hash, local_rng,
+                    tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events,
                 )
-                if rolling_dead and rolling_dead[0] is not None and rolling_dead[0] > 0.20:
-                    LOG.warning("WARNING layer0_dead>20%% step=%d dead=%.2f%%",
-                                step, rolling_dead[0] * 100)
-                over_limit = [i for i, value in enumerate(rolling_dead)
-                              if value is not None and value > 0.40]
-                if over_limit:
-                    save_checkpoint(
-                        Path(args.ckpt_dir) / f"step_{step}_STOP.pt",
-                        model, optimizer, scheduler, step, args, data_hash, local_rng,
-                        tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events,
-                    )
-                    raise RuntimeError(f"STOP: rolling dead-neuron fraction >40% in layers {over_limit}")
+                raise RuntimeError(f"STOP: rolling dead-neuron fraction >40% in layers {over_limit}")
 
         if not args.no_sleep and not args.dummy_m1:
             if args.v32_ze:

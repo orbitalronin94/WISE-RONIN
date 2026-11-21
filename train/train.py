@@ -15,7 +15,8 @@ import torch
 from model.config import CONFIG
 from model.lumen import RoninLumen
 from train.curriculum import datos_para_fase, sample_phase2
-from train.dataset import BPETokenizer, collate_rows, load_jsonl
+from train.dataset import (BPETokenizer, collate_rows, collate_token_ids,
+                            load_jsonl, load_token_cache)
 from train.loss import perdida_total
 from train.sleep import sueno
 from train.quant import fake_int8_tensor
@@ -138,6 +139,7 @@ def main():
     parser.add_argument("--resume")
     parser.add_argument("--data", default="data/train_25k.jsonl")
     parser.add_argument("--tokenizer", default="data/tokenizer/tokenizer.json")
+    parser.add_argument("--token-cache", help="Validated pre-tokenized corpus cache")
     parser.add_argument("--ckpt-dir", default="checkpoints")
     parser.add_argument("--lr", type=float, default=CONFIG.learning_rate)
     parser.add_argument("--batch", type=int, default=CONFIG.batch_size)
@@ -200,6 +202,15 @@ def main():
     layer_diagnostics_history, sleep_events = [], []
     if not args.dummy_m1:
         tokenizer_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
+    tokenized_rows, row_indices = None, {}
+    if args.token_cache:
+        if args.dummy_m1:
+            raise ValueError("--token-cache cannot be used with --dummy-m1")
+        tokenized_rows = load_token_cache(
+            args.token_cache, data_hash, tokenizer_hash, args.max_len, len(rows)
+        )
+        row_indices = {id(row): index for index, row in enumerate(rows)}
+        LOG.info("loaded validated token cache rows=%d max_len=%d", len(tokenized_rows), args.max_len)
     if args.resume:
         state = torch.load(args.resume, map_location="cpu", weights_only=False)
         parent_arch = state.get("architecture_id", "legacy_preversioned")
@@ -342,7 +353,12 @@ def main():
         else:
             chosen = (sample_phase2(phase_data, args.batch, local_rng)
                       if args.phase == 2 else local_rng.choices(phase_data, k=args.batch))
-            tokens = collate_rows(chosen, tokenizer, args.max_len)
+            if tokenized_rows is None:
+                tokens = collate_rows(chosen, tokenizer, args.max_len)
+            else:
+                tokens = collate_token_ids(
+                    [tokenized_rows[row_indices[id(row)]] for row in chosen]
+                )
 
         tokens_seen += int(tokens.ne(0).sum())
         forward_started = time.perf_counter()

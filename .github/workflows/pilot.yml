@@ -1,0 +1,123 @@
+name: RONIN-LUMEN 500-step matched-size pilot
+
+on:
+  push:
+    branches: [pilot/ronin-lumen-500]
+    paths:
+      - ".github/workflows/pilot.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-lumen-matched-pilot
+  cancel-in-progress: false
+
+jobs:
+  matched-cpu-pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout the exact pilot branch commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install CPU training and benchmark dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "datasets>=3,<4" "huggingface_hub>=0.25,<1.0" tokenizers numpy tqdm pytest
+
+      - name: Compile and run tests
+        run: |
+          python -m compileall -q model train data scripts
+          PYTHONPATH=. pytest -q tests
+
+      - name: Download immutable 19k source-candidate artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lumen-source-candidates-seed-42
+          path: artifacts/source-candidates
+          repository: ${{ github.repository }}
+          run-id: 44890014413
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build provisional corpus with source hashes and holdout audit
+        run: |
+          python scripts/build_pilot_corpus.py \
+            --sources artifacts/source-candidates \
+            --holdout data/holdout_500.jsonl \
+            --output data/pilot_train_19k.jsonl \
+            --manifest data/pilot_train_19k.manifest.json \
+            --pilot-authorization
+
+      - name: Train shared 4k BPE tokenizer
+        run: |
+          python scripts/train_pilot_tokenizer.py \
+            --data data/pilot_train_19k.jsonl \
+            --manifest data/pilot_train_19k.manifest.json \
+            --output data/pilot_tokenizer/tokenizer.json \
+            --pilot-authorization
+
+      - name: Prepare clean GSM8K test-only reasoning holdout
+        run: |
+          python scripts/prepare_reasoning_holdout.py \
+            --train-data data/pilot_train_19k.jsonl \
+            --output artifacts/reasoning_gsm8k_500.jsonl \
+            --manifest artifacts/reasoning_gsm8k_500.manifest.json \
+            --count 500
+
+      - name: Train RONIN-LUMEN V3.0 for 500 steps
+        run: |
+          python -m train.train \
+            --steps 500 --phase 1 --pilot-all-rows \
+            --data data/pilot_train_19k.jsonl \
+            --tokenizer data/pilot_tokenizer/tokenizer.json \
+            --batch 8 --max-len 128 --seed 42 \
+            --lr 1.5e-4 --warmup 100 --total-steps 10000 \
+            --ckpt-dir checkpoints/lumen
+
+      - name: Train parameter-matched Transformer baseline for 500 steps
+        run: |
+          python -m train.transformer_baseline \
+            --steps 500 \
+            --data data/pilot_train_19k.jsonl \
+            --tokenizer data/pilot_tokenizer/tokenizer.json \
+            --batch 8 --max-len 128 --seed 42 \
+            --lr 1.5e-4 --warmup 100 --total-steps 10000 \
+            --ckpt-dir checkpoints/transformer
+
+      - name: Evaluate both checkpoints on identical unseen prompts
+        run: |
+          python scripts/evaluate_pilot.py \
+            --data data/pilot_train_19k.jsonl \
+            --tokenizer data/pilot_tokenizer/tokenizer.json \
+            --lumen-ckpt checkpoints/lumen/step_500.pt \
+            --transformer-ckpt checkpoints/transformer/step_500.pt \
+            --gsm8k artifacts/reasoning_gsm8k_500.jsonl \
+            --historical-holdout data/holdout_500.jsonl \
+            --gsm8k-limit 100 --max-new-tokens 64 \
+            --output artifacts/pilot-evaluation
+
+      - name: Upload pilot checkpoints, manifests and predictions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ronin-lumen-matched-pilot-${{ github.run_id }}
+          path: |
+            checkpoints/
+            data/pilot_train_19k.manifest.json
+            data/pilot_tokenizer/
+            artifacts/reasoning_gsm8k_500.manifest.json
+            artifacts/pilot-evaluation/
+          if-no-files-found: warn
+          retention-days: 7

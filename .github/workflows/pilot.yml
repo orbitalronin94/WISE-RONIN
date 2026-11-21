@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/pilot.yml"
       - "model/**"
+      - "data/**"
       - "train/**"
       - "scripts/**"
       - "tests/**"

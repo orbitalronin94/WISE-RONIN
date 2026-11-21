@@ -98,7 +98,7 @@ def main():
             historical_by_prompt[key] = row
     historical = list(historical_by_prompt.values())
     tasks = (
-        [("gsm8k", "Question: " + row["user"] + "\\nAnswer:", row["hecho_esperado"], row) for row in gsm]
+        [("gsm8k", "Question: " + row["user"] + "\nAnswer:", row["hecho_esperado"], row) for row in gsm]
         + [("historical", row["user"], row["hecho_esperado"], row) for row in historical]
     )
     outdir = Path(args.output)

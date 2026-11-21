@@ -86,7 +86,8 @@ def validate_code_rows(rows: list[dict[str, Any]]) -> None:
     if len(rows) != EXPECTED_CODE:
         raise ValueError(f"Need exactly {EXPECTED_CODE} licensed code rows; got {len(rows)}")
     required = ("source_repo", "source_path", "source_commit", "license",
-                "license_url", "source_hash")
+                "license_url", "license_file_path", "license_file_sha256",
+                "attribution", "source_hash")
     for index, row in enumerate(rows):
         missing = [key for key in required if not str(row.get(key, "")).strip()]
         if missing:
@@ -95,6 +96,10 @@ def validate_code_rows(rows: list[dict[str, Any]]) -> None:
             raise ValueError(f"Code row {index}: source_commit must be an immutable SHA")
         if not re.fullmatch(r"[0-9a-fA-F]{64}", str(row["source_hash"])):
             raise ValueError(f"Code row {index}: source_hash must be SHA-256")
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", str(row["license_file_sha256"])):
+            raise ValueError(f"Code row {index}: license_file_sha256 must be SHA-256")
+        if row.get("license_audited") is not True or row.get("rights_confirmed") is not True:
+            raise ValueError(f"Code row {index}: explicit file-level license audit and rights confirmation required")
         if not str(row.get("prompt", "")).strip() or not str(row.get("completion", "")).strip():
             raise ValueError(f"Code row {index}: prompt/completion required")
         row["type"] = row.get("type", "codigo")
@@ -111,6 +116,8 @@ def validate_owner_rows(rows: list[dict[str, Any]]) -> None:
             raise ValueError(f"Owner row {index}: origin must be owner_curated")
         if not str(row.get("license", "")).strip():
             raise ValueError(f"Owner row {index}: license/permission declaration required")
+        if row.get("rights_confirmed") is not True:
+            raise ValueError(f"Owner row {index}: rights_confirmed must be true")
         row["source"] = row.get("source", "owner_curated")
         row["source_key"] = "owner_curated"
         row["language"] = language_of(row)

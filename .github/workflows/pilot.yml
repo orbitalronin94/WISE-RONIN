@@ -257,7 +257,9 @@ jobs:
               --transformer "checkpoints/transformer/step_${TARGET}.pt" \
               --data data/pilot_train_19k.jsonl \
               --tokenizer data/pilot_tokenizer/tokenizer.json \
-              --evaluation "artifacts/evaluations/step_${TARGET}/summary.json" \
+              --evaluation "artifacts/evaluations/step_${TARGET}/summary.json" \\
+              --gsm8k-holdout artifacts/reasoning_gsm8k_500.jsonl \\
+              --historical-holdout data/holdout_500.jsonl \
               --output "artifacts/manifests/step_${TARGET}.json" \
               "${PARENT_ARGS[@]}"
           done

@@ -51,13 +51,13 @@ def test_source_manifest_accepts_explicitly_reviewed_source(tmp_path):
 
 
 def test_code_rows_require_file_level_license_evidence():
-    row = {
-        "prompt": "Explain this function",
-        "completion": "It returns the sum.",
+    rows = [{
+        "prompt": f"Explain function {i}",
+        "completion": f"It returns result {i}.",
         "source_repo": "example/project",
-        "source_path": "src/add.py",
+        "source_path": f"src/add_{i}.py",
         "source_commit": "a" * 40,
-        "source_hash": "b" * 64,
+        "source_hash": f"{i:064x}",
         "license": "MIT",
         "license_url": "https://opensource.org/license/mit",
         "license_file_path": "LICENSE",
@@ -65,23 +65,23 @@ def test_code_rows_require_file_level_license_evidence():
         "attribution": "Copyright notice retained",
         "license_audited": True,
         "rights_confirmed": True,
-    }
-    validate_code_rows([row])
-    row["license_audited"] = False
+    } for i in range(1000)]
+    validate_code_rows(rows)
+    rows[0]["license_audited"] = False
     with pytest.raises(ValueError, match="file-level license audit"):
-        validate_code_rows([row])
+        validate_code_rows(rows)
 
 
 def test_owner_rows_require_explicit_rights_and_origin():
-    row = {
-        "prompt": "¿Qué es una nebulosa?",
-        "completion": "Una nube interestelar de gas y polvo.",
+    rows = [{
+        "prompt": f"¿Qué significa el concepto {i}?",
+        "completion": f"Explicación original y diferenciada del concepto {i}.",
         "origin": "owner_curated",
         "license": "Owner-authorized original text",
         "rights_confirmed": True,
         "language": "es",
-    }
-    validate_owner_rows([row])
-    row["rights_confirmed"] = False
+    } for i in range(5000)]
+    validate_owner_rows(rows)
+    rows[0]["rights_confirmed"] = False
     with pytest.raises(ValueError, match="rights_confirmed"):
-        validate_owner_rows([row])
+        validate_owner_rows(rows)

@@ -214,6 +214,10 @@ def main():
             sleep_loss = sueno(model, CONFIG.sleep_steps, device="cpu")
             LOG.info("sleep step=%d loss=%.6f", step, sleep_loss)
 
+        if step % 1000 == 0 and not args.dummy_m1:
+            candidates = model.emb.podar()
+            LOG.info("vocabulary prune candidates=%d (tokenizer remap required before applying)", len(candidates))
+
         if step % 500 == 0:
             save_checkpoint(
                 Path(args.ckpt_dir) / f"step_{step}.pt",

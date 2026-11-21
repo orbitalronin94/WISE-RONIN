@@ -9,6 +9,8 @@ on:
       - "train/train.py"
       - "train/sleep.py"
       - "model/memory.py"
+      - "model/delta_state.py"
+      - "model/homeostasis.py"
 
 permissions:
   contents: read
@@ -127,7 +129,7 @@ jobs:
               --lr 2e-5 --warmup 100 --total-steps 4000 \
               --scheduler-transition --transition-start 2000 --transition-end 4000 \
               --warmup-transition 20 --grad-clip 0.5 \
-              --log-every 25 --checkpoint-every 250 --recovery-checkpoint-every 25 \
+              --log-every 25 --checkpoint-every 500 --recovery-checkpoint-every 100 \
               --wall-clock-file artifacts/timing/lumen.json \
               --ckpt-dir checkpoints/lumen --resume "$resume"
             resume="checkpoints/lumen/step_${target}.pt"

@@ -284,3 +284,22 @@ La prueba integrada [lumen-memory-sleep-3000-4000.yml](.github/workflows/lumen-m
 El workflow registra ocupación y escrituras de memoria, eventos de sueño y sus pérdidas/duración; guarda checkpoints cada 250 pasos y un latest_good.pt recuperable cada 25. Si alcanza 4.000 sin violar los guardarraíles, ejecuta un único holdout LUMEN (100 GSM8K + 55 históricos). Si falla, publica igualmente los diagnósticos y el último checkpoint sano; no se promociona un estado posterior al fallo.
 
 **Pregunta falsable:** ¿las escrituras naturales de sorpresa producen un banco útil y el replay de tres actualizaciones consolida sin degradar la pérdida lingüística ni la generación? Este entrenamiento lo mide en condiciones reales; el benchmark anterior, por sí solo, no lo demostraba.
+
+
+
+## Corrección de estabilidad Delta: continuación 3.000→4.000
+
+La autopsia del A/B eager/compile sitúa el fallo en la ruta recurrente compartida, no en el compilador ni en el guardado. Ambos brazos se detuvieron en el paso 3.039 con una explosión localizada en Delta 3; la memoria lenta recibió después activaciones descomunales y no se considera el origen primario. La homeostasis mostraba además una ganancia de salida creciente con la profundidad (aprox. 0,61 / 1,04 / 1,88 / 4,98 en el tramo final sano).
+
+Se corrigen cuatro vías de amplificación, sin añadir parámetros entrenables ni cambiar el tamaño del modelo:
+
+1. **Escritura Delta acotada.** Claves y errores se normalizan antes del producto exterior. La intensidad de escritura pasa a `tanh(surprise) × energy`, con energía limitada a [0,1]. Como cada actualización rank-one tiene norma de Frobenius ≤1 y la decadencia conserva su mínimo 0,90, el estado recurrente queda acotado por la serie geométrica (≤10 desde estado cero).
+2. **Lectura Delta subordinada al flujo residual.** La consulta se normaliza y la contribución asociativa se limita al 50 % de la norma de entrada por token.
+3. **Homeostasis con ganancia limitada.** Se conserva ReLU + Top-K, pero el incremento residual queda limitado al 10 % de la norma de entrada. La puerta escasa ya no puede duplicar repetidamente coordenadas en cada capa.
+4. **Memoria lenta protegida.** Se rechazan escrituras no finitas y se limita cada recuerdo a norma L2 10, calculada en float64 para evitar overflow al medir activaciones extremas.
+
+El trainer mantiene el guardarraíl de valores no finitos y la misma semilla, corpus, tokenizer, batch y checkpoint padre. No se altera el optimizador ni se inventa una nueva rebase del scheduler. El siguiente tramo es eager desde el checkpoint promovido 3.000 hasta 4.000, con memoria y sueño habilitados. El sueño conserva su implementación vigente: solo tendrá efecto si se generan recuerdos naturales y el banco deja de estar vacío.
+
+Para reducir I/O sin perder recuperación: métricas cada 25 pasos, checkpoint completo cada 500 y recuperación rodante cada 100. El workflow conserva bloques reanudables 3.000→3.500→4.000 y un único holdout final si el entrenamiento alcanza el paso 4.000.
+
+Estas cotas son una corrección de estabilidad derivada de la forma de las operaciones; no constituyen todavía evidencia de que LUMEN haya recuperado calidad generativa. El resultado se juzgará con el holdout y el manifiesto del entrenamiento, sin presentar la mera ausencia de NaN como mejora de capacidad.

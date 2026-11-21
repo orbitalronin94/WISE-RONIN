@@ -33,3 +33,16 @@ def test_homeostatic_feedback_raises_threshold_for_sustained_post_gate_activity(
     assert organ.bias[1] > 0
     # Units that never survive the gate should not receive a larger threshold.
     assert torch.all(organ.bias[2:] < 0)
+
+
+
+def test_homeostatic_residual_gain_is_bounded_by_ten_percent():
+    organ = Homeostasis(dim=16, m_target=0.05, eta=0.001, k_top=4)
+    x = torch.rand(2, 8, 16) + 0.1
+
+    output = organ(x)
+
+    update_norm = (output - x).norm(dim=-1)
+    input_norm = x.norm(dim=-1)
+    assert torch.isfinite(output).all()
+    assert torch.all(update_norm <= 0.1001 * input_norm)

@@ -35,7 +35,7 @@ class EstadoDelta(nn.Module):
             S = S * decay.unsqueeze(-1)
             update = torch.einsum("bi,bj->bij", k, err)
             S = S + update * (write_lr * gate * e_delta[:, t]).unsqueeze(-1)
-            outs.append(torch.einsum("bi,bji->bj", q, S))
+            outs.append(torch.einsum("bi,bij->bj", q, S))
             surprises.append(surprise)
         self.state = S
         return torch.stack(outs, dim=1), torch.stack(surprises, dim=1)

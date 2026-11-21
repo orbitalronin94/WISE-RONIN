@@ -32,7 +32,11 @@ class Homeostasis(nn.Module):
         mask = torch.zeros_like(y).scatter_(-1, indices, 1.0)
         gated_update = torch.relu(y) * mask
         # Top-K sparsifies the homeostatic update, not the information stream.
-        # Returning only gated_update erased most dimensions at every layer.
+        # Bound residual gain to 10% of the incoming token norm; the previous
+        # unscaled addition could nearly double selected coordinates per layer.
+        update_norm = gated_update.norm(dim=-1, keepdim=True).clamp_min(1e-6)
+        max_update_norm = 0.1 * x.norm(dim=-1, keepdim=True)
+        gated_update = gated_update * (max_update_norm / update_norm).clamp(max=1.0)
         output = x + gated_update
 
         if self.training:

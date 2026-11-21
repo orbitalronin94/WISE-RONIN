@@ -1,0 +1,183 @@
+name: RONIN-LUMEN compiled continuation 3000 to 6000
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-compiled-3000-6000
+  cancel-in-progress: false
+
+jobs:
+  train-and-holdout:
+    name: LUMEN 3000 to 6000 (torch.compile) and final holdout
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      OMP_DYNAMIC: "FALSE"
+      OMP_PROC_BIND: close
+      OMP_PLACES: cores
+      KMP_AFFINITY: "granularity=fine,compact,1,0"
+    steps:
+      - name: Checkout exact experiment revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU training and evaluation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+
+      - name: Download promoted step-3000 checkpoint artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-compiled-matched-3000-44940676355
+          path: artifacts/promoted-step-3000
+          repository: ${{ github.repository }}
+          run-id: 44940676355
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore exact frozen training data, tokenizer, cache and holdouts
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-continuation-inputs-44936542271
+          path: artifacts/frozen-inputs
+          repository: ${{ github.repository }}
+          run-id: 44936542271
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Assemble and verify promoted parent and frozen inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/lumen checkpoints/continuation data artifacts/timing artifacts/manifests
+          cp artifacts/promoted-step-3000/checkpoints/lumen/step_3000.pt checkpoints/lumen/step_3000.pt
+          cp artifacts/frozen-inputs/data/pilot_train_19k.jsonl data/pilot_train_19k.jsonl
+          cp artifacts/frozen-inputs/data/pilot_train_19k.manifest.json data/pilot_train_19k.manifest.json
+          cp artifacts/frozen-inputs/data/pilot_tokenized_128.pt data/pilot_tokenized_128.pt
+          cp -a artifacts/frozen-inputs/data/pilot_tokenizer data/pilot_tokenizer
+          cp artifacts/frozen-inputs/data/holdout_500.jsonl data/holdout_500.jsonl
+          cp artifacts/frozen-inputs/artifacts/reasoning_gsm8k_500.jsonl artifacts/reasoning_gsm8k_500.jsonl
+          test -s checkpoints/lumen/step_3000.pt
+          test -s data/pilot_tokenized_128.pt
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          expected_parent = "fcfc740ae1db9e7055cba5dc39f58e9e19327a3baa78ddeb2493e9faa983e8f7"
+          expected_data = "bca06a8f9a11d46bc91b79944243f37e1f0c902bd8a3c16c38dffcb05754c35c"
+          expected_tokenizer = "78b353e908b312722d8de24abce2b9bdc02168e4a2d4f78a7c5a109a2d65d99f"
+          sha = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
+          if sha("checkpoints/lumen/step_3000.pt") != expected_parent:
+              raise SystemExit("Promoted step-3000 checkpoint SHA mismatch")
+          if sha("data/pilot_train_19k.jsonl") != expected_data:
+              raise SystemExit("Frozen corpus SHA mismatch")
+          if sha("data/pilot_tokenizer/tokenizer.json") != expected_tokenizer:
+              raise SystemExit("Frozen tokenizer SHA mismatch")
+          state = __import__("torch").load("checkpoints/lumen/step_3000.pt", map_location="cpu", weights_only=False)
+          if state.get("step") != 3000 or state.get("seed") != 42 or state.get("tokens_seen") != 2511433:
+              raise SystemExit("Promoted checkpoint metadata mismatch")
+          if state.get("data_sha256") != expected_data or state.get("tokenizer_sha256") != expected_tokenizer:
+              raise SystemExit("Checkpoint data/tokenizer provenance mismatch")
+          print("Promoted parent and frozen data/tokenizer hashes verified.")
+          PY
+
+      - name: Rebase only the LR schedule for the 3000 to 6000 horizon
+        run: |
+          python scripts/rebase_lumen_schedule.py \
+            --input checkpoints/lumen/step_3000.pt \
+            --output checkpoints/continuation/lumen_step_3000_rebased_6000.pt \
+            --end-step 6000 --warmup-steps 20 \
+            --manifest artifacts/manifests/scheduler_rebase_3000_6000.json
+
+      - name: Train six resumable 500-step blocks with torch.compile
+        shell: bash
+        run: |
+          set -euo pipefail
+          resume="checkpoints/continuation/lumen_step_3000_rebased_6000.pt"
+          for target in 3500 4000 4500 5000 5500 6000; do
+            test -s "$resume"
+            echo "===== LUMEN: global step $((target - 500)) -> $target (500 updates) ====="
+            python -m train.train \
+              --steps 500 --phase 1 --pilot-all-rows \
+              --data data/pilot_train_19k.jsonl \
+              --tokenizer data/pilot_tokenizer/tokenizer.json \
+              --token-cache data/pilot_tokenized_128.pt \
+              --batch 8 --max-len 128 --seed 42 \
+              --threads 2 --interop-threads 2 \
+              --disable-mkldnn --disable-foreach --cpu-affinity \
+              --compile-mode default \
+              --lr 2e-5 --warmup 100 --total-steps 6000 \
+              --scheduler-transition --transition-start 3000 --transition-end 6000 \
+              --warmup-transition 20 --grad-clip 0.5 \
+              --wall-clock-file artifacts/timing/lumen.json \
+              --ckpt-dir checkpoints/lumen --resume "$resume"
+            resume="checkpoints/lumen/step_${target}.pt"
+            test -s "$resume"
+          done
+
+      - name: Run one final LUMEN-only holdout at step 6000
+        run: |
+          python scripts/evaluate_pilot.py \
+            --data data/pilot_train_19k.jsonl \
+            --tokenizer data/pilot_tokenizer/tokenizer.json \
+            --lumen-ckpt checkpoints/lumen/step_6000.pt \
+            --gsm8k artifacts/reasoning_gsm8k_500.jsonl \
+            --historical-holdout data/holdout_500.jsonl \
+            --gsm8k-limit 100 --max-new-tokens 64 \
+            --expected-step 6000 --lumen-only \
+            --output artifacts/evaluations/final_6000
+
+      - name: Write step-6000 provenance manifest
+        run: |
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          sha = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
+          manifest = {
+              "schema_version": 1,
+              "experiment": "RONIN-LUMEN-longitudinal",
+              "global_step": 6000,
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "git_sha": os.environ["GITHUB_SHA"],
+              "parent_checkpoint_sha256": sha("checkpoints/lumen/step_3000.pt"),
+              "scheduler_rebased_checkpoint_sha256": sha("checkpoints/continuation/lumen_step_3000_rebased_6000.pt"),
+              "checkpoint_sha256": sha("checkpoints/lumen/step_6000.pt"),
+              "corpus_sha256": sha("data/pilot_train_19k.jsonl"),
+              "tokenizer_sha256": sha("data/pilot_tokenizer/tokenizer.json"),
+              "seed": 42,
+              "tokens_seen": __import__("torch").load("checkpoints/lumen/step_6000.pt", map_location="cpu", weights_only=False)["tokens_seen"],
+              "compile_mode": "default",
+              "cpu": {"intraop_threads": 2, "interop_threads": 2, "mkldnn": False, "foreach": False, "affinity": "first two available CPUs"},
+              "health_snapshots": True,
+              "auxiliary_losses": True,
+              "holdout": "single LUMEN-only greedy evaluation; 100 GSM8K + 55 historical prompts",
+              "evaluation": json.loads(Path("artifacts/evaluations/final_6000/summary.json").read_text()),
+              "timing": json.loads(Path("artifacts/timing/lumen.json").read_text()),
+          }
+          Path("artifacts/manifests/step_6000.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+
+      - name: Upload all 500-step checkpoints, final holdout and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: ronin-lumen-compiled-3000-6000-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/
+            checkpoints/continuation/
+            artifacts/timing/lumen.json
+            artifacts/evaluations/final_6000/
+            artifacts/manifests/
+          if-no-files-found: error
+          retention-days: 90

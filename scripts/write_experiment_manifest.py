@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import platform
+from importlib import metadata
 from pathlib import Path
 
 import torch
@@ -31,6 +32,8 @@ def main() -> None:
     parser.add_argument("--data", required=True)
     parser.add_argument("--tokenizer", required=True)
     parser.add_argument("--evaluation", required=True)
+    parser.add_argument("--gsm8k-holdout", required=True)
+    parser.add_argument("--historical-holdout", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--lumen-parent")
     parser.add_argument("--transformer-parent")
@@ -42,6 +45,8 @@ def main() -> None:
         "data": Path(args.data),
         "tokenizer": Path(args.tokenizer),
         "evaluation": Path(args.evaluation),
+        "gsm8k_holdout": Path(args.gsm8k_holdout),
+        "historical_holdout": Path(args.historical_holdout),
     }
     states = {name: load_checkpoint(paths[name]) for name in ("lumen", "transformer")}
     data_hash = sha256(paths["data"])
@@ -120,6 +125,8 @@ def main() -> None:
             "cpu": platform.processor(),
             "cpu_count": os.cpu_count(),
             "torch_threads": torch.get_num_threads(),
+            "dependencies": {name: (metadata.version(name) if name in {dist.metadata["Name"] for dist in metadata.distributions()} else None)
+                            for name in ("torch", "tokenizers", "datasets", "numpy", "huggingface-hub")},
         },
         "shared_training": {
             "seed": lumen.get("seed"),
@@ -151,6 +158,10 @@ def main() -> None:
                 "parent_checkpoint": parent_record(args.transformer_parent),
                 "training_config": transformer.get("training_config"),
             },
+        },
+        "holdouts": {
+            "gsm8k_test_sha256": sha256(paths["gsm8k_holdout"]),
+            "historical_sha256": sha256(paths["historical_holdout"]),
         },
         "evaluation": {
             "path": str(paths["evaluation"]),

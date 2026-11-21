@@ -28,6 +28,36 @@ En LUMEN se registrará además la actividad efectiva post-ReLU/Top-K por capa y
 
 El workflow permite encadenar bloques de 500 pasos y reutiliza mediante caché el corpus, tokenizer y holdout ya preparados. Solo restaura el checkpoint padre exacto, nunca una versión aproximada. Cada bloque valida hashes, paso global, estado de reanudación y salud neuronal antes de habilitar el siguiente; un fallo detiene la cadena. La reanudación del Transformer y la evaluación por hitos ya están implementadas en esta rama, pendientes de validación integral en Actions.
 
+
+## Configuración CPU: dos hilos
+
+**La configuración de entrenamiento CPU queda fijada en 2 hilos intra-op de PyTorch** (`torch.set_num_threads(2)`). No es una preferencia estética ni una extrapolación: es la opción que ganó el primer benchmark controlado en los runners CPU estándar de GitHub Actions.
+
+### Evidencia del benchmark
+
+Ejecución [44932082530](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44932082530): LUMEN y Transformer medidos en el mismo runner, con batch 8, secuencia 128, 3 pasos de calentamiento y 20 pasos medidos por configuración. Se midió el cómputo de entrenamiento (forward, backward y actualización del optimizador); la carga de datos quedó fuera de esta prueba.
+
+| Hilos intra-op | LUMEN (pasos/s) | Transformer (pasos/s) |
+|---:|---:|---:|
+| 1 | 0,968 | 4,441 |
+| **2** | **1,530** | **9,477** |
+| 4 | 0,842 | 5,860 |
+
+Dos hilos dieron el mayor rendimiento en **ambos modelos**: aproximadamente un 58 % más de pasos/s que un hilo en LUMEN y un 113 % más en Transformer. Frente a cuatro hilos, la mejora fue de aproximadamente un 82 % en LUMEN y un 62 % en Transformer.
+
+La conclusión operativa es clara: en este entorno de CPU compartida/limitada, aumentar el paralelismo a cuatro hilos no se tradujo en más trabajo útil por segundo. El coste de coordinación y la contención por recursos pueden explicar parte del resultado, pero el benchmark no aísla esas causas; por eso documentamos la medición, no una explicación causal que aún no hemos demostrado.
+
+### Qué significa y qué no significa
+
+- Los dos hilos son **intra-op**: controlan el paralelismo de las operaciones tensoriales de PyTorch. No significan dos procesos de entrenamiento ni dos hilos de inter-op.
+- La decisión se aplica por igual a LUMEN y al Transformer de control, para mantener las condiciones comparativas.
+- No cambia arquitectura, batch, longitud de secuencia, optimizador, semilla, corpus, tokenizer, checkpoints ni protocolo de holdout.
+- Es una decisión de rendimiento para los runners CPU estándar de GitHub Actions, no una afirmación de que dos hilos sean óptimos en cualquier CPU o máquina.
+- La medición inicial es un benchmark de cómputo corto, no el tiempo total de un entrenamiento con lectura de datos y checkpoints.
+
+El benchmark posterior explora siete perfiles manteniendo dos hilos intra-op y variando inter-op, MKLDNN, `foreach` y afinidad de CPU. Servirá para afinar la configuración sin volver a abrir la comparación 1/2/4 hilos. [Workflow de benchmark CPU](.github/workflows/benchmark-cpu-throughput.yml).
+
+
 ## Qué estamos intentando cambiar
 
 La receta dominante de muchos modelos de lenguaje sigue una familia arquitectónica cuyo punto de inflexión moderno fue el Transformer de 2017: capas apiladas de autoatención y redes feed-forward, entrenadas para predecir el siguiente token. Esa arquitectura fue un avance decisivo; no sostenemos que sea obsoleta ni que escalarla sea inútil. Lo que rechazamos es asumir que **más parámetros, más datos y más cómputo son la única respuesta** a los problemas de estabilidad y degradación de un modelo pequeño.

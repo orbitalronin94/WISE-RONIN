@@ -30,10 +30,10 @@
 - `DOCUMENTO_MAESTRO_RONIN_LUMEN_V1.md` y `SPEC_RONIN_LUMEN_V1.md` son actualmente el mismo contenido y comparten SHA de blob. No hay divergencia entre copias.
 - El documento contiene las 16 secciones y el anexo de trazabilidad.
 - `README.md` reivindica la combinación de diseño como hipótesis experimental, no como rendimiento probado ni invención individual de todos los componentes.
-- `archive/v2/INVENTARIO.md` registra 54 archivos, tamaños y blob SHAs. Declara expresamente que faltan recuentos de líneas e inspección de imports.
+- `archive/v2/INVENTARIO.md` registra 54 archivos, tamaños y blob SHAs; ya incorpora recuentos de líneas e imports estáticos de los 12 scripts Python y 14 workflows. Los seis JSONL grandes siguen pendientes de materialización completa; el NPZ es binario.
 - El holdout preservado tiene 500 registros y 55 prompts distintos. No se ha certificado ausencia de contaminación.
 - `data/train_25k.jsonl` no existe todavía.
-- `scripts/download_sources.py` ya prepara muestreo determinista, hash de cada fichero, revisión inmutable de cada dataset y manifiesto de procedencia.
+- `scripts/download_sources.py` ya prepara muestreo determinista, deduplicación exacta entre fuentes, hash de cada fichero, revisión inmutable resuelta para cada dataset y manifiesto de procedencia. El filtro de prefijo se aplica por fuente durante el staging; el builder final tendrá que validar el conjunto global.
 - `.github/workflows/prepare-data.yml` prepara un artifact de candidatos, no un dataset final.
 - No se ha descargado ni validado aún ningún corpus de fuentes en un runner.
 
@@ -123,7 +123,7 @@ Pendientes/bloqueadas:
 - Corpus original del propietario: 5.000 registros todavía no suministrados en el repo.
 - Licencias share-alike/atribución: mantener notices y procedencia en el artifact y en cualquier redistribución.
 
-El workflow de preparación se ha creado, pero aún no se ha ejecutado: la conexión GitHub disponible permite leer y modificar archivos, no despachar manualmente un workflow. No se afirmará que los datasets están descargados hasta que exista un artifact de Actions con manifiesto, filas y hashes.
+El workflow de preparación se ha creado, pero aún no se ha ejecutado ni existe un artifact. Requiere una ejecución de Actions desde una rama donde GitHub tenga disponible el workflow. No se afirmará que los datasets están descargados hasta que exista un artifact con manifiesto, filas y hashes.
 
 ## 5. Gate de cierre
 

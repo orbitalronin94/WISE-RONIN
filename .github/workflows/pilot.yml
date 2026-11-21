@@ -10,12 +10,12 @@ on:
       start_step:
         description: "Último hito válido compartido (0 para empezar; después 500, 1000...)"
         required: true
-        default: "0"
+        default: "500"
         type: string
       blocks:
         description: "Número de bloques consecutivos de 500 pasos"
         required: true
-        default: "1"
+        default: "5"
         type: string
 
 permissions:

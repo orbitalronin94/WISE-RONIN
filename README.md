@@ -98,6 +98,12 @@ python eval/eval.py --holdout data/holdout_500.jsonl
 
 A local smoke-equivalent run has completed 10 steps, saved a checkpoint, resumed through steps 11–20, and saved a second checkpoint. A GitHub Actions runner-level proof is still required before M1 can be marked complete.
 
+## Data preparation status
+
+The source sampler is designed to stage 19,000 externally sourced candidates toward the 20,000-row external allocation. It records immutable Hugging Face dataset revisions, source licenses, per-file hashes and a manifest. Python-Edu/The Stack's 1,000-row code quota remains blocked pending per-file license and attribution checks. The remaining 5,000 rows must come from the owner's own curated corpus.
+
+The final `train_25k.jsonl` has **not** been built and no source-library artifact has yet been downloaded. The staging workflow is intentionally separate from model training. See [data/README.md](data/README.md) for source-by-source conditions and [docs/SPEC_AUDIT.md](docs/SPEC_AUDIT.md) for unresolved specification decisions.
+
 ## Research discipline
 
 - **Voice first, factual second.** Keep the intended corpus composition and task boundaries explicit.

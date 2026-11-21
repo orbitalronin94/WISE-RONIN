@@ -105,7 +105,32 @@ def main() -> None:
         parent = Path(raw_path)
         if not parent.is_file():
             raise FileNotFoundError(f"Missing parent checkpoint: {parent}")
-        return {"path": str(parent), "sha256": sha256(parent)}
+        parent_state = load_checkpoint(parent)
+        return {
+            "path": str(parent),
+            "sha256": sha256(parent),
+            "global_step": parent_state.get("step"),
+            "architecture_id": parent_state.get("architecture_id", "legacy_unversioned"),
+        }
+
+    def resume_record(state: dict) -> dict:
+        optimizer = state.get("optimizer") or {}
+        scheduler = state.get("scheduler") or {}
+        rng = state.get("rng") or {}
+        groups = optimizer.get("param_groups") or []
+        return {
+            "optimizer_state_present": bool(optimizer),
+            "optimizer_state_keys": sorted(optimizer.keys()),
+            "optimizer_parameter_groups": [
+                {key: value for key, value in group.items() if key != "params"}
+                for group in groups
+            ],
+            "scheduler_state_present": bool(scheduler),
+            "scheduler_state": scheduler,
+            "rng_components": sorted(rng.keys()),
+            "training_config": state.get("training_config"),
+            "torch_version": state.get("torch_version"),
+        }
 
     evaluation = json.loads(paths["evaluation"].read_text(encoding="utf-8"))
     step = int(lumen["step"])
@@ -141,7 +166,7 @@ def main() -> None:
                 "architecture": lumen.get("architecture", {"config": lumen.get("config")}),
                 "parameters": lumen_params,
                 "checkpoint": {"path": str(paths["lumen"]), "sha256": sha256(paths["lumen"])},
-                "parent_checkpoint": parent_record(args.lumen_parent),
+                "parent_checkpoint": parent_record(args.lumen_parent),\n                "resume_state": resume_record(lumen),
                 "health_and_memory_diagnostics": lumen_health(lumen),
                 "training_config": {
                     "phase": lumen.get("phase"),
@@ -155,7 +180,7 @@ def main() -> None:
                 "architecture": transformer.get("architecture"),
                 "parameters": transformer_params,
                 "checkpoint": {"path": str(paths["transformer"]), "sha256": sha256(paths["transformer"])},
-                "parent_checkpoint": parent_record(args.transformer_parent),
+                "parent_checkpoint": parent_record(args.transformer_parent),\n                "resume_state": resume_record(transformer),
                 "training_config": transformer.get("training_config"),
             },
         },

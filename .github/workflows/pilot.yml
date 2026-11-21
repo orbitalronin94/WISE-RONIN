@@ -166,9 +166,9 @@ jobs:
         if: steps.prepared-cache.outputs.cache-hit != 'true' && steps.prepared-data-artifact.outcome == 'success'
         run: |
           mkdir -p data/pilot_tokenizer
-          cp artifacts/prepared-data-cache/pilot_train_19k.jsonl data/pilot_train_19k.jsonl
-          cp artifacts/prepared-data-cache/pilot_train_19k.manifest.json data/pilot_train_19k.manifest.json
-          cp -a artifacts/prepared-data-cache/pilot_tokenizer/. data/pilot_tokenizer/
+          cp artifacts/prepared-data-cache/data/pilot_train_19k.jsonl data/pilot_train_19k.jsonl
+          cp artifacts/prepared-data-cache/data/pilot_train_19k.manifest.json data/pilot_train_19k.manifest.json
+          cp -a artifacts/prepared-data-cache/data/pilot_tokenizer/. data/pilot_tokenizer/
           python - <<'PY'
           import hashlib, json
           from pathlib import Path

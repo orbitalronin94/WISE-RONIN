@@ -74,7 +74,7 @@ El benchmark de pipeline [44941514596](https://github.com/orbitalronin94/WISE-RO
 
 La validación de entrenamiento [44940676355](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44940676355) completó 1.000 pasos compilados, del 2.000 al 3.000, con las pérdidas auxiliares y comprobaciones de salud activas. El tiempo total fue 1.022,17 s (incluida la compilación inicial); tras el arranque, los perfiles de 100 pasos rondaron 39,6–40,3 s. Las cuatro capas terminaron con 0 % de unidades muertas. Esta ejecución valida que el perfil puede entrenar y guardar checkpoints, aunque el coste frío de compilación debe contabilizarse en cualquier comparación de pared.
 
-**Decisión vigente para la continuación:** 2 hilos intra-op + 2 inter-op, MKLDNN desactivado, AdamW/grad clipping `foreach` desactivado, afinidad a las dos primeras CPU disponibles y `torch.compile(mode="default")` solo en forwards no diagnósticos. No desactivamos las pérdidas auxiliares ni los health snapshots. [Workflow de benchmark CPU](.github/workflows/benchmark-cpu-throughput.yml).
+**Decisión vigente para la continuación:** 2 hilos intra-op + 2 inter-op, MKLDNN desactivado, AdamW/grad clipping `foreach` desactivado, afinidad a las dos primeras CPU disponibles y `torch.compile(mode="default")` solo en forwards no diagnósticos. No desactivamos las pérdidas auxiliares ni los health snapshots. La continuación incorpora además una guarda fail-fast: pérdida no finita o gradiente no finito detiene el paso antes de actualizar el optimizador, evitando seguir entrenando sobre un estado corrupto. [Workflow de benchmark CPU](.github/workflows/benchmark-cpu-throughput.yml).
 
 
 

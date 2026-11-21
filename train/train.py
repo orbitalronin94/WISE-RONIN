@@ -1,4 +1,4 @@
-"""CPU-only RONIN-LUMEN training loop with batch-boundary checkpoint/resume."""
+"""CPU-only RONIN-LUMEN trainer with reproducible batch-boundary resume."""
 from __future__ import annotations
 
 import argparse
@@ -34,7 +34,6 @@ def restore_rng(state, local_rng):
 
 
 def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, local_rng):
-    # The architecture resets recurrent state at each batch boundary.
     model.reset_states()
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({
@@ -48,7 +47,8 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "data_sha256": data_hash,
         "rng": capture_rng(local_rng),
         "torch_version": torch.__version__,
-        "delta_policy": "reset_at_each_batch_boundary",\n        "v32_ze": args.v32_ze,
+        "delta_policy": "reset_at_each_batch_boundary",
+        "v32_ze": args.v32_ze,
     }, path)
     LOG.info("checkpoint=%s step=%d", path, step)
 
@@ -63,7 +63,6 @@ def make_scheduler(optimizer, warmup, total):
 
 
 def enable_fake_int8(model):
-    # Forward hooks preserve parameter names and optimizer state_dict compatibility.
     model.heads.kan.register_forward_hook(
         lambda _module, _inputs, output: fake_int8_tensor(output)
     )
@@ -91,14 +90,16 @@ def main():
     parser.add_argument("--no-jepa", action="store_true")
     parser.add_argument("--no-rep", action="store_true")
     parser.add_argument("--orpo", action="store_true")
-    parser.add_argument("--v32-ze", action="store_true",\n                        help="Enable experimental V3.2 dual-state/LC-NE/energy mechanisms")\n    parser.add_argument("--dummy-m1", action="store_true",
+    parser.add_argument("--v32-ze", action="store_true",
+                        help="Enable experimental V3.2 dual-state/LC-NE/energy mechanisms")
+    parser.add_argument("--dummy-m1", action="store_true",
                         help="Explicit synthetic smoke test only; never a training dataset")
     args = parser.parse_args()
 
-    if args.steps < 1 or args.steps > 500 and not args.dummy_m1:
+    if args.steps < 1 or (args.steps > 500 and not args.dummy_m1):
         parser.error("--steps must be between 1 and 500")
     if args.orpo:
-        parser.error("ORPO is not implemented: preference pairs and objective require a separate approved specification")
+        parser.error("ORPO is not implemented: preference pairs and objective need a separate approved specification")
     if args.dummy_m1 and args.steps > 10:
         parser.error("--dummy-m1 is limited to blocks of at most 10 steps")
 
@@ -109,9 +110,7 @@ def main():
     model = RoninLumen(v32_ze=args.v32_ze).to(device)
 
     if args.dummy_m1:
-        data_hash = "dummy-m1-no-corpus"
-        tokenizer = None
-        phase_data = None
+        data_hash, tokenizer, phase_data = "dummy-m1-no-corpus", None, None
     else:
         rows, data_hash = load_jsonl(args.data)
         tokenizer = BPETokenizer(args.tokenizer)
@@ -125,11 +124,12 @@ def main():
         model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay
     )
     scheduler = make_scheduler(optimizer, args.warmup, args.total_steps)
-    start = 0
-    state = None
+    start, state = 0, None
     if args.resume:
         state = torch.load(args.resume, map_location="cpu", weights_only=False)
-        if state.get("v32_ze", False) != args.v32_ze:\n            raise ValueError("Checkpoint V3.2 feature flag mismatch")\n        if state["config"] != CONFIG.to_dict() or state["data_sha256"] != data_hash:
+        if state.get("v32_ze", False) != args.v32_ze:
+            raise ValueError("Checkpoint V3.2 feature flag mismatch")
+        if state["config"] != CONFIG.to_dict() or state["data_sha256"] != data_hash:
             raise ValueError("Checkpoint config or training corpus hash mismatch")
         if state["phase"] != args.phase:
             raise ValueError("Cannot change curriculum phase when resuming a checkpoint")
@@ -139,13 +139,12 @@ def main():
         start = int(state["step"])
         LOG.info("resumed step=%d", start)
 
-    # Enforce the frozen curriculum windows; phase 3 starts at step 8001.
     phase_ranges = {1: (0, 2000), 2: (2000, 8000), 3: (8000, 10000)}
     low, high = phase_ranges[args.phase]
     if not args.dummy_m1 and not (low <= start < high and start + args.steps <= high):
         raise ValueError(
-            f"Phase {args.phase} accepts checkpoint/start in [{low},{high}) "
-            f"and this run must end by {high}; got start={start}, steps={args.steps}"
+            f"Phase {args.phase} accepts start in [{low},{high}) and must end by {high}; "
+            f"got start={start}, steps={args.steps}"
         )
 
     local_rng = random.Random(args.seed + start)
@@ -156,17 +155,15 @@ def main():
     if quant_enabled:
         enable_fake_int8(model)
 
+    sleep_done = bool(model.memoria.occupancy() >= 0.8)
     model.train()
     for step in range(start + 1, start + args.steps + 1):
         if args.dummy_m1:
-            tokens = torch.randint(
-                4, CONFIG.vocab_size, (args.batch, args.max_len), device=device
-            )
+            tokens = torch.randint(4, CONFIG.vocab_size,
+                                   (args.batch, args.max_len), device=device)
         else:
-            if args.phase == 2:
-                chosen = sample_phase2(phase_data, args.batch, local_rng)
-            else:
-                chosen = local_rng.choices(phase_data, k=args.batch)
+            chosen = (sample_phase2(phase_data, args.batch, local_rng)
+                      if args.phase == 2 else local_rng.choices(phase_data, k=args.batch))
             tokens = collate(chosen, tokenizer, args.batch, args.max_len, local_rng)
 
         output = model(tokens, reset_state=True)
@@ -174,6 +171,8 @@ def main():
             output, tokens, model,
             use_jepa=not args.no_jepa,
             use_rep=not args.no_rep,
+            use_free_energy=args.v32_ze,
+            beta=0.01,
             pad_id=0,
         )
         optimizer.zero_grad(set_to_none=True)
@@ -182,12 +181,6 @@ def main():
         optimizer.step()
         scheduler.step()
 
-        # Consolidate only after backward: the slow bank participated in this forward graph.
-        with torch.no_grad():
-            if model.memoria.sorpresa_acum.item() >= CONFIG.elastic_memory_threshold:
-                model.memoria.consolidar(output["hidden"])
-                model.memoria.sorpresa_acum.zero_()
-
         if step >= 5000 and not quant_enabled and not args.dummy_m1:
             enable_fake_int8(model)
             quant_enabled = True
@@ -195,13 +188,21 @@ def main():
         if step % 100 == 0 or step == start + 1:
             dead = max(organ.neuronas_muertas() for organ in model.homeo)
             entropy = float(model.presupuesto.entropy(output["energy"]).detach())
+            ze_conflict = 0.0
+            ze_erase = 0
+            if output["ze"] is not None:
+                ze_conflict = float(output["ze"]["conflict"].mean().detach())
+                ze_erase = int(model.ze.erase_count.item())
             LOG.info(
                 "step=%d loss=%.5f token=%.5f latent=%.5f div=%.5f "
-                "router=%.5f rep=%.5f F_complexity=%.5f dead=%.2f%% energy_entropy=%.4f lr=%.3e",
+                "router=%.5f rep=%.5f F_complexity=%.5f dead=%.2f%% "
+                "energy_entropy=%.4f PE=%.4f ZE_conflict=%.4f ZE_erase=%d lr=%.3e",
                 step, loss.item(), metrics["L_token"].item(),
                 metrics["L_latente"].item(), metrics["L_div"].item(),
                 metrics["L_router"].item(), metrics["L_rep"].item(),
-                dead * 100, entropy, scheduler.get_last_lr()[0],
+                metrics["F_complexity"].item(), dead * 100, entropy,
+                float(output["surprise"].mean().detach()), ze_conflict, ze_erase,
+                scheduler.get_last_lr()[0],
             )
             if step >= 100 and dead > 0.20:
                 save_checkpoint(
@@ -210,32 +211,33 @@ def main():
                 )
                 raise RuntimeError(f"STOP: dead neurons {dead:.1%} exceeds 20%")
 
-        if (step % CONFIG.sleep_interval_steps == 0
-                and not args.no_sleep and not args.dummy_m1):
-            sleep_loss = sueno(model, CONFIG.sleep_steps, device="cpu")
-            LOG.info("sleep step=%d loss=%.6f", step, sleep_loss)
+        if not args.no_sleep and not args.dummy_m1:
+            if args.v32_ze:
+                if not sleep_done and model.memoria.occupancy() >= 0.8:
+                    sleep_loss = sueno(model, device="cpu")
+                    sleep_done = True
+                    LOG.info("adaptive IRI sleep step=%d occupancy=%.1f%% loss=%.6f",
+                             step, model.memoria.occupancy() * 100, sleep_loss)
+            elif step % CONFIG.sleep_interval_steps == 0:
+                sleep_loss = sueno(model, device="cpu")
+                LOG.info("sleep step=%d loss=%.6f", step, sleep_loss)
 
         if step % 1000 == 0 and not args.dummy_m1:
             candidates = model.emb.podar()
-            LOG.info("vocabulary prune candidates=%d (tokenizer remap required before applying)", len(candidates))
+            LOG.info("vocabulary prune candidates=%d (tokenizer remap required before applying)",
+                     len(candidates))
 
         if step % 500 == 0:
-            save_checkpoint(
-                Path(args.ckpt_dir) / f"step_{step}.pt",
-                model, optimizer, scheduler, step, args, data_hash, local_rng,
-            )
+            save_checkpoint(Path(args.ckpt_dir) / f"step_{step}.pt",
+                            model, optimizer, scheduler, step, args, data_hash, local_rng)
 
     final_step = start + args.steps
     if final_step % 500:
-        save_checkpoint(
-            Path(args.ckpt_dir) / f"step_{final_step}.pt",
-            model, optimizer, scheduler, final_step, args, data_hash, local_rng,
-        )
+        save_checkpoint(Path(args.ckpt_dir) / f"step_{final_step}.pt",
+                        model, optimizer, scheduler, final_step, args, data_hash, local_rng)
     LOG.info("completed step=%d device=cpu", final_step)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     main()

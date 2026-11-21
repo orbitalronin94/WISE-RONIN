@@ -88,7 +88,7 @@ The branch now contains executable implementations of the eight architectural or
 - checkpoint/resume for model, optimizer, scheduler, global step, corpus hash and RNG states;
 - curriculum selection with strict phase windows and a 70/30 stratified phase-2 sampler.
 
-The integrated model currently has **2,281,841 parameters**. This is below the 6M ceiling, but below the 3–4M target band; the difference is intentional to preserve room for later controlled expansion. This count is a static model count, not a measured on-disk fp16/int8 package size.
+The integrated model currently has **2,281,841 parameters**. This is below the 6M ceiling, but below the 3–4M target band, so the target-band criterion remains unmet. This count is a static model count, not a measured on-disk fp16/int8 package size.
 
 The runner workflow now compiles the model, checks the parameter budget, runs unit tests and performs an explicit 10-step dummy smoke. These jobs must pass before the architecture can be considered runner-validated. The dummy mode is only a smoke test; it is not evidence of learning and is never used as the production corpus.
 
@@ -104,7 +104,7 @@ Some mechanisms remain deliberately gated rather than falsely claimed complete:
 ```bash
 python -m pip install -r requirements.txt
 python -m train.train --dummy-m1 --steps 10 --phase 1
-python -m scripts.train_tokenizer --data data/train_25k.jsonl
+python scripts/train_tokenizer.py --data data/train_25k.jsonl
 python -m train.train --steps 500 --phase 1
 ```
 

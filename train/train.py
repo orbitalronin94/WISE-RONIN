@@ -519,12 +519,13 @@ def main():
             LOG.info(
                 "step=%d loss=%.5f token=%.5f latent=%.5f div=%.5f "
                 "router=%.5f rep=%.5f F_complexity=%.5f dead=%.2f%% "
-                "energy_entropy=%.4f PE=%.4f ZE_conflict=%.4f ZE_erase=%d tokens_seen=%d lr=%.3e",
+                "energy_entropy=%.4f PE_mean=%.4f PE_max=%.4f slow_mem=%.3f ZE_conflict=%.4f ZE_erase=%d tokens_seen=%d lr=%.3e",
                 step, loss.item(), metrics["L_token"].item(),
                 metrics["L_latente"].item(), metrics["L_div"].item(),
                 metrics["L_router"].item(), metrics["L_rep"].item(),
                 metrics["F_complexity"].item(), dead * 100, entropy,
-                float(output["surprise"].mean().detach()), ze_conflict, ze_erase,
+                float(output["surprise"].mean().detach()), float(output["surprise"].max().detach()),
+                model.memoria.occupancy(), ze_conflict, ze_erase,
                 tokens_seen, scheduler.get_last_lr()[0],
             )
             layer_records = []

@@ -1,11 +1,12 @@
-"""Offline consolidation sleep; only elastic-memory parameters are optimized."""
+"""Sleep-time replay over consolidated records with a deterministic 1/3/7 spacing."""
 import logging
 import torch
 from torch.nn import functional as F
 
 LOG = logging.getLogger("lumen.sleep")
 
-def sueno(model, pasos=50, lr=1e-4, device="cpu"):
+
+def sueno(model, pasos=None, lr=1e-4, device="cpu"):
     memory = model.memoria
     valid = memory.contador_lenta > 0
     if not valid.any():
@@ -13,19 +14,26 @@ def sueno(model, pasos=50, lr=1e-4, device="cpu"):
         model.reset_states()
         memory.reset_elastica()
         return 0.0
-    target_bank = memory.lenta[valid].detach()
+
+    targets = memory.lenta[valid].detach().to(device)
     optimizer = torch.optim.AdamW(memory.mlp.parameters(), lr=lr)
-    total = 0.0
-    for _ in range(pasos):
-        indices = torch.randint(0, target_bank.size(0), (8, 16), device=device)
-        target = target_bank[indices]
+    # Cumulative replay offsets: first replay at 1, then +3, then +7 ticks.
+    replay_ticks = {1, 4, 11}
+    total, updates = 0.0, 0
+    for tick in range(1, 12):
+        if tick not in replay_ticks:
+            continue
+        indices = torch.arange(targets.size(0), device=device)
+        target = targets[indices]
         noise = torch.randn_like(target)
-        pred = memory.mlp(noise)
-        loss = F.mse_loss(pred, target)
+        prediction = memory.mlp(noise)
+        loss = F.mse_loss(prediction, target)
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
         total += float(loss.detach())
+        updates += 1
+
     model.reset_states()
     memory.reset_elastica()
-    return total / max(1, pasos)
+    return total / max(1, updates)

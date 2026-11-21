@@ -72,14 +72,6 @@ jobs:
             --output data/pilot_tokenizer/tokenizer.json \
             --pilot-authorization
 
-      - name: Prepare clean GSM8K test-only reasoning holdout
-        run: |
-          python scripts/prepare_reasoning_holdout.py \
-            --train-data data/pilot_train_19k.jsonl \
-            --output artifacts/reasoning_gsm8k_500.jsonl \
-            --manifest artifacts/reasoning_gsm8k_500.manifest.json \
-            --count 500
-
       - name: Train RONIN-LUMEN V3.0 for 500 steps
         run: |
           python -m train.train \
@@ -99,6 +91,14 @@ jobs:
             --batch 8 --max-len 128 --seed 42 \
             --lr 1.5e-4 --warmup 100 --total-steps 10000 \
             --ckpt-dir checkpoints/transformer
+
+      - name: Prepare clean GSM8K test-only reasoning holdout
+        run: |
+          python scripts/prepare_reasoning_holdout.py \
+            --train-data data/pilot_train_19k.jsonl \
+            --output artifacts/reasoning_gsm8k_500.jsonl \
+            --manifest artifacts/reasoning_gsm8k_500.manifest.json \
+            --count 500
 
       - name: Evaluate both checkpoints on identical unseen prompts
         run: |

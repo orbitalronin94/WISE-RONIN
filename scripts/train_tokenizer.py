@@ -60,7 +60,7 @@ def main() -> None:
                 continue
             row = json.loads(line)
             prompt, completion = str(row.get("prompt", "")), str(row.get("completion", ""))
-            text = (prompt + "\\n" + completion).strip()
+            text = (prompt + "\n" + completion).strip()
             if not text:
                 raise ValueError(f"Empty training text at line {line_no}")
             texts.append(text)
@@ -118,7 +118,7 @@ def main() -> None:
         "training_authorized": False,
     }
     out.with_name("tokenizer.manifest.json").write_text(
-        json.dumps(tokenizer_manifest, ensure_ascii=False, indent=2) + "\\n",
+        json.dumps(tokenizer_manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     print(json.dumps(tokenizer_manifest, ensure_ascii=False, indent=2))

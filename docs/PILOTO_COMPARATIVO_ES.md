@@ -141,3 +141,13 @@ Este holdout no es un benchmark de razonamiento matemático; sirve para comproba
 - [Evaluador común](../scripts/evaluate_pilot.py)
 
 **Principio:** mismo corpus, tokenizer, semilla, pasos, tokens y coste aproximado de parámetros. Publicaremos las diferencias, también cuando no favorezcan a LUMEN.
+
+## Corrección arquitectónica antes de la continuación
+
+El piloto inicial mostró que Top-K se aplicaba como reemplazo de la representación en cada capa. Eso hacía que cada etapa descartara la mayor parte de las dimensiones y favorecía el apagado progresivo de las capas profundas.
+
+La continuación introduce una transición explícita a `ronin_lumen_v3_1_residual_homeostasis`: Top-K ahora limita la actualización homeostática dispersa, mientras el flujo de representación se conserva mediante una conexión residual. El checkpoint de 500 pasos se conserva como padre de pesos y estado del optimizador, pero el cambio de semántica se registra como una transición de arquitectura en el manifiesto. No debe describirse como una continuación idéntica de V3.0.
+
+El indicador de neuronas funcionales usa actividad después de ReLU/Top-K. Al reanudar, dispone de 100 pasos para inicializar su EMA antes de activar la puerta de colapso; no se reduce el umbral del 20%. Se registran por capa tanto la actividad del update disperso como la actividad de la representación residual.
+
+El evaluador conserva el comienzo y el final de preguntas largas dentro del presupuesto de 127 tokens de prompt y utiliza una ventana deslizante compartida de 128 tokens durante generación. El resumen registra esta política. Se mantiene la misma política para ambos modelos.

@@ -99,12 +99,10 @@ jobs:
             python -m pip install "datasets>=3,<4" "huggingface_hub>=0.25,<1.0"
           fi
 
-      - name: Compile sources on every run
-        run: python -m compileall -q model train data scripts
-
-      - name: Run full test suite once per exact code revision
+      - name: Compile and run full tests once per source/test revision
         if: steps.test-cache.outputs.cache-hit != 'true'
         run: |
+          python -m compileall -q model train data scripts
           PYTHONPATH=. pytest -q tests
           mkdir -p .cache
           printf '%s\\n' "${{ github.sha }}" > .cache/ronin-tests-passed

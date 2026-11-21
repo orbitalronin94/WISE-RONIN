@@ -1,10 +1,10 @@
-name: LUMEN hotspot benchmark and auto-promote CPU profile
+name: LUMEN parallel seven-hypothesis CPU benchmark
 
 on:
   workflow_dispatch:
     inputs:
       auto_merge:
-        description: Automatically merge a winning runtime profile after parity and tests pass
+        description: Automatically merge a winning runtime profile after speed, loss and parity gates pass
         required: true
         type: boolean
         default: true
@@ -15,13 +15,15 @@ permissions:
   actions: read
 
 concurrency:
-  group: lumen-hotspot-benchmark
+  group: lumen-parallel-hotspot-benchmark
   cancel-in-progress: false
 
 jobs:
-  benchmark:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,7 +31,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install CPU benchmark dependencies
+      - name: Install parity-test dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
@@ -50,58 +52,161 @@ jobs:
           repository: ${{ github.repository }}
           run-id: 44936542271
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Assemble frozen benchmark inputs
+      - name: Assemble immutable benchmark bundle
         run: |
           set -euo pipefail
-          mkdir -p checkpoints/benchmark data
-          cp artifacts/promoted-step-3000/checkpoints/lumen/step_3000.pt checkpoints/benchmark/lumen_step_3000.pt
-          cp artifacts/frozen-inputs/data/pilot_train_19k.jsonl data/pilot_train_19k.jsonl
-          cp artifacts/frozen-inputs/data/pilot_train_19k.manifest.json data/pilot_train_19k.manifest.json
-          cp artifacts/frozen-inputs/data/pilot_tokenized_128.pt data/pilot_tokenized_128.pt
-          cp -a artifacts/frozen-inputs/data/pilot_tokenizer data/pilot_tokenizer
-          test -s checkpoints/benchmark/lumen_step_3000.pt
-          test -s data/pilot_tokenized_128.pt
-      - name: Verify exact fast paths preserve outputs and gradients
+          mkdir -p benchmark-inputs/checkpoints benchmark-inputs/data
+          cp artifacts/promoted-step-3000/checkpoints/lumen/step_3000.pt benchmark-inputs/checkpoints/lumen_step_3000.pt
+          cp artifacts/frozen-inputs/data/pilot_train_19k.jsonl benchmark-inputs/data/pilot_train_19k.jsonl
+          cp artifacts/frozen-inputs/data/pilot_tokenized_128.pt benchmark-inputs/data/pilot_tokenized_128.pt
+          cp -a artifacts/frozen-inputs/data/pilot_tokenizer benchmark-inputs/data/pilot_tokenizer
+          test -s benchmark-inputs/checkpoints/lumen_step_3000.pt
+          test -s benchmark-inputs/data/pilot_tokenized_128.pt
+      - name: Verify exact Delta and Homeostasis fast paths
         run: PYTHONPATH=. pytest -q tests/test_hotspot_fastpaths.py
-      - name: Run matched hotspot and runtime-profile matrix
+      - name: Build control plus seven one-factor hypotheses from current profile
+        id: matrix
         run: |
-          python scripts/benchmark_lumen_hotspots.py \
-            --checkpoint checkpoints/benchmark/lumen_step_3000.pt \
-            --data data/pilot_train_19k.jsonl \
-            --tokenizer data/pilot_tokenizer/tokenizer.json \
-            --token-cache data/pilot_tokenized_128.pt \
-            --warmup 4 --steps 15 --repeats 3 \
-            --minimum-speedup 1.05 \
-            --report artifacts/lumen_hotspot_benchmark.json
-      - name: Upload full benchmark evidence
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          base = json.loads(Path("config/lumen_cpu_profile.json").read_text())
+          profiles = [{"name": "control", "profile": base}]
+          hypotheses = [
+              ("hypothesis_threads_1", {"threads": 1, "interop_threads": 1}),
+              ("hypothesis_threads_4", {"threads": 4, "interop_threads": 2}),
+              ("hypothesis_mkldnn_toggle", {"mkldnn_enabled": not base["mkldnn_enabled"]}),
+              ("hypothesis_foreach_toggle", {"foreach": not base["foreach"]}),
+              ("hypothesis_affinity_toggle", {"cpu_affinity": not base["cpu_affinity"]}),
+              ("hypothesis_delta_pre_normalize", {"delta_pre_normalize": not base["delta_pre_normalize"]}),
+              ("hypothesis_homeostasis_fused_scatter", {"homeostasis_fused_scatter": not base["homeostasis_fused_scatter"]}),
+          ]
+          for name, changes in hypotheses:
+              candidate = dict(base)
+              candidate.update(changes)
+              profiles.append({"name": name, "profile": candidate})
+          matrix = {"include": [{"name": item["name"], "profile": json.dumps(item["profile"], separators=(",", ":"))} for item in profiles]}
+          print("matrix=" + json.dumps(matrix, separators=(",", ":")))
+          PY
+      - name: Publish identical inputs for all parallel workers
         uses: actions/upload-artifact@v4
         with:
-          name: lumen-hotspot-benchmark-${{ github.run_id }}
+          name: lumen-hotspot-inputs
+          path: benchmark-inputs/
+          if-no-files-found: error
+          retention-days: 7
+
+  benchmark:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install benchmark dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy
+      - name: Download immutable step-3000 inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: lumen-hotspot-inputs
+          path: benchmark-inputs
+      - name: Run matched profile
+        env:
+          PROFILE: ${{ matrix.profile }}
+          PROFILE_NAME: ${{ matrix.name }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/results
+          PYTHONPATH=. python scripts/benchmark_lumen_hotspots.py \
+            --name "$PROFILE_NAME" \
+            --worker-profile "$PROFILE" \
+            --checkpoint benchmark-inputs/checkpoints/lumen_step_3000.pt \
+            --data benchmark-inputs/data/pilot_train_19k.jsonl \
+            --tokenizer benchmark-inputs/data/pilot_tokenizer/tokenizer.json \
+            --token-cache benchmark-inputs/data/pilot_tokenized_128.pt \
+            --warmup 6 --steps 40 --repeats 5 \
+            --output "artifacts/results/$PROFILE_NAME.json"
+      - name: Upload profile result
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-profile-${{ matrix.name }}
+          path: artifacts/results/${{ matrix.name }}.json
+          if-no-files-found: error
+          retention-days: 90
+
+  aggregate:
+    needs: benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download all eight parallel results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: lumen-profile-*
+          path: artifacts/results
+          merge-multiple: true
+      - name: Rank speed only after the loss gate
+        id: selection
+        run: |
+          set -euo pipefail
+          python scripts/aggregate_lumen_hotspot_results.py \
+            --results-dir artifacts/results \
+            --current-profile config/lumen_cpu_profile.json \
+            --report artifacts/lumen_hotspot_benchmark.json \
+            --minimum-speedup 1.05 --max-loss-regression 0.01
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          r=json.load(open("artifacts/lumen_hotspot_benchmark.json", encoding="utf-8"))
+          print("promoted=" + str(r["promoted"]).lower())
+          print("selected_profile=" + r["selected_profile"])
+          PY
+      - name: Upload comparison report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-seven-hypotheses-report-${{ github.run_id }}
           path: |
             artifacts/lumen_hotspot_benchmark.json
             config/lumen_cpu_profile.json
           if-no-files-found: error
           retention-days: 90
       - name: Create profile promotion pull request
+        if: ${{ steps.selection.outputs.promoted == 'true' }}
         id: cpr
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: automation/lumen-cpu-profile
           delete-branch: true
-          commit-message: "Promote benchmarked LUMEN CPU runtime profile"
-          title: "Promote measured LUMEN CPU runtime profile"
+          commit-message: "Promote loss-gated LUMEN CPU profile"
+          title: "Promote measured LUMEN CPU speed winner"
           body: |
-            Automated profile promotion from the frozen step-3000 LUMEN hotspot benchmark.
+            Automated promotion from eight simultaneous matched jobs: one control plus seven speed hypotheses.
 
-            Only runtime settings and exact-output/gradient-preserving fast paths are eligible.
-            Repetition-loss ablation is diagnostic only and is never promoted because it changes the training objective.
-
-            Full timing, profiler and ablation evidence is attached to workflow run ${{ github.run_id }}.
+            Same step-3000 checkpoint, frozen corpus/tokenizer/cache, batch, seed, optimizer state and original loss objective.
+            Promotion requires >=5% median steps/s gain and mean training loss no more than +0.01 above control.
+            Delta/Homeostasis fast paths were parity-tested before workers started.
+            Full per-profile timings and loss measurements are attached to this run.
           add-paths: |
             config/lumen_cpu_profile.json
       - name: Auto-merge verified profile promotion
-        if: ${{ inputs.auto_merge && steps.cpr.outputs.pull-request-number != '' }}
+        if: ${{ inputs.auto_merge && steps.selection.outputs.promoted == 'true' && steps.cpr.outputs.pull-request-number != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}

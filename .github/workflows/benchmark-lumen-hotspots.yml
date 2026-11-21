@@ -1,0 +1,110 @@
+name: LUMEN hotspot benchmark and auto-promote CPU profile
+
+on:
+  workflow_dispatch:
+    inputs:
+      auto_merge:
+        description: Automatically merge a winning runtime profile after parity and tests pass
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: lumen-hotspot-benchmark
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU benchmark dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy pytest
+      - name: Download exact promoted step-3000 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-compiled-matched-3000-44940676355
+          path: artifacts/promoted-step-3000
+          repository: ${{ github.repository }}
+          run-id: 44940676355
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download frozen training inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-continuation-inputs-44936542271
+          path: artifacts/frozen-inputs
+          repository: ${{ github.repository }}
+          run-id: 44936542271
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Assemble frozen benchmark inputs
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/benchmark data
+          cp artifacts/promoted-step-3000/checkpoints/lumen/step_3000.pt checkpoints/benchmark/lumen_step_3000.pt
+          cp artifacts/frozen-inputs/data/pilot_train_19k.jsonl data/pilot_train_19k.jsonl
+          cp artifacts/frozen-inputs/data/pilot_train_19k.manifest.json data/pilot_train_19k.manifest.json
+          cp artifacts/frozen-inputs/data/pilot_tokenized_128.pt data/pilot_tokenized_128.pt
+          cp -a artifacts/frozen-inputs/data/pilot_tokenizer data/pilot_tokenizer
+          test -s checkpoints/benchmark/lumen_step_3000.pt
+          test -s data/pilot_tokenized_128.pt
+      - name: Verify exact fast paths preserve outputs and gradients
+        run: pytest -q tests/test_hotspot_fastpaths.py
+      - name: Run matched hotspot and runtime-profile matrix
+        run: |
+          python scripts/benchmark_lumen_hotspots.py \
+            --checkpoint checkpoints/benchmark/lumen_step_3000.pt \
+            --data data/pilot_train_19k.jsonl \
+            --tokenizer data/pilot_tokenizer/tokenizer.json \
+            --token-cache data/pilot_tokenized_128.pt \
+            --warmup 4 --steps 15 --repeats 3 \
+            --minimum-speedup 1.05 \
+            --report artifacts/lumen_hotspot_benchmark.json
+      - name: Upload full benchmark evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-hotspot-benchmark-${{ github.run_id }}
+          path: |
+            artifacts/lumen_hotspot_benchmark.json
+            config/lumen_cpu_profile.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Create profile promotion pull request
+        id: cpr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: automation/lumen-cpu-profile
+          delete-branch: true
+          commit-message: "Promote benchmarked LUMEN CPU runtime profile"
+          title: "Promote measured LUMEN CPU runtime profile"
+          body: |
+            Automated profile promotion from the frozen step-3000 LUMEN hotspot benchmark.
+
+            Only runtime settings and exact-output/gradient-preserving fast paths are eligible.
+            Repetition-loss ablation is diagnostic only and is never promoted because it changes the training objective.
+
+            Full timing, profiler and ablation evidence is attached to workflow run ${{ github.run_id }}.
+          add-paths: |
+            config/lumen_cpu_profile.json
+      - name: Auto-merge verified profile promotion
+        if: ${{ inputs.auto_merge && steps.cpr.outputs.pull-request-number != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_NUMBER" --squash --delete-branch

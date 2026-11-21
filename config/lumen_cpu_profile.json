@@ -1,0 +1,9 @@
+{
+  "threads": 2,
+  "interop_threads": 2,
+  "mkldnn_enabled": false,
+  "foreach": false,
+  "cpu_affinity": true,
+  "delta_pre_normalize": false,
+  "homeostasis_fused_scatter": false
+}

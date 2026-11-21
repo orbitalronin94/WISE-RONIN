@@ -47,8 +47,8 @@ jobs:
         id: plan
         shell: bash
         run: |
-          START="${{ inputs.start_step || '500' }}"
-          BLOCKS="${{ inputs.blocks || '1' }}"
+          START="${{ inputs.start_step || '1000' }}"
+          BLOCKS="${{ inputs.blocks || '4' }}"
           if ! [[ "$START" =~ ^[0-9]+$ && "$BLOCKS" =~ ^[0-9]+$ ]]; then
             echo "start_step and blocks must be non-negative/positive integers" >&2
             exit 1
@@ -333,7 +333,7 @@ jobs:
             --manifest artifacts/reasoning_gsm8k_500.manifest.json \
             --count 500
 
-      - name: Train matched models in validated 500-step blocks
+      - name: Train matched models in validated 250-step blocks
         shell: bash
         run: |
           set -euo pipefail

@@ -247,3 +247,20 @@ Se informan tiempo de sueño, MSE de reconstrucción en activaciones reservadas,
 **Criterio de adopción:** no activar el candidato en el entrenamiento hasta comprobar que mejora la reconstrucción en datos reservados sin degradar la pérdida next-token ni alterar parámetros ajenos a la memoria. El benchmark se ejecuta en un runner independiente y se dispara al integrar cambios relevantes en `main`.
 
 Workflow: [benchmark-sleep.yml](.github/workflows/benchmark-sleep.yml). Script: [benchmark_sleep.py](scripts/benchmark_sleep.py).
+
+
+## Incidencia numérica: continuación 3.000→6.000 (run 44943861823)
+
+La continuación compilada verificó correctamente el checkpoint 3.000, el corpus, el tokenizer y la rebase del scheduler. El primer bloque comenzó, pero el entrenamiento se detuvo en el paso global **3.039** por pérdida no finita. El guardarraíl evitó ejecutar el `optimizer.step()` de ese lote; no hubo holdout final ni checkpoint 3.500.
+
+La evidencia disponible antes del fallo es una pista, no una causa demostrada:
+
+- En el checkpoint 3.000, las cuatro capas tenían actividad efectiva (ninguna muerta), pero la norma de salida homeostática crecía por profundidad: aproximadamente 0,61 / 0,99 / 1,73 / 4,34.
+- En el paso 3.001, el registro mostró `write_rate=1.0` en las cuatro capas Delta y sorpresa media 0,0424 frente a `tau≈0,001`: la compuerta de escritura Delta estaba saturada. Esto no equivale a escrituras en memoria lenta; el banco de memoria lenta estaba vacío en el checkpoint padre.
+- PyTorch Dynamo notificó una ruptura de grafo al ejecutar `registrar_nueva()` por `Tensor.item()` en `model/memory.py`. Es un coste/complicación de compilación observable, pero por sí solo no demuestra que causara los NaN.
+
+No se atribuye todavía el fallo a `torch.compile`, a la memoria ni a una capa concreta. Se añade una prueba A/B controlada desde el mismo checkpoint 3.000, con el mismo corpus, tokenizer, RNG y configuración: 50 pasos eager frente a 50 compilados. Ambos brazos guardan métricas cada 5 pasos, checkpoints nominales cada 25 y un `latest_good.pt` recuperable cada 10. En la primera pérdida no finita, el trainer registra salud de logits, activaciones, componentes de pérdida, estados Delta, memoria, parámetros, buffers y estado del optimizador.
+
+Workflow diagnóstico: [lumen-stability-ab.yml](.github/workflows/lumen-stability-ab.yml). No usa holdout ni modifica el entrenamiento longitudinal.
+
+**Regla para futuras continuaciones:** no volver a lanzar una tirada larga compilada hasta comparar ambos brazos y localizar el primer tensor que deja de ser finito. Los workflows de producción deben conservar un checkpoint recuperable y subir los artefactos parciales con `if: always()`, también cuando falle el entrenamiento. El fallo no se arregla ocultando el guardarraíl ni omitiendo pérdidas auxiliares; primero se identifica el origen numérico.

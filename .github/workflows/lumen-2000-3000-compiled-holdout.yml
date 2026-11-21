@@ -1,0 +1,165 @@
+name: LUMEN compiled continuation 2000 to 3000 with matched holdout
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-compiled-2000-3000
+  cancel-in-progress: true
+
+jobs:
+  train-and-holdout:
+    name: LUMEN 2000 to 3000 and matched step-3000 holdout
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      OMP_DYNAMIC: "FALSE"
+      OMP_PROC_BIND: close
+      OMP_PLACES: cores
+      KMP_AFFINITY: "granularity=fine,compact,1,0"
+    steps:
+      - name: Checkout exact experiment revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU training and evaluation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+
+      - name: Restore exact frozen step-2000 inputs from run 44936542271
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-continuation-inputs-44936542271
+          path: .
+          repository: ${{ github.repository }}
+          run-id: 44936542271
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore matched Transformer checkpoints from the same run
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-4000-transformer
+          path: artifacts/transformer-source
+          repository: ${{ github.repository }}
+          run-id: 44936542271
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate frozen parents, data, cache and Transformer step-3000
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s checkpoints/continuation/lumen_step_2000_continuation.pt
+          test -s checkpoints/lumen/step_2000.pt
+          test -s checkpoints/transformer/step_2000.pt
+          test -s data/pilot_train_19k.jsonl
+          test -s data/pilot_tokenized_128.pt
+          test -s data/pilot_tokenizer/tokenizer.json
+          test -s data/holdout_500.jsonl
+          test -s artifacts/reasoning_gsm8k_500.jsonl
+          test -s artifacts/transformer-source/checkpoints/transformer/step_3000.pt
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          corpus_hash = hashlib.sha256(Path("data/pilot_train_19k.jsonl").read_bytes()).hexdigest()
+          manifest = json.loads(Path("data/pilot_tokenizer/tokenizer.manifest.json").read_text())
+          tokenizer_hash = hashlib.sha256(Path("data/pilot_tokenizer/tokenizer.json").read_bytes()).hexdigest()
+          if manifest.get("corpus_sha256") != corpus_hash:
+              raise SystemExit("Frozen corpus hash mismatch")
+          if manifest.get("tokenizer_sha256") != tokenizer_hash:
+              raise SystemExit("Frozen tokenizer hash mismatch")
+          print(f"Frozen corpus/tokenizer verified: {corpus_hash} / {tokenizer_hash}")
+          PY
+
+      - name: Train LUMEN 2000 to 2500 to 3000 with compiled non-diagnostic forwards
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/lumen artifacts/timing
+          for target in 2500 3000; do
+            previous=$((target - 500))
+            if (( previous == 2000 )); then
+              resume="checkpoints/continuation/lumen_step_2000_continuation.pt"
+            else
+              resume="checkpoints/lumen/step_${previous}.pt"
+            fi
+            test -s "$resume"
+            echo "===== LUMEN: global step $previous -> $target (500 updates) ====="
+            python -m train.train \
+              --steps 500 --phase 1 --pilot-all-rows \
+              --data data/pilot_train_19k.jsonl \
+              --tokenizer data/pilot_tokenizer/tokenizer.json \
+              --token-cache data/pilot_tokenized_128.pt \
+              --batch 8 --max-len 128 --seed 42 \
+              --threads 2 --interop-threads 2 \
+              --disable-mkldnn --disable-foreach --cpu-affinity \
+              --compile-mode default \
+              --lr 2e-5 --warmup 100 --total-steps 4000 \
+              --scheduler-transition --transition-start 2000 --transition-end 4000 \
+              --warmup-transition 20 --grad-clip 0.5 \
+              --wall-clock-file artifacts/timing/lumen.json \
+              --ckpt-dir checkpoints/lumen --resume "$resume"
+            test -s "checkpoints/lumen/step_${target}.pt"
+          done
+
+      - name: Assemble step-3000 matched checkpoint pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/transformer artifacts/evaluations/final_3000 artifacts/manifests
+          cp artifacts/transformer-source/checkpoints/transformer/step_3000.pt checkpoints/transformer/step_3000.pt
+          test -s checkpoints/lumen/step_3000.pt
+          test -s checkpoints/transformer/step_3000.pt
+
+      - name: Run one matched holdout at global step 3000
+        run: |
+          python scripts/evaluate_pilot.py \
+            --data data/pilot_train_19k.jsonl \
+            --tokenizer data/pilot_tokenizer/tokenizer.json \
+            --lumen-ckpt checkpoints/lumen/step_3000.pt \
+            --transformer-ckpt checkpoints/transformer/step_3000.pt \
+            --gsm8k artifacts/reasoning_gsm8k_500.jsonl \
+            --historical-holdout data/holdout_500.jsonl \
+            --gsm8k-limit 100 --max-new-tokens 64 \
+            --expected-step 3000 \
+            --output artifacts/evaluations/final_3000
+
+      - name: Write step-3000 provenance manifest
+        run: |
+          python scripts/write_experiment_manifest.py \
+            --lumen checkpoints/lumen/step_3000.pt \
+            --transformer checkpoints/transformer/step_3000.pt \
+            --data data/pilot_train_19k.jsonl \
+            --tokenizer data/pilot_tokenizer/tokenizer.json \
+            --evaluation artifacts/evaluations/final_3000/summary.json \
+            --gsm8k-holdout artifacts/reasoning_gsm8k_500.jsonl \
+            --historical-holdout data/holdout_500.jsonl \
+            --lumen-parent checkpoints/lumen/step_2000.pt \
+            --transformer-parent checkpoints/transformer/step_2000.pt \
+            --output artifacts/manifests/step_3000.json
+
+      - name: Upload compiled LUMEN checkpoint, matched Transformer checkpoint, holdout and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: ronin-lumen-compiled-matched-3000-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/
+            checkpoints/transformer/step_3000.pt
+            artifacts/timing/lumen.json
+            artifacts/evaluations/final_3000/
+            artifacts/manifests/step_3000.json
+          if-no-files-found: error
+          retention-days: 90

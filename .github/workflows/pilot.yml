@@ -1,25 +1,17 @@
 name: RONIN-LUMEN longitudinal matched architecture experiment
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/pilot.yml"
-      - "model/**"
-      - "train/**"
-      - "tests/**"
-      - "scripts/**"
   workflow_dispatch:
     inputs:
       start_step:
-        description: "Último hito válido compartido (0 para empezar; después 500, 1000...)"
+        description: "Checkpoint padre obligatorio para este experimento"
         required: true
-        default: "500"
+        default: "1000"
         type: string
       blocks:
-        description: "Número de bloques consecutivos de 500 pasos"
+        description: "Número de bloques de 250 pasos (4 bloques = 1000 pasos)"
         required: true
-        default: "1"
+        default: "4"
         type: string
 
 permissions:
@@ -61,13 +53,13 @@ jobs:
             echo "start_step and blocks must be non-negative/positive integers" >&2
             exit 1
           fi
-          if (( START % 500 != 0 || BLOCKS < 1 || BLOCKS > 10 )); then
-            echo "start_step must be a multiple of 500; blocks must be 1..10" >&2
+          if (( START != 1000 || BLOCKS != 4 )); then
+            echo "This audited dispatch is fixed to the validated step-1000 parent and four 250-step blocks (1000 -> 2000)." >&2
             exit 1
           fi
-          END=$((START + BLOCKS * 500))
-          if (( END > 10000 )); then
-            echo "Requested end step $END exceeds the frozen 10k pilot schedule" >&2
+          END=$((START + BLOCKS * 250))
+          if (( END != 2000 )); then
+            echo "Requested end step must be exactly 2000" >&2
             exit 1
           fi
           echo "start_step=$START" >> "$GITHUB_OUTPUT"
@@ -120,7 +112,7 @@ jobs:
 
       - name: Restore exact parent checkpoints
         id: checkpoint-cache
-        if: steps.plan.outputs.start_step != '0'
+        if: steps.plan.outputs.start_step != '1000'
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -211,23 +203,23 @@ jobs:
           print(f"Reused existing tokenizer {tokenizer} for corpus {corpus}")
           PY
 
-      - name: Download exact step-1000 checkpoints from completed longitudinal run
-        if: steps.plan.outputs.start_step == '1000' && steps.checkpoint-cache.outputs.cache-hit != 'true'
+      - name: Download immutable step-1000 parent from the approved run
+        if: steps.plan.outputs.start_step == '1000'
         uses: actions/download-artifact@v4
         with:
-          name: ronin-lumen-longitudinal-44911588828
-          path: artifacts/step-1000-bootstrap
+          name: ronin-lumen-longitudinal-44915003982
+          path: artifacts/step-1000-parent
           repository: ${{ github.repository }}
-          run-id: 44911588828
+          run-id: 44915003982
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Restore exact step-1000 checkpoint pair
-        if: steps.plan.outputs.start_step == '1000' && steps.checkpoint-cache.outputs.cache-hit != 'true'
+        if: steps.plan.outputs.start_step == '1000'
         run: |
           set -euo pipefail
           mkdir -p checkpoints/lumen checkpoints/transformer
-          cp artifacts/step-1000-bootstrap/checkpoints/lumen/step_1000.pt checkpoints/lumen/step_1000.pt
-          cp artifacts/step-1000-bootstrap/checkpoints/transformer/step_1000.pt checkpoints/transformer/step_1000.pt
+          cp artifacts/step-1000-parent/checkpoints/lumen/step_1000.pt checkpoints/lumen/step_1000.pt
+          cp artifacts/step-1000-parent/checkpoints/transformer/step_1000.pt checkpoints/transformer/step_1000.pt
           test -s checkpoints/lumen/step_1000.pt
           test -s checkpoints/transformer/step_1000.pt
           python - <<'PY'
@@ -239,6 +231,16 @@ jobs:
                   raise SystemExit(f"{name}: step-1000 checkpoint is not resumable")
               print(f"{name}: exact step={state['step']} tokens={state.get('tokens_seen')}")
           PY
+
+      - name: Validate immutable parent provenance, hashes and optimizer moments
+        if: steps.plan.outputs.start_step == '1000'
+        run: |
+          python scripts/validate_step1000_parent.py \
+            --source-run 44915003982 \
+            --lumen checkpoints/lumen/step_1000.pt \
+            --transformer checkpoints/transformer/step_1000.pt \
+            --data data/pilot_train_19k.jsonl \
+            --tokenizer data/pilot_tokenizer/tokenizer.json
 
       - name: Restore first 500-step checkpoints from original pilot (bootstrap only)
         if: steps.plan.outputs.start_step == '500' && steps.checkpoint-cache.outputs.cache-hit != 'true'
@@ -338,8 +340,8 @@ jobs:
           START="${{ steps.plan.outputs.start_step }}"
           BLOCKS="${{ steps.plan.outputs.blocks }}"
           for ((index=1; index<=BLOCKS; index++)); do
-            PREV=$((START + (index - 1) * 500))
-            TARGET=$((START + index * 500))
+            PREV=$((START + (index - 1) * 250))
+            TARGET=$((START + index * 250))
             echo "===== Longitudinal hito $TARGET (parent $PREV) ====="
 
             LUMEN_RESUME=()
@@ -352,19 +354,23 @@ jobs:
             fi
 
             python -m train.train \
-              --steps 500 --phase 1 --pilot-all-rows \
+              --steps 250 --phase 1 --pilot-all-rows \
               --data data/pilot_train_19k.jsonl \
               --tokenizer data/pilot_tokenizer/tokenizer.json \
               --batch 8 --max-len 128 --seed 42 \
-              --lr 1.5e-4 --warmup 100 --total-steps 10000 \
+              --lr 2e-5 --warmup 100 --total-steps 2000 \
+              --scheduler-transition --transition-start 1000 --transition-end 2000 \
+              --warmup-transition 20 --grad-clip 0.5 \
               --ckpt-dir checkpoints/lumen "${LUMEN_RESUME[@]}"
 
             python -m train.transformer_baseline \
-              --steps 500 \
+              --steps 250 \
               --data data/pilot_train_19k.jsonl \
               --tokenizer data/pilot_tokenizer/tokenizer.json \
               --batch 8 --max-len 128 --seed 42 \
-              --lr 1.5e-4 --warmup 100 --total-steps 10000 \
+              --lr 5e-5 --warmup 100 --total-steps 2000 \
+              --scheduler-transition --transition-start 1000 --transition-end 2000 \
+              --warmup-transition 20 --grad-clip 1.0 \
               --ckpt-dir checkpoints/transformer "${TRANSFORMER_RESUME[@]}"
 
             python scripts/evaluate_pilot.py \

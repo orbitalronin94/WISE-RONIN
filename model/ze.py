@@ -53,7 +53,7 @@ class DualModelZe(nn.Module):
         return result, {
             "F_A": fa, "F_B": fb, "delta_F": delta_f,
             "latent_disagreement": latent_disagreement,
-            "conflict": conflict, "high_conflict": high, "erase_trigger": trigger,
+            "conflict": conflict, "high_conflict": high, "erase_trigger": trigger, "context_direction": causal_hidden - b_shared,
         }
 
     @torch.no_grad()

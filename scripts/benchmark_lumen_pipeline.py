@@ -87,24 +87,14 @@ def main():
     if rng_state is not None:
         sampler.setstate(rng_state)
 
-    compiled = None
+    compiled = torch.compile(model, mode="default") if args.profile == "compile_default" else None
     compile_seconds = 0.0
-    if args.profile == "compile_default":
-        compile_started = time.perf_counter()
-        compiled = torch.compile(model, mode="default")
-        # First call triggers compilation; include it in compile_seconds, not steady-state timing.
-        sample_rows = sampler.choices(rows, k=8)
-        batch = collate_cached_indices(
-            packed, lengths, [row_indices[id(row)] for row in sample_rows]
-        )
-        with torch.no_grad():
-            compiled(batch, reset_state=True, collect_diagnostics=False)
-        compile_seconds = time.perf_counter() - compile_started
-        model.reset_states()
+    compile_pending = compiled is not None
 
     stages = {key: [] for key in ("batch", "forward", "loss", "backward", "optimizer", "step_total")}
     diagnostic_steps = 0
     total_tokens = 0
+    measured_tokens = 0
     last_loss = None
     total_iterations = args.warmup + args.steps
 
@@ -149,6 +139,11 @@ def main():
         t = time.perf_counter()
         loss.backward()
         backward_seconds = time.perf_counter() - t
+        if compile_pending:
+            # torch.compile builds the training graph lazily; include both forward
+            # and backward compilation in startup cost, not steady-state throughput.
+            compile_seconds = forward_seconds + backward_seconds
+            compile_pending = False
 
         t = time.perf_counter()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5, foreach=False)
@@ -157,6 +152,7 @@ def main():
 
         elapsed = time.perf_counter() - step_start
         if iteration >= args.warmup:
+            measured_tokens += int(tokens.ne(0).sum())
             stages["batch"].append(batch_seconds)
             stages["forward"].append(forward_seconds)
             stages["loss"].append(loss_seconds)
@@ -196,7 +192,7 @@ def main():
         "median_stage_seconds_per_step": medians,
         "median_steps_per_second": round(1.0 / total_median, 4),
         "median_nonpad_tokens_per_second": round(
-            (total_tokens / total_iterations) / total_median, 2
+            measured_tokens / args.steps / total_median, 2
         ),
         "checkpoint_serialization_seconds": round(checkpoint_seconds, 4),
         "checkpoint_bytes": checkpoint_bytes,

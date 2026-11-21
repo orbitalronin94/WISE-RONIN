@@ -84,7 +84,8 @@ The branch now contains executable implementations of the eight architectural or
 - elastic memory and a bounded slow-memory bank with consolidation;
 - a learned router, spline-KAN operation head and language MLP;
 - sleep consolidation over stored slow memories, without embedding updates;
-- JEPA-style next-eight-token latent prediction and a differentiable repetition regularizer;\n- an opt-in V3.2 dual-state M_A/M_B controller, ten-token conflict localization, bounded rank-one context erasure, ternary PE memory gate, adaptive 80%-occupancy sleep with 1/3/7 replay spacing, and a state-distribution KL complexity term;
+- JEPA-style next-eight-token latent prediction and a differentiable repetition regularizer;
+- an opt-in V3.2 dual-state M_A/M_B controller, ten-token conflict localization, bounded rank-one context erasure, ternary PE memory gate, adaptive 80%-occupancy sleep with 1/3/7 replay spacing, and a state-distribution KL complexity term;
 - checkpoint/resume for model, optimizer, scheduler, global step, corpus hash and RNG states;
 - curriculum selection with strict phase windows and a 70/30 stratified phase-2 sampler.
 
@@ -92,7 +93,9 @@ The integrated model currently has **2,281,841 parameters**. This is below the 6
 
 The runner workflow now compiles the model, checks the parameter budget, runs unit tests and performs an explicit 10-step dummy smoke. These jobs must pass before the architecture can be considered runner-validated. The dummy mode is only a smoke test; it is not evidence of learning and is never used as the production corpus.
 
-V3.2 is opt-in via `--v32-ze`; it is not the default and is not yet a demonstrated improvement. Its tests and CPU checkpoint/resume smoke are being exercised in Actions.\n\nSome mechanisms remain deliberately gated rather than falsely claimed complete:
+V3.2 is opt-in via `--v32-ze`; it is not the default and is not yet a demonstrated improvement. Its tests and CPU checkpoint/resume smoke are being exercised in Actions.
+
+Some mechanisms remain deliberately gated rather than falsely claimed complete:
 - vocabulary pruning currently emits candidates only; actual token replacement requires an atomic tokenizer/embedding remap;
 - ORPO fails closed until preference pairs and its objective are specified;
 - fake-int8 is an activation simulation, not a quantized model export;
@@ -103,7 +106,9 @@ V3.2 is opt-in via `--v32-ze`; it is not the default and is not yet a demonstrat
 
 ```bash
 python -m pip install -r requirements.txt
-python -m train.train --dummy-m1 --steps 10 --phase 1\n# Optional experimental branch (separate checkpoints; not the V3.0 baseline)\npython -m train.train --dummy-m1 --v32-ze --ckpt-dir checkpoints/v32 --steps 10 --phase 1
+python -m train.train --dummy-m1 --steps 10 --phase 1
+# Optional experimental branch (separate checkpoints; not the V3.0 baseline)
+python -m train.train --dummy-m1 --v32-ze --ckpt-dir checkpoints/v32 --steps 10 --phase 1
 python scripts/train_tokenizer.py --data data/train_25k.jsonl
 python -m train.train --steps 500 --phase 1
 ```

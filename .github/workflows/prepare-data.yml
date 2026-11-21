@@ -12,6 +12,7 @@ on:
       - data/build_dataset.py
       - data/audit_holdout.py
       - tests/test_data_audit.py
+      - tests/test_dataset_gates.py
       - data/README.md
       - data/owner/README.md
       - .github/workflows/prepare-data.yml
@@ -42,7 +43,7 @@ jobs:
       - name: Validate data tooling
         run: |
           python -m py_compile scripts/download_sources.py scripts/train_tokenizer.py data/build_dataset.py data/audit_holdout.py
-          PYTHONPATH=. pytest -q tests/test_data_audit.py
+          PYTHONPATH=. pytest -q tests/test_data_audit.py tests/test_dataset_gates.py
 
       - name: Download, normalize and sample approved source datasets
         env:

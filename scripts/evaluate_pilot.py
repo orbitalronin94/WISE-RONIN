@@ -43,8 +43,9 @@ def generate_batch(model, prompts, tokenizer, kind, max_new=64, max_context=128)
     # right-padding contaminating a shorter prompt's recurrent prefill state.
     if kind == "lumen" and len(prompts) > 1:
         return [
-            generate_batch(model, [prompt], tokenizer, kind, max_new, max_context)[0]
+            item
             for prompt in prompts
+            for item in generate_batch(model, [prompt], tokenizer, kind, max_new, max_context)
         ]
     bos = tokenizer.tokenizer.token_to_id("[BOS]")
     eos = tokenizer.tokenizer.token_to_id("[EOS]")
@@ -84,7 +85,11 @@ def generate_batch(model, prompts, tokenizer, kind, max_new=64, max_context=128)
     outputs = []
     for seq, prompt_len in zip(sequences, initial_lengths):
         generated = seq[prompt_len:]
-        outputs.append(tokenizer.tokenizer.decode(generated, skip_special_tokens=True))
+        outputs.append({
+            "text": tokenizer.tokenizer.decode(generated, skip_special_tokens=True),
+            "eos_terminated": bool(finished[len(outputs)]),
+            "generated_tokens": len(generated),
+        })
     return outputs
 
 def load_model(kind, checkpoint, tokenizer_path):
@@ -149,9 +154,10 @@ def main():
         predictions = []
         for start in range(0, len(tasks), 8):
             batch_tasks = tasks[start:start+8]
-            texts = generate_batch(model, [x[1] for x in batch_tasks], tokenizer, kind,
-                                   max_new=args.max_new_tokens)
-            for (dataset, prompt, expected, raw), response in zip(batch_tasks, texts):
+            generations = generate_batch(model, [x[1] for x in batch_tasks], tokenizer, kind,
+                                          max_new=args.max_new_tokens)
+            for (dataset, prompt, expected, raw), generation in zip(batch_tasks, generations):
+                response = generation["text"]
                 if dataset == "gsm8k":
                     correct = numeric(response) == numeric(expected)
                 else:
@@ -164,6 +170,8 @@ def main():
                     "model": kind, "dataset": dataset, "id": raw.get("id"),
                     "prompt": prompt, "expected": expected,
                     "response": response, "correct": correct,
+                    "eos_terminated": generation["eos_terminated"],
+                    "generated_tokens": generation["generated_tokens"],
                 }
                 predictions.append(record)
                 all_predictions.append(record)
@@ -180,6 +188,17 @@ def main():
             "training_steps": state.get("step"),
             "tokens_seen": state.get("tokens_seen"),
             "metrics": by_dataset,
+            "eos_terminated": sum(bool(row["eos_terminated"]) for row in predictions),
+            "eos_termination_rate": round(
+                sum(bool(row["eos_terminated"]) for row in predictions) / max(1, len(predictions)), 4
+            ),
+            "unique_responses": len({norm(row["response"]) for row in predictions}),
+            "unique_response_ratio": round(
+                len({norm(row["response"]) for row in predictions}) / max(1, len(predictions)), 4
+            ),
+            "mean_generated_tokens": round(
+                sum(row["generated_tokens"] for row in predictions) / max(1, len(predictions)), 2
+            ),
         }
         del model
     lumen_tokens = summary["models"]["lumen"].get("tokens_seen")

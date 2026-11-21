@@ -62,7 +62,7 @@ jobs:
           test -s checkpoints/benchmark/lumen_step_3000.pt
           test -s data/pilot_tokenized_128.pt
       - name: Verify exact fast paths preserve outputs and gradients
-        run: pytest -q tests/test_hotspot_fastpaths.py
+        run: PYTHONPATH=. pytest -q tests/test_hotspot_fastpaths.py
       - name: Run matched hotspot and runtime-profile matrix
         run: |
           python scripts/benchmark_lumen_hotspots.py \

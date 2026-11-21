@@ -20,13 +20,13 @@ RONIN-LUMEN nace del refactor de WISE-RONIN V2. No es una carrera por entrenar e
 
 ## Protocolo longitudinal y trazabilidad arquitectónica
 
-La comparación se desarrollará en bloques acumulativos de 500 pasos: 500, 1.000, 1.500, 2.000 y sucesivos. Cada hito debe poder reconstruirse y compararse con el Transformer sin depender de notas manuales.
+La comparación se desarrollará en bloques acumulativos de 500 pasos: 500, 1.000, 1.500, 2.000 y sucesivos. Cada hito debe poder reconstruirse y compararse con el Transformer sin depender de notas manuales. El workflow conserva manifiestos JSON por hito, hashes de checkpoints padre/hijo, configuración de arquitectura, actividad neuronal efectiva y eventos reales de consolidación.
 
 Para cada ejecución se conservará un manifiesto que identifique el commit exacto, versión/configuración de cada arquitectura, módulos y flags activos, recuento de parámetros, hashes del corpus y tokenizer, semilla, presupuesto de tokens, checkpoint padre, hashes de checkpoints, estado de optimizador/scheduler/RNG, métricas de evaluación y coste de CPU/memoria.
 
 En LUMEN se registrará además la actividad efectiva post-ReLU/Top-K por capa y por unidad, estado y escrituras Delta, actividad de memoria y consolidación realmente ejecutada. En el Transformer se registrarán su configuración completa, parámetros, estado de entrenamiento y métricas equivalentes disponibles. Las diferencias arquitectónicas —incluidas las pérdidas auxiliares y el ciclo de sueño— quedarán explícitas, no ocultas bajo una etiqueta de «mismo entrenamiento».
 
-Se permite encadenar bloques de 500 pasos dentro de un workflow para reutilizar corpus y tokenizer, pero cada bloque debe validar su checkpoint, hashes, paso global, estado de reanudación y checks de salud antes de habilitar el siguiente. Un fallo detiene la cadena y conserva el último checkpoint válido. El encadenamiento conjunto no se activa hasta que ambos trainers y el evaluador soporten y validen reanudación e hitos acumulativos.
+El workflow permite encadenar bloques de 500 pasos y reutiliza mediante caché el corpus, tokenizer y holdout ya preparados. Solo restaura el checkpoint padre exacto, nunca una versión aproximada. Cada bloque valida hashes, paso global, estado de reanudación y salud neuronal antes de habilitar el siguiente; un fallo detiene la cadena. La reanudación del Transformer y la evaluación por hitos ya están implementadas en esta rama, pendientes de validación integral en Actions.
 
 ## Qué estamos intentando cambiar
 
@@ -97,7 +97,7 @@ La prueba del mérito no será el lenguaje grandilocuente: será que las ablacio
 - **Staging externo:** workflow [44890014413](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44890014413) completado. Artefacto de 19.000 candidatos; auditoría automática: 0 duplicados normalizados, 0 coincidencias exactas con holdout y 0 coincidencias largas de subcadena. El holdout conserva 500 filas y 55 prompts únicos.
 - **No es corpus final:** faltan 5.000 filas propias curadas y 1.000 filas de código con licencia comprobada. Las fuentes externas descargadas siguen con `license_reviewed=false` y `rights_confirmed=false`; el resultado léxico no sustituye revisión humana ni semántica.
 - **Tokenizer:** todavía no hay tokenizer final construido a partir del corpus aprobado.
-- **Piloto comparativo autorizado:** se ha preparado una campaña provisional de 500 pasos sobre las 19.000 filas externas. Compara LUMEN (2.281.841 parámetros) con un decoder Transformer de tamaño prácticamente idéntico (2.295.168), con tokenizer, datos, semilla y tokens equiparados. [Protocolo comparativo](docs/PILOTO_COMPARATIVO_ES.md) · [Workflow del piloto](.github/workflows/pilot.yml).
+- **Campaña longitudinal:** bloques encadenables de 500 pasos, con LUMEN (2.281.841 parámetros) frente a Transformer (2.295.168), datos/tokenizer/semilla y presupuesto de tokens equiparados. El workflow cachea el corpus, tokenizer y holdout, y conserva solo el par de checkpoints padre exacto para evitar descargas y almacenamiento redundantes. [Protocolo comparativo](docs/PILOTO_COMPARATIVO_ES.md) · [Workflow longitudinal](.github/workflows/pilot.yml).
 - **Primer bloque comparativo:** el workflow [44900623884](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44900623884) completó los entrenamientos de 500 pasos de LUMEN y Transformer, preparó el holdout GSM8K, ejecutó la evaluación y publicó un artefacto. El diagnóstico mostró colapso progresivo de actividad en capas profundas de LUMEN; el siguiente bloque queda condicionado a corregirlo y validar la medición post-Top-K.
 - **Producción:** sigue bloqueada por las revisiones de licencias, las 5.000 filas propias, las 1.000 filas de código auditadas y el tokenizer final.
 

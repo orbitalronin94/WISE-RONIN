@@ -61,9 +61,9 @@ jobs:
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
       - name: Run three repeated matched measurements
         run: |
-          python scripts/benchmark_cpu_throughput.py \\
-            --profile "${{ matrix.profile }}" --threads 2 \\
-            --batch 8 --seq-len 128 --warmup 10 --steps 50 --repeats 3 \\
+          python scripts/benchmark_cpu_throughput.py \
+            --profile "${{ matrix.profile }}" --threads 2 \
+            --batch 8 --seq-len 128 --warmup 10 --steps 50 --repeats 3 \
             --output "artifacts/benchmark/2threads-${{ matrix.profile }}.json"
       - name: Upload benchmark result
         uses: actions/upload-artifact@v4

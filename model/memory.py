@@ -37,7 +37,7 @@ class MemoriaElastica(nn.Module):
                 self.tokens_since_decay.add_(x.shape[1])
                 while self.tokens_since_decay.item() >= 512:
                     unused = self.usage_ema < 0.001
-                    self.lenta[unused].mul_(0.99)
+                    self.lenta[unused] = self.lenta[unused] * 0.99
                     self.tokens_since_decay.sub_(512)
         return (0.7 * elastic + 0.3 * slow) * e_mem
 

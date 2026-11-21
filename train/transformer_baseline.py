@@ -175,6 +175,7 @@ def main():
                 "grad_clip": args.grad_clip,
             } if args.scheduler_transition else {}),
         }
+        expected_resume_config = expected_config
         if args.scheduler_transition and not state.get("scheduler_transition") and int(state.get("step", -1)) == args.transition_start:
             parent_config = {
                 "batch": args.batch, "max_len": args.max_len, "lr": 1.5e-4,
@@ -183,12 +184,13 @@ def main():
             }
             if state.get("training_config") != parent_config:
                 raise ValueError("Step-1000 parent training config differs from the frozen baseline")
+            expected_resume_config = parent_config
         checks = {
             "architecture_id": (state.get("architecture_id"), ARCHITECTURE_ID),
             "seed": (state.get("seed"), args.seed),
             "data_sha256": (state.get("data_sha256"), data_hash),
             "tokenizer_sha256": (state.get("tokenizer_sha256"), tokenizer_hash),
-            "training_config": (state.get("training_config"), expected_config),
+            "training_config": (state.get("training_config"), expected_resume_config),
             "params": (state.get("params"), params),
         }
         mismatches = [key for key, (actual, expected) in checks.items() if actual != expected]

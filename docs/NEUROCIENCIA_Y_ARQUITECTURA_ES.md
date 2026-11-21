@@ -122,15 +122,16 @@ El holdout histórico tiene 500 filas y 55 prompts únicos. Debe conservarse int
 4. **Rao, R. P. N. & Ballard, D. H. (1999).** *Predictive coding in the visual cortex: a functional interpretation of some extra-classical receptive-field effects.* Nature Neuroscience, 2, 79–87. [DOI](https://doi.org/10.1038/4580).
 5. **Montague, P. R., Dayan, P. & Sejnowski, T. J. (1996).** *A framework for mesencephalic dopamine systems based on predictive Hebbian learning.* Journal of Neuroscience, 16(5), 1936–1947. [DOI](https://doi.org/10.1523/JNEUROSCI.16-05-01936.1996).
 6. **McClelland, J. L., McNaughton, B. L. & O’Reilly, R. C. (1995).** *Why There Are Complementary Learning Systems in the Hippocampus and Neocortex.* Psychological Review, 102, 419–457. [Referencia y publicaciones del laboratorio](https://ccnlab.org/pubs/).
-7. **Tononi, G. & Cirelli, C. (2006).** *Sleep function and synaptic homeostasis.* Sleep Medicine Reviews, 10(1), 49–62. [PubMed](https://pubmed.ncbi.nlm.nih.gov/16376591/).
-8. **Tononi, G. & Cirelli, C. (2014).** *Sleep and the Price of Plasticity: From Synaptic and Cellular Homeostasis to Memory Consolidation and Integration.* Neuron, 81(1), 12–34. [Texto completo en PubMed Central](https://pmc.ncbi.nlm.nih.gov/articles/PMC3921176/).
-9. **Friston, K. (2005).** *A theory of cortical responses.* Philosophical Transactions of the Royal Society B, 360, 815–836. [Buscar texto y referencias](https://pubmed.ncbi.nlm.nih.gov/?term=Friston+A+theory+of+cortical+responses+2005).
+7. **Aston-Jones, G. & Cohen, J. D. (2005).** *An integrative theory of locus coeruleus-norepinephrine function: adaptive gain and optimal performance.* Annual Review of Neuroscience, 28, 403–450. [DOI](https://doi.org/10.1146/annurev.neuro.28.061604.135709).
+8. **Tononi, G. & Cirelli, C. (2006).** *Sleep function and synaptic homeostasis.* Sleep Medicine Reviews, 10(1), 49–62. [PubMed](https://pubmed.ncbi.nlm.nih.gov/16376591/).
+9. **Tononi, G. & Cirelli, C. (2014).** *Sleep and the Price of Plasticity: From Synaptic and Cellular Homeostasis to Memory Consolidation and Integration.* Neuron, 81(1), 12–34. [Texto completo en PubMed Central](https://pmc.ncbi.nlm.nih.gov/articles/PMC3921176/).
+10. **Friston, K. (2005).** *A theory of cortical responses.* Philosophical Transactions of the Royal Society B, 360, 815–836. [DOI](https://doi.org/10.1098/rstb.2005.1622) · [Texto completo](https://pmc.ncbi.nlm.nih.gov/articles/PMC1569488/).
 
 ### Arquitectura de aprendizaje automático y contexto
 
-10. **Vaswani et al. (2017).** *Attention Is All You Need.* [arXiv:1706.03762](https://arxiv.org/abs/1706.03762) — referencia histórica del Transformer, citada como contraste arquitectónico, no como adversario.
-11. **LeCun (2022).** *A Path Towards Autonomous Machine Intelligence.* [OpenReview](https://openreview.net/forum?id=BZ5a1r-kVsf) — contexto de aprendizaje predictivo en espacio latente.
-12. **Liu et al. (2024).** *KAN: Kolmogorov-Arnold Networks.* [arXiv:2404.19756](https://arxiv.org/abs/2404.19756) — procedencia matemática/ML de la cabeza spline.
+11. **Vaswani et al. (2017).** *Attention Is All You Need.* [arXiv:1706.03762](https://arxiv.org/abs/1706.03762) — referencia histórica del Transformer, citada como contraste arquitectónico, no como adversario.
+12. **LeCun (2022).** *A Path Towards Autonomous Machine Intelligence.* [OpenReview](https://openreview.net/forum?id=BZ5a1r-kVsf) — contexto de aprendizaje predictivo en espacio latente.
+13. **Liu et al. (2024).** *KAN: Kolmogorov-Arnold Networks.* [arXiv:2404.19756](https://arxiv.org/abs/2404.19756) — procedencia matemática/ML de la cabeza spline.
 
 ---
 

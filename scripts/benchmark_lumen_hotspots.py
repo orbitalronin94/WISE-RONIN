@@ -84,7 +84,8 @@ def checkpoint_save_cost(ckpt,p):
   target=Path(tmp)/"checkpoint.pt"
   for _ in range(2):
    started=time.perf_counter(); torch.save(payload,target); samples.append(time.perf_counter()-started)
- return {"median_seconds":statistics.median(samples),"file_bytes":target.stat().st_size,"repeats":len(samples)}
+  file_bytes=target.stat().st_size
+ return {"median_seconds":statistics.median(samples),"file_bytes":file_bytes,"repeats":len(samples)}
 
 def profiler_table(ckpt,tokens,p):
  from torch.profiler import ProfilerActivity, profile as torch_profile

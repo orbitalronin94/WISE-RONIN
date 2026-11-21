@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from datasets import load_dataset
+from huggingface_hub import HfApi
 
 LOG = logging.getLogger("lumen.sources")
 SEED = 42
@@ -94,11 +95,12 @@ def convert(row: dict[str, Any], source: dict[str, Any]) -> dict[str, Any] | Non
 
 
 def stream_for(source: dict[str, Any]):
-    """Open and deterministically shuffle a Hugging Face streaming split."""
-    args = {"path": source["repo"], "split": "train", "streaming": True}
+    """Resolve the current immutable dataset commit and open that exact revision."""
+    revision = HfApi().dataset_info(source["repo"], revision="main").sha
+    args = {"path": source["repo"], "split": "train", "streaming": True, "revision": revision}
     if source["config"]:
         args["name"] = source["config"]
-    return load_dataset(**args).shuffle(seed=SEED, buffer_size=10000)
+    return load_dataset(**args).shuffle(seed=SEED, buffer_size=10000), revision
 
 
 def sample(source: dict[str, Any]) -> list[dict[str, Any]]:
@@ -106,7 +108,8 @@ def sample(source: dict[str, Any]) -> list[dict[str, Any]]:
     wanted = source["quota"]
     candidates: list[dict[str, Any]] = []
     hashes: set[str] = set()
-    for row in stream_for(source):
+    stream, revision = stream_for(source)
+    for row in stream:
         record = convert(row, source)
         if record is None or record["source_hash"] in hashes:
             continue
@@ -132,7 +135,7 @@ def sample(source: dict[str, Any]) -> list[dict[str, Any]]:
         raise RuntimeError(f"{source['key']}: only {len(selected)}/{wanted} rows survived; quota not silently reduced")
     for item in selected:
         item.pop("prefix_key", None)
-    return selected
+    return selected, revision
 
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -172,10 +175,10 @@ def main() -> None:
 
     for source in SOURCES:
         LOG.info("Sampling %s: %s rows", source["key"], source["quota"])
-        rows = sample(source)
+        rows, revision = sample(source)
         filename = source["key"] + ".jsonl"
         result = write_jsonl(output / filename, rows)
-        manifest["sources"].append({**source, "file": filename, **result, "status": "downloaded_and_sampled"})
+        manifest["sources"].append({**source, "dataset_revision": revision, "file": filename, **result, "status": "downloaded_and_sampled"})
         LOG.info("Saved %s (%s rows, sha256 %s)", filename, result["rows"], result["sha256"])
 
     manifest["downloaded_external_rows"] = sum(item["rows"] for item in manifest["sources"])

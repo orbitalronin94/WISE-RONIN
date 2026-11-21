@@ -125,6 +125,7 @@ jobs:
               --tokenizer data/pilot_tokenizer/tokenizer.json \
               --token-cache data/pilot_tokenized_128.pt \
               --batch 8 --max-len 128 --seed 42 \
+              --runtime-profile config/lumen_cpu_profile.json \
               --threads 2 --interop-threads 2 \
               --disable-mkldnn --disable-foreach --cpu-affinity \
               --lr 2e-5 --warmup 100 --total-steps 8000 \

@@ -120,6 +120,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args,
         "scheduler_transition": scheduler.state_dict() if getattr(args, 'scheduler_transition', False) else None,
         "rng": capture_rng(local_rng),
         "torch_version": torch.__version__,
+        "cpu_threads": torch.get_num_threads(),
     }, path)
     LOG.info("checkpoint=%s step=%d", path, step)
 

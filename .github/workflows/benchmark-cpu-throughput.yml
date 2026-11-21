@@ -1,0 +1,39 @@
+name: RONIN-LUMEN CPU throughput benchmark
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        threads: [1, 2, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Benchmark matched LUMEN and Transformer compute
+        run: |
+          python scripts/benchmark_cpu_throughput.py \
+            --model both --threads "${{ matrix.threads }}" \
+            --batch 8 --seq-len 128 --warmup 3 --steps 20 \
+            --output "artifacts/benchmark/threads-${{ matrix.threads }}.json"
+      - name: Upload benchmark result
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-cpu-throughput-threads-${{ matrix.threads }}
+          path: artifacts/benchmark/threads-${{ matrix.threads }}.json
+          if-no-files-found: error
+          retention-days: 30

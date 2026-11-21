@@ -90,3 +90,29 @@ def collate_rows(rows, tokenizer, max_len):
 def collate(rows, tokenizer, batch_size, max_len, rng):
     """Backward-compatible random sampler plus deterministic batch encoder."""
     return collate_rows(rng.choices(rows, k=batch_size), tokenizer, max_len)
+
+
+def pack_token_cache(encoded_rows, max_len, pad_id=0):
+    """Pack cached variable-length rows once for allocation-light batch gathers."""
+    packed = torch.full((len(encoded_rows), int(max_len)), pad_id, dtype=torch.long)
+    lengths = torch.zeros(len(encoded_rows), dtype=torch.long)
+    for index, row in enumerate(encoded_rows):
+        ids = row[:max_len]
+        length = len(ids)
+        if length:
+            packed[index, :length] = torch.as_tensor(ids, dtype=torch.long)
+        lengths[index] = length
+    return packed, lengths
+
+
+def collate_cached_indices(packed_rows, lengths, indices):
+    """Gather a sampled batch from a packed cache, preserving dynamic batch padding."""
+    index_tensor = torch.as_tensor(indices, dtype=torch.long)
+    selected_lengths = lengths.index_select(0, index_tensor)
+    valid = selected_lengths >= 2
+    index_tensor = index_tensor[valid]
+    selected_lengths = selected_lengths[valid]
+    if index_tensor.numel() == 0:
+        raise ValueError("Batch contains no sequences with at least two BPE tokens")
+    width = int(selected_lengths.max().item())
+    return packed_rows.index_select(0, index_tensor)[:, :width]

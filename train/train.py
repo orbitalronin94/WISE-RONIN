@@ -61,6 +61,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "data_sha256": data_hash,
         "rng": capture_rng(local_rng),
         "torch_version": torch.__version__,
+        "cpu_threads": torch.get_num_threads(),
         "delta_policy": "reset_at_each_batch_boundary",
         "v32_ze": args.v32_ze,
         "pilot_all_rows": args.pilot_all_rows,

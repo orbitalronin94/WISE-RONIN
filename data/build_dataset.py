@@ -57,6 +57,11 @@ def validate_source_artifact(root: Path) -> tuple[list[dict[str, Any]], list[dic
     for source in manifest.get("sources", []):
         if not source.get("dataset_revision") or not source.get("license") or not source.get("license_url"):
             raise ValueError(f"{source.get('key')}: immutable revision and license metadata required")
+        if source.get("license_reviewed") is not True or source.get("rights_confirmed") is not True:
+            raise ValueError(
+                f"{source.get('key')}: human license review and rights confirmation are required; "
+                "a dataset-card license label alone is not approval"
+            )
         path = root / source["file"]
         digest = sha256_file(path)
         if digest != source.get("sha256"):
@@ -213,8 +218,29 @@ def main() -> None:
             "long_user_substring_matches": overlap["long_user_substring_match_count"],
             "method": "normalized lexical exact + long user-prompt substring",
         },
-        "tokenizer_status": "not_built",
-        "training_status": "blocked_until_manual_review_and_tokenizer_validation",
+        "composition": {
+            "total_rows": EXPECTED_TOTAL,
+            "externally_sourced_rows": EXPECTED_EXTERNAL,
+            "owner_curated_rows": EXPECTED_OWNER,
+            "external_share": EXPECTED_EXTERNAL / EXPECTED_TOTAL,
+            "owner_share": EXPECTED_OWNER / EXPECTED_TOTAL,
+            "source_quotas_scaled_to_external_80_percent": {
+                "tinystories": 4000, "babylm_2026": 4000,
+                "fineweb_edu_plus_dclm": 4000, "cosmopedia_v2": 4000,
+                "orca_math_plus_tinygsm": 3000, "individually_licensed_code": 1000,
+            },
+        },
+        "review_gates": {
+            "source_license_review_complete": False,
+            "owner_rights_review_complete": False,
+            "code_file_license_review_complete": False,
+            "holdout_manual_review_complete": False,
+            "language_balance_approved": False,
+            "tokenizer_approved": False,
+            "production_training_approved": False,
+        },
+        "tokenizer_status": "blocked_pending_review_gates",
+        "training_status": "blocked_until_all_review_gates_and_tokenizer_validation",
     }
     manifest_path = output.with_name("train_25k.manifest.json")
     manifest_path.write_text(json.dumps(final_manifest, ensure_ascii=False, indent=2) + "\n",

@@ -57,8 +57,11 @@ class RoninLumen(nn.Module):
         surprises = []
         complexity_terms = []
         for delta, homeo in zip(self.delta_layers, self.homeo):
-            h, surprise = delta(h, e_delta, reset_state=reset_state)
-            h = homeo(h)
+            # Delta returns an associative-memory update, not a replacement
+            # representation. Preserve the information stream through a
+            # residual path so a cold/low-norm memory read cannot zero the stack.
+            delta_update, surprise = delta(h, e_delta, reset_state=reset_state)
+            h = homeo(h + delta_update)
             surprises.append(surprise)
             if self.v32_ze:
                 complexity_terms.append(delta.last_complexity)

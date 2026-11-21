@@ -1,23 +1,29 @@
-name: RONIN-LUMEN 500-step matched-size pilot (Delta cold-start fix)
+name: RONIN-LUMEN longitudinal matched architecture experiment
 
 on:
   push:
-    branches: [main, pilot/ronin-lumen-500]
+    branches: [main]
     paths:
       - ".github/workflows/pilot.yml"
-      - "model/**"
-      - "data/**"
-      - "train/**"
-      - "scripts/**"
-      - "tests/**"
   workflow_dispatch:
+    inputs:
+      start_step:
+        description: "Último hito válido compartido (0 para empezar; después 500, 1000...)"
+        required: true
+        default: "0"
+        type: string
+      blocks:
+        description: "Número de bloques consecutivos de 500 pasos"
+        required: true
+        default: "1"
+        type: string
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: ronin-lumen-matched-pilot
+  group: ronin-lumen-longitudinal-pilot
   cancel-in-progress: false
 
 jobs:
@@ -25,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 330
     steps:
-      - name: Checkout the exact pilot branch commit
+      - name: Checkout exact experiment revision
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
@@ -47,7 +53,52 @@ jobs:
           python -m compileall -q model train data scripts
           PYTHONPATH=. pytest -q tests
 
-      - name: Download immutable 19k source-candidate artifact
+      - name: Validate requested longitudinal range
+        id: plan
+        shell: bash
+        run: |
+          START="${{ inputs.start_step || '0' }}"
+          BLOCKS="${{ inputs.blocks || '1' }}"
+          if ! [[ "$START" =~ ^[0-9]+$ && "$BLOCKS" =~ ^[0-9]+$ ]]; then
+            echo "start_step and blocks must be non-negative/positive integers" >&2
+            exit 1
+          fi
+          if (( START % 500 != 0 || BLOCKS < 1 || BLOCKS > 10 )); then
+            echo "start_step must be a multiple of 500; blocks must be 1..10" >&2
+            exit 1
+          fi
+          END=$((START + BLOCKS * 500))
+          if (( END > 10000 )); then
+            echo "Requested end step $END exceeds the frozen 10k pilot schedule" >&2
+            exit 1
+          fi
+          echo "start_step=$START" >> "$GITHUB_OUTPUT"
+          echo "blocks=$BLOCKS" >> "$GITHUB_OUTPUT"
+          echo "end_step=$END" >> "$GITHUB_OUTPUT"
+          echo "Longitudinal plan: $START -> $END in $BLOCKS blocks"
+
+      - name: Restore prepared corpus, tokenizer and reasoning holdout cache
+        id: prepared-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/pilot_train_19k.jsonl
+            data/pilot_train_19k.manifest.json
+            data/pilot_tokenizer/
+            artifacts/reasoning_gsm8k_500.jsonl
+            artifacts/reasoning_gsm8k_500.manifest.json
+          key: ronin-lumen-prepared-v2-${{ hashFiles('scripts/build_pilot_corpus.py', 'scripts/prepare_reasoning_holdout.py', 'data/audit_holdout.py', 'data/holdout_500.jsonl') }}
+
+      - name: Restore exact parent checkpoints
+        id: checkpoint-cache
+        if: steps.plan.outputs.start_step != '0'
+        uses: actions/cache/restore@v4
+        with:
+          path: checkpoints/
+          key: ronin-lumen-checkpoints-v1-step-${{ steps.plan.outputs.start_step }}
+
+      - name: Download immutable source-candidate artifact (cache miss only)
+        if: steps.prepared-cache.outputs.cache-hit != 'true'
         uses: actions/download-artifact@v4
         with:
           name: lumen-source-candidates-seed-42
@@ -56,7 +107,18 @@ jobs:
           run-id: 44890014413
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build provisional corpus with source hashes and holdout audit
+      - name: Download original pilot artifact for reusable tokenizer and checkpoint bootstrap
+        if: steps.prepared-cache.outputs.cache-hit != 'true' || (steps.plan.outputs.start_step == '500' && steps.checkpoint-cache.outputs.cache-hit != 'true')
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-matched-pilot-44900623884
+          path: artifacts/bootstrap
+          repository: ${{ github.repository }}
+          run-id: 44900623884
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build provisional corpus once from immutable source candidates
+        if: steps.prepared-cache.outputs.cache-hit != 'true'
         run: |
           python scripts/build_pilot_corpus.py \
             --sources artifacts/source-candidates \
@@ -64,36 +126,65 @@ jobs:
             --output data/pilot_train_19k.jsonl \
             --manifest data/pilot_train_19k.manifest.json \
             --pilot-authorization
+          mkdir -p data/pilot_tokenizer
+          cp artifacts/bootstrap/data/pilot_tokenizer/tokenizer.json data/pilot_tokenizer/tokenizer.json
+          cp artifacts/bootstrap/data/pilot_tokenizer/tokenizer.manifest.json data/pilot_tokenizer/tokenizer.manifest.json
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          corpus = hashlib.sha256(Path("data/pilot_train_19k.jsonl").read_bytes()).hexdigest()
+          manifest = json.loads(Path("data/pilot_tokenizer/tokenizer.manifest.json").read_text())
+          if manifest.get("corpus_sha256") != corpus:
+              raise SystemExit("Reusable tokenizer was trained on a different corpus")
+          tokenizer = hashlib.sha256(Path("data/pilot_tokenizer/tokenizer.json").read_bytes()).hexdigest()
+          if manifest.get("tokenizer_sha256") != tokenizer:
+              raise SystemExit("Reusable tokenizer SHA-256 mismatch")
+          print(f"Reused existing tokenizer {tokenizer} for corpus {corpus}")
+          PY
 
-      - name: Train shared 4k BPE tokenizer
+      - name: Restore first 500-step checkpoints from original pilot (bootstrap only)
+        if: steps.plan.outputs.start_step == '500' && steps.checkpoint-cache.outputs.cache-hit != 'true'
         run: |
-          python scripts/train_pilot_tokenizer.py \
-            --data data/pilot_train_19k.jsonl \
-            --manifest data/pilot_train_19k.manifest.json \
-            --output data/pilot_tokenizer/tokenizer.json \
-            --pilot-authorization
+          mkdir -p checkpoints
+          cp -a artifacts/bootstrap/checkpoints/. checkpoints/
+          test -f checkpoints/lumen/step_500.pt
+          test -f checkpoints/transformer/step_500.pt
 
-      - name: Train RONIN-LUMEN V3.0 for 500 steps
+      - name: Validate or reconstruct legacy Transformer optimizer state
+        if: steps.plan.outputs.start_step == '500' && steps.checkpoint-cache.outputs.cache-hit != 'true'
         run: |
-          python -m train.train \
-            --steps 500 --phase 1 --pilot-all-rows \
-            --data data/pilot_train_19k.jsonl \
-            --tokenizer data/pilot_tokenizer/tokenizer.json \
-            --batch 8 --max-len 128 --seed 42 \
-            --lr 1.5e-4 --warmup 100 --total-steps 10000 \
-            --ckpt-dir checkpoints/lumen
+          python - <<'PY'
+          import torch
+          state = torch.load("checkpoints/transformer/step_500.pt", map_location="cpu", weights_only=False)
+          if all(key in state for key in ("optimizer", "scheduler", "rng", "training_config", "architecture_id")):
+              print("Transformer bootstrap already supports exact resume")
+          else:
+              print("Legacy checkpoint has weights but no optimizer/scheduler/RNG; deterministic 500-step replay required.")
+              torch.save(state, "checkpoints/transformer/step_500_legacy.pt")
+          PY
+          if [ -f checkpoints/transformer/step_500_legacy.pt ]; then
+            python -m train.transformer_baseline \
+              --steps 500 --data data/pilot_train_19k.jsonl \
+              --tokenizer data/pilot_tokenizer/tokenizer.json \
+              --batch 8 --max-len 128 --seed 42 \
+              --lr 1.5e-4 --warmup 100 --total-steps 10000 \
+              --ckpt-dir checkpoints/transformer
+            python - <<'PY'
+            import torch
+            old = torch.load("checkpoints/transformer/step_500_legacy.pt", map_location="cpu", weights_only=False)
+            new = torch.load("checkpoints/transformer/step_500.pt", map_location="cpu", weights_only=False)
+            if old["model"].keys() != new["model"].keys():
+                raise SystemExit("Transformer bootstrap replay changed model state keys")
+            mismatches = [k for k in old["model"] if not torch.equal(old["model"][k], new["model"][k])]
+            if mismatches:
+                raise SystemExit(f"Deterministic bootstrap replay differs in tensors: {mismatches[:8]}")
+            print("Transformer replay exactly reproduced the existing 500-step weights; optimizer/RNG state is now resumable.")
+            PY
+            rm checkpoints/transformer/step_500_legacy.pt
+          fi
 
-      - name: Train parameter-matched Transformer baseline for 500 steps
-        run: |
-          python -m train.transformer_baseline \
-            --steps 500 \
-            --data data/pilot_train_19k.jsonl \
-            --tokenizer data/pilot_tokenizer/tokenizer.json \
-            --batch 8 --max-len 128 --seed 42 \
-            --lr 1.5e-4 --warmup 100 --total-steps 10000 \
-            --ckpt-dir checkpoints/transformer
-
-      - name: Prepare clean GSM8K test-only reasoning holdout
+      - name: Prepare frozen GSM8K test-only holdout once
+        if: hashFiles('artifacts/reasoning_gsm8k_500.jsonl') == ''
         run: |
           python scripts/prepare_reasoning_holdout.py \
             --train-data data/pilot_train_19k.jsonl \
@@ -101,28 +192,100 @@ jobs:
             --manifest artifacts/reasoning_gsm8k_500.manifest.json \
             --count 500
 
-      - name: Evaluate both checkpoints on identical unseen prompts
+      - name: Train matched models in validated 500-step blocks
+        shell: bash
         run: |
-          python scripts/evaluate_pilot.py \
-            --data data/pilot_train_19k.jsonl \
-            --tokenizer data/pilot_tokenizer/tokenizer.json \
-            --lumen-ckpt checkpoints/lumen/step_500.pt \
-            --transformer-ckpt checkpoints/transformer/step_500.pt \
-            --gsm8k artifacts/reasoning_gsm8k_500.jsonl \
-            --historical-holdout data/holdout_500.jsonl \
-            --gsm8k-limit 100 --max-new-tokens 64 \
-            --output artifacts/pilot-evaluation
+          set -euo pipefail
+          START="${{ steps.plan.outputs.start_step }}"
+          BLOCKS="${{ steps.plan.outputs.blocks }}"
+          for ((index=1; index<=BLOCKS; index++)); do
+            PREV=$((START + (index - 1) * 500))
+            TARGET=$((START + index * 500))
+            echo "===== Longitudinal hito $TARGET (parent $PREV) ====="
 
-      - name: Upload pilot checkpoints, manifests and predictions
+            LUMEN_RESUME=()
+            TRANSFORMER_RESUME=()
+            if (( PREV > 0 )); then
+              test -f "checkpoints/lumen/step_${PREV}.pt"
+              test -f "checkpoints/transformer/step_${PREV}.pt"
+              LUMEN_RESUME=(--resume "checkpoints/lumen/step_${PREV}.pt")
+              TRANSFORMER_RESUME=(--resume "checkpoints/transformer/step_${PREV}.pt")
+            fi
+
+            python -m train.train \
+              --steps 500 --phase 1 --pilot-all-rows \
+              --data data/pilot_train_19k.jsonl \
+              --tokenizer data/pilot_tokenizer/tokenizer.json \
+              --batch 8 --max-len 128 --seed 42 \
+              --lr 1.5e-4 --warmup 100 --total-steps 10000 \
+              --ckpt-dir checkpoints/lumen "${LUMEN_RESUME[@]}"
+
+            python -m train.transformer_baseline \
+              --steps 500 \
+              --data data/pilot_train_19k.jsonl \
+              --tokenizer data/pilot_tokenizer/tokenizer.json \
+              --batch 8 --max-len 128 --seed 42 \
+              --lr 1.5e-4 --warmup 100 --total-steps 10000 \
+              --ckpt-dir checkpoints/transformer "${TRANSFORMER_RESUME[@]}"
+
+            python scripts/evaluate_pilot.py \
+              --data data/pilot_train_19k.jsonl \
+              --tokenizer data/pilot_tokenizer/tokenizer.json \
+              --lumen-ckpt "checkpoints/lumen/step_${TARGET}.pt" \
+              --transformer-ckpt "checkpoints/transformer/step_${TARGET}.pt" \
+              --gsm8k artifacts/reasoning_gsm8k_500.jsonl \
+              --historical-holdout data/holdout_500.jsonl \
+              --gsm8k-limit 100 --max-new-tokens 64 \
+              --expected-step "$TARGET" \
+              --output "artifacts/evaluations/step_${TARGET}"
+
+            PARENT_ARGS=()
+            if (( PREV > 0 )); then
+              PARENT_ARGS=(--lumen-parent "checkpoints/lumen/step_${PREV}.pt" \
+                           --transformer-parent "checkpoints/transformer/step_${PREV}.pt")
+            fi
+            python scripts/write_experiment_manifest.py \
+              --lumen "checkpoints/lumen/step_${TARGET}.pt" \
+              --transformer "checkpoints/transformer/step_${TARGET}.pt" \
+              --data data/pilot_train_19k.jsonl \
+              --tokenizer data/pilot_tokenizer/tokenizer.json \
+              --evaluation "artifacts/evaluations/step_${TARGET}/summary.json" \
+              --output "artifacts/manifests/step_${TARGET}.json" \
+              "${PARENT_ARGS[@]}"
+          done
+
+      - name: Save reusable prepared data cache
+        if: always() && steps.prepared-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/pilot_train_19k.jsonl
+            data/pilot_train_19k.manifest.json
+            data/pilot_tokenizer/
+            artifacts/reasoning_gsm8k_500.jsonl
+            artifacts/reasoning_gsm8k_500.manifest.json
+          key: ronin-lumen-prepared-v2-${{ hashFiles('scripts/build_pilot_corpus.py', 'scripts/prepare_reasoning_holdout.py', 'data/audit_holdout.py', 'data/holdout_500.jsonl') }}
+
+      - name: Save validated parent checkpoints for the next workflow
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: checkpoints/
+          key: ronin-lumen-checkpoints-v1-step-${{ steps.plan.outputs.end_step }}
+
+      - name: Upload checkpoints, manifests, predictions and reusable data
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ronin-lumen-matched-pilot-${{ github.run_id }}
+          name: ronin-lumen-longitudinal-${{ github.run_id }}
           path: |
             checkpoints/
+            data/pilot_train_19k.jsonl
             data/pilot_train_19k.manifest.json
             data/pilot_tokenizer/
+            artifacts/reasoning_gsm8k_500.jsonl
             artifacts/reasoning_gsm8k_500.manifest.json
-            artifacts/pilot-evaluation/
+            artifacts/evaluations/
+            artifacts/manifests/
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 90

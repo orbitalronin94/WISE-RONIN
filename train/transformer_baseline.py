@@ -14,7 +14,8 @@ from torch import nn
 from torch.nn import functional as F
 
 from model.config import CONFIG
-from train.dataset import BPETokenizer, collate_rows, load_jsonl
+from train.dataset import (BPETokenizer, collate_rows, collate_token_ids,
+                            load_jsonl, load_token_cache)
 from train.scheduler_transition import CosineTransitionScheduler
 
 LOG = logging.getLogger("lumen.baseline")
@@ -127,6 +128,7 @@ def main():
     p = argparse.ArgumentParser(description="Matched-size Transformer pilot baseline")
     p.add_argument("--data", default="data/pilot_train_19k.jsonl")
     p.add_argument("--tokenizer", default="data/pilot_tokenizer/tokenizer.json")
+    p.add_argument("--token-cache", help="Validated pre-tokenized corpus cache")
     p.add_argument("--steps", type=int, default=500,
                    help="Number of additional steps in this block (maximum 500)")
     p.add_argument("--resume", help="Previous global-step checkpoint")
@@ -157,6 +159,13 @@ def main():
     if tokenizer.tokenizer.get_vocab_size() != CONFIG.vocab_size or tokenizer.tokenizer.token_to_id("[PAD]") != 0:
         raise ValueError("Baseline requires the shared 4k pilot tokenizer with PAD=0")
     tokenizer_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
+    tokenized_rows, row_indices = None, {}
+    if args.token_cache:
+        tokenized_rows = load_token_cache(
+            args.token_cache, data_hash, tokenizer_hash, args.max_len, len(rows)
+        )
+        row_indices = {id(row): index for index, row in enumerate(rows)}
+        LOG.info("loaded validated token cache rows=%d max_len=%d", len(tokenized_rows), args.max_len)
 
     model = SmallTransformerLM(CONFIG.vocab_size, args.max_len).cpu()
     params = sum(x.numel() for x in model.parameters())
@@ -252,7 +261,12 @@ def main():
     for step in range(start + 1, start + args.steps + 1):
         step_started = time.perf_counter()
         chosen = local_rng.choices(rows, k=args.batch)
-        tokens = collate_rows(chosen, tokenizer, args.max_len)
+        if tokenized_rows is None:
+            tokens = collate_rows(chosen, tokenizer, args.max_len)
+        else:
+            tokens = collate_token_ids(
+                [tokenized_rows[row_indices[id(row)]] for row in chosen]
+            )
         tokens_seen += int(tokens.ne(0).sum())
         forward_started = time.perf_counter()
         logits = model(tokens)

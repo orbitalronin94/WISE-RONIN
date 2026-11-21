@@ -55,7 +55,7 @@ class RoninLumen(nn.Module):
         """Public singular alias: clear only transient recurrent activity."""
         self.reset_states()
 
-    def forward(self, token_ids, reset_state=True):
+    def forward(self, token_ids, reset_state=True, collect_diagnostics=True):
         h = self.emb(token_ids)
         e_delta, e_mem, e_head, energy = self.presupuesto(h)
         surprises = []
@@ -64,8 +64,12 @@ class RoninLumen(nn.Module):
             # Delta returns an associative-memory update, not a replacement
             # representation. Preserve the information stream through a
             # residual path so a cold/low-norm memory read cannot zero the stack.
-            delta_update, surprise = delta(h, e_delta, reset_state=reset_state)
-            h = homeo(h + delta_update)
+            delta_update, surprise = delta(
+                h, e_delta, reset_state=reset_state,
+                compute_complexity=self.v32_ze,
+                collect_diagnostics=collect_diagnostics,
+            )
+            h = homeo(h + delta_update, collect_diagnostics=collect_diagnostics)
             surprises.append(surprise)
             if self.v32_ze:
                 complexity_terms.append(delta.last_complexity)

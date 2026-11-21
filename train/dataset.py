@@ -36,24 +36,55 @@ def load_jsonl(path):
         raise ValueError("Training JSONL is empty")
     return rows, digest.hexdigest()
 
-def collate_rows(rows, tokenizer, max_len):
-    """Encode an already selected batch; shared by both pilot architectures."""
-    encoded = []
-    for row in rows:
-        text = (str(row["prompt"]) + "\n" + str(row["completion"])).strip()
-        ids = tokenizer.encode(text, max_len)
-        if len(ids) >= 2:
-            encoded.append(ids)
+def encode_rows(rows, tokenizer, max_len):
+    """Tokenize the immutable corpus once; preserve row order for RNG sampling."""
+    return [
+        tokenizer.encode(
+            (str(row["prompt"]) + "\n" + str(row["completion"])).strip(),
+            max_len,
+        )
+        for row in rows
+    ]
+
+
+def collate_token_ids(encoded_rows, pad_id=0):
+    """Pad pre-tokenized rows without invoking the tokenizer in the train loop."""
+    encoded = [ids for ids in encoded_rows if len(ids) >= 2]
     if not encoded:
         raise ValueError("Batch contains no sequences with at least two BPE tokens")
-    pad_id = tokenizer.tokenizer.token_to_id("[PAD]")
-    if pad_id != 0:
-        raise ValueError("Tokenizer must define [PAD] at token ID 0")
     width = max(map(len, encoded))
     batch = torch.full((len(encoded), width), pad_id, dtype=torch.long)
     for index, ids in enumerate(encoded):
         batch[index, :len(ids)] = torch.tensor(ids, dtype=torch.long)
     return batch
+
+
+def load_token_cache(path, data_hash, tokenizer_hash, max_len, row_count):
+    """Load a cache only when it is tied to the exact corpus/tokenizer/length."""
+    cache = torch.load(path, map_location="cpu", weights_only=False)
+    if cache.get("format") != "ronin_token_cache_v1":
+        raise ValueError("Unsupported token cache format")
+    expected = {
+        "data_sha256": data_hash,
+        "tokenizer_sha256": tokenizer_hash,
+        "max_len": int(max_len),
+        "row_count": int(row_count),
+    }
+    actual = {key: cache.get(key) for key in expected}
+    if actual != expected:
+        raise ValueError(f"Token cache metadata mismatch: expected={expected}, actual={actual}")
+    rows = cache.get("encoded_rows")
+    if not isinstance(rows, list) or len(rows) != row_count:
+        raise ValueError("Token cache row count/content is invalid")
+    return rows
+
+
+def collate_rows(rows, tokenizer, max_len):
+    """Backward-compatible encoder for callers without a frozen token cache."""
+    pad_id = tokenizer.tokenizer.token_to_id("[PAD]")
+    if pad_id != 0:
+        raise ValueError("Tokenizer must define [PAD] at token ID 0")
+    return collate_token_ids(encode_rows(rows, tokenizer, max_len), pad_id=pad_id)
 
 
 def collate(rows, tokenizer, batch_size, max_len, rng):

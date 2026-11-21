@@ -1,0 +1,5 @@
+torch>=2.4,<3
+numpy>=1.26,<3
+datasets>=3,<5
+tqdm>=4.66,<5
+tokenizers>=0.20,<1.0

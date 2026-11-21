@@ -1,0 +1,54 @@
+name: RONIN-LUMEN data and holdout audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: "Completed source-preparation workflow run ID"
+        required: true
+        default: "44887381117"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit-source-candidates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout reviewed branch
+        uses: actions/checkout@v4
+        with:
+          ref: lumen-v1/m1-refactor
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download selected source-candidate artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lumen-source-candidates-seed-42
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/lumen-source-candidates
+      - name: Test audit logic
+        run: |
+          python -m pip install pytest
+          PYTHONPATH=. pytest -q tests/test_data_audit.py
+      - name: Verify source hashes and audit frozen holdout
+        run: |
+          python data/audit_holdout.py \
+            --candidates artifacts/lumen-source-candidates \
+            --holdout data/holdout_500.jsonl \
+            --report artifacts/holdout-overlap-report.json
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-holdout-audit-${{ github.run_id }}
+          path: artifacts/holdout-overlap-report.json
+          if-no-files-found: warn
+          retention-days: 30

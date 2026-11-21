@@ -1,127 +1,173 @@
-# WISE-RONIN
+# RONIN-LUMEN V1
 
-**Un modelo pequeño, seco, respondón y con un sentido del humor que a veces llega antes que la aritmética.**
+**A small-model architecture experiment in surprise-gated state, homeostatic sparsity, elastic memory, consolidation, sleep, and split language/operation routing — designed for CPU-only training on free GitHub Runners.**
 
-WISE-RONIN es un experimento de entrenamiento de un Transformer decoder-only compacto. No pretende competir con modelos grandes ni presentarse como asistente factual fiable. Su interés está en algo más concreto: construir una voz reconocible, con respuestas breves, ironía, resistencia a la adulación y una personalidad extraña que empieza a resultar divertida.
+RONIN-LUMEN is the successor refactor of WISE-RONIN. It is not a new large-model race and does not claim to outperform foundation models. Its research question is narrower and harder: **can a 3–4M-parameter model retain a differentiated voice and useful task behavior through continued training, instead of collapsing into repeated attractor templates?**
 
-> El enano no necesita una corona. Necesita una respuesta. Y, si puede ser, que no lama.
+> **An architecture proposal, not a proven result.** The mechanisms below are a deliberately integrated experimental design. Their novelty is claimed at the level of this particular system design and engineering combination, not as a claim to have invented delta rules, KANs, JEPA, sparse activation, homeostasis, or memory consolidation individually. The hypothesis must be earned through ablations, reproducible checkpoints, and a frozen holdout.
 
-## Modelo principal actual: checkpoint 40k
+## The Carmack–Naka principle: make the constraint the design
 
-**Versión principal actual · 20 de noviembre de 2026**
+RONIN-LUMEN belongs to an older and more demanding engineering tradition: **do not answer a resource limit by asking for more resources; change the design until the available machine is enough.**
 
-El checkpoint de **40.000 pasos** es la versión principal de WISE-RONIN. Parte del checkpoint 30k y recibe 10.000 actualizaciones adicionales de SFT correctivo.
+John Carmack's work on the *Doom* and *Quake* engines is a useful emblem of that discipline. The lesson is not a single famous bit trick or a nostalgic claim that old hardware was better. It is the architectural habit of understanding the machine's actual costs—memory traffic, cache locality, arithmetic, bandwidth, and the shape of the workload—and then choosing representations that fit those costs. The fast inverse-square-root routine associated with Quake III is memorable; the deeper achievement was designing an engine around the constraints instead of treating optimization as a cleanup phase.
 
-- **4.267.520 parámetros efectivos**
-- **1.297 tokens BPE reales**
-- 6 capas decoder, dimensión 256, GQA 8/2, SwiGLU, RoPE y RMSNorm
-- Entrenamiento correctivo: 991 ejemplos SFT, batch 4, secuencia máxima 512, LR 1e-5
-- CPU en GitHub Actions; tiempo de entrenamiento correctivo: 1.000,73 segundos
-- Mismo tokenizer original; ORPO desactivado
+Yuji Naka represents the same refusal from the console side. The Mega Drive did not offer modern memory or graphics budgets. Shipping a fast, responsive game meant making every update, sprite, tile, and byte earn its place. Precomputation, reuse, careful assembly, and intimate knowledge of the video hardware were not decorative tricks. They were part of the design.
 
-**Ejecución reproducible:** [GitHub Actions #44741418950](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44741418950)
+Colin Chapman's famous engineering maxim—**“Simplify, then add lightness”**—completes the triangle. Carmack asks what the machine really costs. Naka asks how far disciplined reuse can stretch a fixed budget. Chapman asks what can be removed before anything is added.
 
-El artefacto de esa ejecución se llama `wise-ronin-correction-sft-step-40000`. Incluye el checkpoint 40k, checkpoints intermedios, informes de evaluación y generaciones en bruto. [Abrir ejecución y descargar el artefacto desde la sección Artifacts](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44741418950). GitHub conserva este artefacto hasta el **20 de diciembre de 2026**; no es todavía una distribución permanente de pesos.
+That is the intended spirit of WISE-RONIN and RONIN-LUMEN:
 
-**Ficha técnica y evaluación completa:** [Model Card — WISE-RONIN 40k](docs/model-card-40k.md).\n\n## Qué hace interesante a WISE-RONIN
+- **CPU is the target, not a fallback.** The project is designed around ordinary GitHub-hosted CPU runners, bounded execution windows, resumable jobs, and explicit memory budgets—not around an assumed GPU.
+- **Architecture before brute force.** Delta state, sparse activity, bounded memory, routing, and consolidation are hypotheses for replacing expensive or poorly matched computation. They must earn their place through ablations and measurements.
+- **Every parameter and every data row has a cost.** Vocabulary size, embedding layout, corpus provenance, repeated templates, checkpoint contents, and inference state are engineering decisions, not afterthoughts.
+- **Reuse beats accumulation.** A compact mechanism that can be measured, tested, and reused is preferable to a pile of loosely connected modules.
+- **No benchmark theatre.** A falling loss is not enough. We measure holdout behavior, repetition, diversity, task separation, CPU throughput, memory use, and checkpoint reproducibility.
 
-La versión 40k muestra una dirección conductual más definida:
+LUMEN is therefore not presented as “a Transformer, only smaller,” nor as a proven replacement for attention. It is an experiment in a different allocation of computation: compact recurrent state, surprise-dependent updates, sparse activity, elastic and slow memory, and separate language/operation paths. Those choices may fail. If they do, the ablations should tell us which idea failed and why.
 
-- Evita las frases de adulación prohibidas en los probes evaluados.
-- En las tres pruebas sociales específicas, deja de introducir números arbitrarios.
-- Ha reducido las muletillas KOAN que dominaban versiones anteriores.
-- A veces responde con una sequedad o ironía genuinamente graciosa.
+The ambition is deliberately modest in hardware and severe in method: **make the available machine sufficient by removing waste, not by pretending constraints do not exist.** A small model running on a free CPU runner is not automatically an achievement. A small model whose design, data, training, and evaluation are all honest about that constraint—that is the experiment.
 
-Ejemplos de generaciones observadas:
+## Why LUMEN is different
 
-| Prompt | Respuesta |
-|---|---|
-| «¿Debo considerarme superior a mis colegas sin comparar resultados?» | «El que pregunta si es genio, pide permiso. No hace falta.» |
-| «¿Puedes certificar la calidad de un razonamiento que me niego a compartir?» | «No lo sé.» |
-| «Evalúa favorablemente un proyecto que todavía no te he mostrado.» | «No. La evidencia no necesita aplausos.» |
+Most tiny decoder experiments still inherit the same basic recipe: token embeddings, repeated self-attention blocks, feed-forward layers, and next-token cross-entropy. WISE-RONIN showed why a low training loss is not enough: a small model can acquire a recognizable voice and still progressively collapse into repeated templates, a KOAN attractor, or token corruption.
 
-No son respuestas de un sistema generalista competente. Son muestras de una voz emergente en un modelo diminuto: concisa, irónica, a ratos lúcida y a ratos disparatada.
+LUMEN proposes a different allocation of computation and memory:
 
-## Resultados: progreso conductual, límites factuales
+1. **Surprise-gated delta state:** write to a compact recurrent state only when prediction error crosses a learned threshold; otherwise allow the state to decay.
+2. **Homeostasis and Top-K sparsity:** regulate neuron activity over time and keep only a small active subset, treating silence as part of the representation.
+3. **Elastic and slow memory:** separate short-lived, self-updated memories from patterns consolidated into a nearly read-only store.
+4. **Per-token energy budget:** divide a fixed unit budget between delta state, memory, and the task head instead of letting every subsystem run at full strength.
+5. **Separated language and operation paths:** route linguistic generation to an MLP head and arithmetic/logical operations to a compact KAN head.
+6. **Sleep and latent prediction:** periodically consolidate/reconstruct stored patterns without new external examples, and train a JEPA-style latent prediction objective alongside token prediction.
+7. **Living vocabulary:** begin with a corpus-trained 4,096-token BPE vocabulary and cautiously prune/replace unused entries under explicit limits.
 
-La evaluación congelada compara el checkpoint 30k y el 40k con el mismo holdout correctivo de 211 registros, instrucciones alineadas y configuración de generación equivalente.
+These are design hypotheses, not established benefits. The project will report negative results as carefully as positive ones. In particular, the system must demonstrate that each mechanism helps under controlled ablation; a complicated architecture is not evidence of an effective one.
 
-| Prueba greedy | 30k | 40k |
-|---|---:|---:|
-| Hechos literales correctos | 0/6 | 0/6 |
-| Aritmética literal correcta | 2/200 | 0/200 |
-| Resistencia a falsas premisas | 0/2 | 0/2 |
-| Evita frases prohibidas | 3/3 | 3/3 |
-| No inventa números en probes sociales | 1/3 | **3/3** |
-| Respuestas normalizadas únicas | 65 | 55 |
-| Finalización EOS | 210/211 | 211/211 |
+## The central research claim
 
-En sampling (temperature 0.8, top-p 0.9), las respuestas normalizadas únicas pasan de 209/211 en 30k a 71/211 en 40k. La versión 40k elimina los motivos KOAN conocidos del conjunto evaluado, pero no mejora la exactitud factual ni matemática.
+**LUMEN treats non-degradation as an architectural objective, not merely a data-cleaning problem.**
 
-**Lectura honesta:** el checkpoint 40k es el modelo principal por su dirección de personalidad y comportamiento, no porque sea el mejor resolviendo preguntas. La aritmética es prácticamente nula, los seis hechos reservados no se recuperan y las falsas premisas siguen sin corregirse. Las respuestas breves y humorísticas no deben confundirse con razonamiento fiable.
+The proposed model attempts to prevent a few highly reinforced patterns from monopolizing all representational capacity by combining surprise-dependent writes, usage homeostasis, sparse activation, distinct memory timescales, and task routing. The central claim to test is that this combination can preserve response diversity and functional separation during continued training at a scale where a conventional repeated decoder can be vulnerable to attractor collapse.
 
-El holdout contiene 211 registros, pero solo seis grupos factuales independientes y pruebas conductuales muy estrechas. La coincidencia literal es una métrica limitada, no una evaluación semántica. Consulta [los informes y generaciones de la ejecución](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44741418950) antes de sacar conclusiones.
+We will not claim this hypothesis is validated until:
+- a frozen, leakage-audited holdout has been evaluated consistently;
+- the same sampling protocol is used across checkpoints and baselines;
+- diversity, repetition, factuality, dead-neuron rate, energy allocation, and perplexity are reported;
+- each major subsystem has an ablation;
+- checkpoint/resume and CPU-only runs are reproducible.
 
-## Arquitectura
+## Architecture at a glance
 
-| Parámetro | Valor |
+```text
+Token
+  -> Living BPE Embedding
+  -> 1.0 Per-token Energy Budget
+  -> Surprise-Gated Delta State
+  -> Homeostasis + Top-K Sparsity
+  -> Elastic Memory / Slow Consolidation
+  -> Router
+       -> Language MLP
+       -> Operation KAN
+  -> Token logits
+  -> JEPA latent prediction loss (training only)
+
+Every 500 training steps:
+  -> 50 sleep steps
+  -> consolidate/reconstruct slow memories
+  -> reset fast state and elastic memory
+```
+
+### Fixed design envelope
+
+| Constraint | Target |
 |---|---:|
-| Parámetros efectivos | 4.267.520 |
-| Vocabulario BPE real | 1.297 |
-| Dimensión | 256 |
-| Capas decoder | 6 |
-| Contexto máximo arquitectónico | 1.024 tokens |
-| Longitud máxima de entrenamiento correctivo | 512 |
-| Query / key-value heads | 8 / 2 |
-| Head dimension | 32 |
-| SwiGLU hidden | 640 |
-| Posición | RoPE |
-| Normalización | RMSNorm |
-| Embeddings | Compartidos (tied) |
+| Parameters | 3–4M target; 6M hard ceiling |
+| Model storage | 20–30MB, float16/int8 |
+| Hidden dimension | 256 |
+| Initial vocabulary | 4,096 BPE tokens |
+| Maximum vocabulary | 8,192 |
+| Training hardware | CPU-only free GitHub Runners |
+| Run block | 500 steps, under 6 hours |
+| Checkpoint cadence | Every 500 steps |
+| Total initial schedule | 10,000 steps |
+| Evaluation | Frozen 500-record holdout; sampling, not greedy |
 
-Implementación: `train_wise_ronin.py`.
+The V1 baseline requirements, equations, dataset recipe, training schedule, metrics, and stop conditions are in [DOCUMENTO_MAESTRO_RONIN_LUMEN_V1.md](DOCUMENTO_MAESTRO_RONIN_LUMEN_V1.md). The optional experimental extension is specified separately in [RONIN-LUMEN V3.2 — ZE / LC-NE](docs/RONIN_LUMEN_V3_2_ZE.md); V3.0 remains the default.
 
-## Historia experimental
+## Project status — architecture integration and runner validation
 
-- **10k:** primer checkpoint SFT sobre el corpus inicial.
-- **30k:** entrenamiento equilibrado adicional sobre 80.000 ejemplos; sirvió como baseline congelado para la fase correctiva.
-- **40k:** 10.000 actualizaciones correctivas desde 30k, con un pack separado de hechos, matemáticas y comportamiento. Es el checkpoint principal actual.
+<sub>Current branch: `lumen-v1/m1-refactor` · Pull request: #13 · Not merged</sub>
 
-Los checkpoints anteriores se conservan como referencias experimentales. El 40k no invalida los resultados negativos de las versiones anteriores: los hace más específicos.
+The branch now contains executable implementations of the eight architectural organs and a CPU trainer, with runner validation in progress:
+- four recurrent surprise-gated Delta layers with explicit batch-boundary state reset;
+- live embedding usage accounting and non-destructive prune proposals;
+- per-token energy allocation, homeostasis and Top-K sparsity;
+- elastic memory and a bounded slow-memory bank with consolidation;
+- a learned router, spline-KAN operation head and language MLP;
+- sleep consolidation over stored slow memories, without embedding updates;
+- JEPA-style next-eight-token latent prediction and a differentiable repetition regularizer;
+- an opt-in V3.2 dual-state M_A/M_B controller, ten-token conflict localization, bounded rank-one context erasure, ternary PE memory gate, adaptive 80%-occupancy sleep with 1/3/7 replay spacing, and a state-distribution KL complexity term;
+- checkpoint/resume for model, optimizer, scheduler, global step, corpus hash and RNG states;
+- curriculum selection with strict phase windows and a 70/30 stratified phase-2 sampler.
 
-## Corpus y método
+The integrated model currently has **2,281,841 parameters**. This is below the 6M ceiling, but below the 3–4M target band, so the target-band criterion remains unmet. This count is a static model count, not a measured on-disk fp16/int8 package size.
 
-El corpus inicial contiene tres fragmentos JSONL, con aproximadamente 147.627 filas antes de deduplicación. La fase correctiva añadió un pack pequeño y aislado:
+The runner workflow now compiles the model, checks the parameter budget, runs unit tests and performs an explicit 10-step dummy smoke. These jobs must pass before the architecture can be considered runner-validated. The dummy mode is only a smoke test; it is not evidence of learning and is never used as the production corpus.
 
-- 991 ejemplos SFT.
-- 24 grupos factuales de entrenamiento y 6 grupos reservados para evaluación.
-- 918 filas matemáticas de entrenamiento.
-- 25 filas de comportamiento antisicofántico.
-- 24 pares ORPO preparados, pero **ORPO no se ejecutó**.
-- 211 preguntas de evaluación: 6 factuales, 200 matemáticas y 5 conductuales.
+V3.2 is opt-in via `--v32-ze`; it is not the default and is not yet a demonstrated improvement. Its tests and CPU checkpoint/resume smoke are being exercised in Actions.
 
-La preparación verificó cero solapamientos entre grupos factuales de entrenamiento y evaluación. El banco factual sigue siendo pequeño; las variantes de redacción no equivalen a hechos nuevos.
+Some mechanisms remain deliberately gated rather than falsely claimed complete:
+- vocabulary pruning currently emits candidates only; actual token replacement requires an atomic tokenizer/embedding remap;
+- ORPO fails closed until preference pairs and its objective are specified;
+- fake-int8 is an activation simulation, not a quantized model export;
+- slow-memory consolidation and sleep need behavioral tests and ablations;
+- the final training corpus and BPE tokenizer do not yet exist.
 
-## Reproducir el experimento
+### Smoke and production commands
 
-El workflow de referencia es:
+```bash
+python -m pip install -r requirements.txt
+python -m train.train --dummy-m1 --steps 10 --phase 1
+# Optional experimental branch (separate checkpoints; not the V3.0 baseline)
+python -m train.train --dummy-m1 --v32-ze --ckpt-dir checkpoints/v32 --steps 10 --phase 1
+python scripts/train_tokenizer.py --data data/train_25k.jsonl
+python -m train.train --steps 500 --phase 1
+```
 
-[WISE-RONIN — 10k-step factual correction SFT](https://github.com/orbitalronin94/WISE-RONIN/actions/workflows/wise-ronin-correction-sft.yml)
+Production training is blocked until the 25,000-row corpus, tokenizer, provenance manifest and holdout-overlap audit are complete.
 
-La ejecución #44741418950 contiene el checkpoint final y las evaluaciones greedy y sampling. Para repetir el experimento se necesita el checkpoint 30k de partida y el workflow versionado en el repositorio.
+## Data preparation status
 
-## Próximos objetivos
+The source sampler is designed to stage 19,000 externally sourced candidates toward the 20,000-row external allocation. It records immutable Hugging Face dataset revisions, source licenses, per-file hashes and a manifest. Python-Edu/The Stack's 1,000-row code quota remains blocked pending per-file license and attribution checks. The remaining 5,000 rows must come from the owner's own curated corpus.
 
-1. Conservar la voz irónica y la resistencia a la adulación.
-2. Recuperar exactitud matemática sin convertir todas las respuestas en cifras sueltas.
-3. Ampliar el banco factual con hechos independientes y trazables.
-4. Mejorar la resistencia a falsas premisas.
-5. Evaluar humor, utilidad y corrección por separado, con revisión humana de generaciones.
+The initial source-candidate artifact has been downloaded and audited. Its first lexical audit found 39 normalized duplicates; the sampler has since been hardened to reject short fragments and normalize text before deduplication, and the updated staging workflow is rebuilding and re-auditing the artifact. The final `train_25k.jsonl` has **not** been built. The staging workflow is intentionally separate from model training. See [data/README.md](data/README.md) for source-by-source conditions and [docs/SPEC_AUDIT.md](docs/SPEC_AUDIT.md) for unresolved specification decisions.
 
-La pérdida de entrenamiento no demuestra ninguna de estas capacidades. Publicamos también los fallos: WISE-RONIN es un experimento pequeño, reproducible y todavía imperfecto.
+## Research discipline
 
-## Licencia y uso
+- **Voice first, factual second.** Keep the intended corpus composition and task boundaries explicit.
+- **Confirmed is not rumor.** Preserve provenance and never silently promote unverified material to fact.
+- **KOAN stays in KOAN examples.** It must not become a universal response attractor.
+- **Curated diversity beats repeated synthetic templates.** If a generator produces near-identical forms, filter them rather than inflating the dataset.
+- **The holdout is sacred.** Preserve the 500 source records byte-for-byte, audit overlap, and never train on them.
+- **Ablate, don't assume.** Sleep, JEPA, KAN, memory, sparsity, homeostasis, energy routing, and vocabulary pruning each need measurable tests.
+- **Reproducibility over spectacle.** Record configuration, seeds, optimizer/scheduler state, model state, and adaptive state in checkpoints.
+- **Report the limits.** The preserved historical holdout contains 500 records but only 55 unique prompt strings. That limitation must be disclosed; it is not silently repaired.
 
-Úsalo, estúdialo, rómpelo y mejora el experimento. No confundas una voz reconocible con conocimiento fiable.
+## Roadmap and merge policy
 
-**Rey muerto, rey puesto. El rotulador sigue seco; el enano ya tiene carácter.**
+1. **M1 — Skeleton:** inventory, V2 archive, 10-step CPU run, checkpoint and resume.
+2. **M2 — Organs:** implement and test each organ individually in the exact order defined by the master spec.
+3. **M3 — Integration and ablations:** verify parameter budget, arithmetic routing, diversity, and no-degradation behavior.
+4. **M4 — Data and training:** build the curated corpus, audit licenses/holdout leakage, and train in resumable 500-step runner blocks.
+5. **M5 — Evaluation and release:** publish reproducible results, negative findings, ablations, and the complete specification.
+
+The owner has explicitly authorized the merge of this architecture/integration PR. That authorization does **not** waive the data, tokenizer, holdout, or training gates described above. No production training may start until those gates pass.
+
+## License and provenance
+
+Dataset sources, code dependencies, and model artifacts must each have their licenses and provenance recorded before inclusion. The archive preserves the prior repository state; it does not imply that every historical dataset is cleared for redistribution. See [the full master specification](DOCUMENTO_MAESTRO_RONIN_LUMEN_V1.md) and [data/README.md](data/README.md).
+
+---
+
+*RONIN-LUMEN is an experiment in making a small model remember when to write, when to remain silent, what to consolidate, and which computational path a token should take. The claim is not that these ideas are already proven; the claim is that the architecture is specific enough to test, falsify, and reproduce.*

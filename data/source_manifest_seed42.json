@@ -1,0 +1,34 @@
+{
+  "project": "RONIN-LUMEN V1",
+  "workflow_run_id": 44887381117,
+  "workflow_run_url": "https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44887381117",
+  "artifact_name": "lumen-source-candidates-seed-42",
+  "artifact_id": 14700701424,
+  "artifact_sha256": "ff8a1ad08626429f704e01ebd70f9915b5e58071c9f2d3ca0a3d8f4d777670c8",
+  "seed": 42,
+  "status": "19k external candidate rows staged; not final training corpus",
+  "downloaded_external_rows": 19000,
+  "final_target_rows": 25000,
+  "unresolved_external_rows": 1000,
+  "owner_curated_rows_required": 5000,
+  "final_dataset_ready": false,
+  "sources": [
+    {"key":"tinystories","dataset":"roneneldan/TinyStories","revision":"f54c09fd23315a6f9c86f9dc80f725de7d8f9c64","rows":4000,"sha256":"a06c6a34ba80d4f76dfdbb8b066656371a11c2f342d6829790ff67836ce81693","license":"CDLA-Sharing-1.0"},
+    {"key":"babylm_2026","dataset":"BabyLM-community/BabyLM-2026-Strict","revision":"9e57baaaa91ac3c638746be14d1d5fa6c789f4cf","rows":4000,"sha256":"1ea46b8f856346c79b38a3dba922ce7ff69f639b8b6146745fe7c41eec147a84","license":"MIT"},
+    {"key":"fineweb_edu","dataset":"HuggingFaceFW/fineweb-edu","config":"sample-10BT","revision":"87f09149ef4734204d70ed1d046ddc9ca3f2b8f9","rows":2000,"sha256":"a2dd679612ff9110cb5edd3bbb959f90f6ebd47ca76876a81b58f0e4aaf1404c","license":"ODC-By-1.0"},
+    {"key":"dclm","dataset":"mlfoundations/dclm-baseline-1.0","revision":"a3b142c183aebe5af344955ae20836eb34dcf69b","rows":2000,"sha256":"6ec796331bf6c823903c498bd80ae2e6124b0aaa5d5f6eecc53fd44febef01aa","license":"CC-BY-4.0"},
+    {"key":"cosmopedia_v2","dataset":"HuggingFaceTB/smollm-corpus","config":"cosmopedia-v2","revision":"3ba9d605774198c5868892d7a8deda78031a781f","rows":4000,"sha256":"75c863aa8535e63b520fa9b8b0ac5aaae45616751240771b5a6a613da392f23f","license":"ODC-By-1.0"},
+    {"key":"orca_math","dataset":"microsoft/orca-math-word-problems-200k","revision":"29255d1770cc4eac66e5e7fa378cba542c026350","rows":1500,"sha256":"bd6e59942c95e9a3d113282c69692ef015dabb9dc4be54806e3a964f141e2806","license":"MIT"},
+    {"key":"tinygsm","dataset":"TinyGSM/TinyGSM","revision":"5049a7840fa546985eaae4c698d5daf6fdf7b47d","rows":1500,"sha256":"6a1ae6b00825b018fb64a4372394de8d1cd051573cdc20041d792bbe752fdacd","license":"MIT"}
+  ],
+  "blocked": [
+    {"key":"python_edu_the_stack","rows_required":1000,"reason":"Per-file license and attribution audit required"},
+    {"key":"owner_curated","rows_required":5000,"reason":"Owner-supplied curated corpus not yet present"},
+    {"key":"gsm8k","status":"benchmark_only","reason":"Excluded from training by the master specification"}
+  ],
+  "verification": {
+    "all_seven_file_sha256_match_manifest": true,
+    "all_source_row_counts_match_quotas": true,
+    "holdout_modified": false
+  }
+}

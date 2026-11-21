@@ -362,7 +362,8 @@ def main():
 
         tokens_seen += int(tokens.ne(0).sum())
         forward_started = time.perf_counter()
-        output = model(tokens, reset_state=True)
+        collect_diagnostics = (step % 100 == 0 or step == start + 1)
+        output = model(tokens, reset_state=True, collect_diagnostics=collect_diagnostics)
         profile["forward"] += time.perf_counter() - forward_started
         for index, organ in enumerate(model.homeo):
             if organ.last_gate_activity_per_unit is not None:

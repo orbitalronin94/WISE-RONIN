@@ -2,13 +2,6 @@ name: RONIN-LUMEN continuation 2000 to 4000 (parallel models, final holdout)
 
 on:
   workflow_dispatch:
-    inputs:
-      cpu_threads:
-        description: "PyTorch CPU intra-op threads (benchmark 1, 2 and 4 first)"
-        required: true
-        type: choice
-        options: ["1", "2", "4"]
-        default: "2"
 
 permissions:
   contents: read
@@ -130,6 +123,13 @@ jobs:
     needs: prepare-parent
     runs-on: ubuntu-latest
     timeout-minutes: 330
+    env:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      OMP_DYNAMIC: "FALSE"
+      OMP_PROC_BIND: "close"
+      OMP_PLACES: "cores"
+      KMP_AFFINITY: "granularity=fine,compact,1,0"
     strategy:
       fail-fast: false
       matrix:
@@ -159,7 +159,7 @@ jobs:
       - name: Train only this model in four resumable 500-step blocks
         env:
           MODEL: ${{ matrix.model }}
-          CPU_THREADS: ${{ inputs.cpu_threads || '2' }}
+          CPU_THREADS: "2"
         shell: bash
         run: |
           set -euo pipefail
@@ -179,6 +179,8 @@ jobs:
                 --data data/pilot_train_19k.jsonl \
                 --tokenizer data/pilot_tokenizer/tokenizer.json \
                 --token-cache data/pilot_tokenized_128.pt --batch 8 --max-len 128 --seed 42 --threads "$CPU_THREADS" \
+                --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity \
+                --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity \
                 --lr 2e-5 --warmup 100 --total-steps 4000 \
                 --scheduler-transition --transition-start 2000 --transition-end 4000 \
                 --warmup-transition 20 --grad-clip 0.5 \

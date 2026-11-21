@@ -11,7 +11,8 @@ def test_pilot_surprise_gate_allows_cold_start_delta_writes():
     torch.manual_seed(42)
     layer = EstadoDelta(dim=16, tau=CONFIG.surprise_threshold)
     x = torch.randn(2, 8, 16) * 0.02
-    energy = torch.ones(2, 8)
+    # Match Presupuesto.forward(): per-token allocation has shape [batch, steps, 1].
+    energy = torch.ones(2, 8, 1)
 
     output, surprise = layer(x, energy, reset_state=True)
 

@@ -2,7 +2,7 @@ name: RONIN-LUMEN pilot checks (no training)
 
 on:
   push:
-    branches: [pilot/lumen-longitudinal-v2, pilot/ronin-lumen-500]
+    branches: [pilot/ronin-lumen-500]
     paths:
       - "model/**"
       - "train/**"
@@ -27,7 +27,7 @@ permissions:
 concurrency:
   # Shares the legacy training workflow group so this test-only run cancels
   # obsolete queued/running full-train jobs from the pre-cache workflow.
-  group: ronin-lumen-checks
+  group: ronin-lumen-checks-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

@@ -1,0 +1,91 @@
+name: WISE-RONIN — Unified master dataset build
+
+on:
+  push:
+    branches:
+      - feat/unified-master-dataset
+    paths:
+      - ".github/workflows/wise-ronin-master-dataset.yml"
+      - "merge_wise_ronin_corpora.py"
+      - "build_balanced_80k.py"
+      - "data/expanded/**"
+      - "data/seeds/wise_ronin_1000_qa_ronin.jsonl"
+      - "dataset_enano_70mb_parte*.jsonl"
+  pull_request:
+    paths:
+      - ".github/workflows/wise-ronin-master-dataset.yml"
+      - "merge_wise_ronin_corpora.py"
+      - "build_balanced_80k.py"
+      - "data/expanded/**"
+      - "data/seeds/wise_ronin_1000_qa_ronin.jsonl"
+      - "dataset_enano_70mb_parte*.jsonl"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wise-ronin-master-dataset
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build deterministic balanced 80k source
+        run: python build_balanced_80k.py
+
+      - name: Compile and build unified corpus
+        run: |
+          python -m py_compile build_balanced_80k.py merge_wise_ronin_corpora.py
+          python merge_wise_ronin_corpora.py --legacy dataset_enano_70mb_parte1.jsonl dataset_enano_70mb_parte2.jsonl dataset_enano_70mb_parte3.jsonl --balanced data/balanced/dataset_reequilibrado_80k.jsonl --qa data/seeds/wise_ronin_1000_qa_ronin.jsonl
+
+      - name: Validate merged corpus and quarantine outputs
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("data/merged/wise_ronin_master_report.json").read_text())
+          master = Path("data/merged/wise_ronin_master.jsonl")
+          review = Path("data/merged/wise_ronin_qa_manual_review.jsonl")
+          assert report["master_rows"] > 160000, report
+          assert report["input_rows_by_source"]["qa_ronin"] == 976
+          assert report["qa_rows_quarantined_for_manual_review"] == 33
+          review_rows = [json.loads(line) for line in review.read_text(encoding="utf-8").splitlines() if line]
+          assert len(review_rows) == 33
+          assert len({row["source_record"] for row in review_rows}) == 33
+          pairs = set()
+          with master.open(encoding="utf-8") as f:
+              for line in f:
+                  row = json.loads(line)
+                  prompt = " ".join(row["user"].casefold().split())
+                  answer = " ".join(row["assistant"].casefold().split())
+                  pairs.add((prompt, answer))
+                  assert row.get("source_dataset") and row.get("source_line")
+          assert len(pairs) == report["master_rows"]
+          assert report["prompts_with_multiple_completions_preserved"] == 102
+          print(json.dumps(report, ensure_ascii=False, indent=2))
+          print(f"Master validated: {report['master_rows']:,} rows; {master.stat().st_size:,} bytes")
+          print(f"Manual QA quarantine validated: {len(review_rows)} records")
+          PY
+
+      - name: Upload unified corpus and audit reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-unified-master-dataset
+          path: |
+            data/merged/
+            data/balanced/balanced_80k_report.json
+          if-no-files-found: error
+          retention-days: 30

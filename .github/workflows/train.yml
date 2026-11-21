@@ -34,7 +34,7 @@ jobs:
           pytest -q tests
       - name: M1 smoke test on code pushes
         if: github.event_name == 'push'
-        run: python train/train.py --dummy-m1 --steps 10 --phase 1
+        run: python -m train.train --dummy-m1 --steps 10 --phase 1
       - name: Requested training block
         if: github.event_name == 'workflow_dispatch'
         env:
@@ -46,7 +46,7 @@ jobs:
           EXTRA=""
           [ "$NO_SLEEP" = "true" ] && EXTRA="$EXTRA --no-sleep"
           [ "$NO_JEPA" = "true" ] && EXTRA="$EXTRA --no-jepa"
-          python train/train.py --steps "$STEPS" --phase "$PHASE" $EXTRA
+          python -m train.train --steps "$STEPS" --phase "$PHASE" $EXTRA
       - uses: actions/upload-artifact@v4
         if: always()
         with:

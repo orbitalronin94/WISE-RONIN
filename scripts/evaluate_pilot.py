@@ -98,7 +98,7 @@ def main():
             historical_by_prompt[key] = row
     historical = list(historical_by_prompt.values())
     tasks = (
-        [("gsm8k", row["user"], row["hecho_esperado"], row) for row in gsm]
+        [("gsm8k", "Question: " + row["user"] + "\\nAnswer:", row["hecho_esperado"], row) for row in gsm]
         + [("historical", row["user"], row["hecho_esperado"], row) for row in historical]
     )
     outdir = Path(args.output)
@@ -112,8 +112,8 @@ def main():
         model, state = load_model(kind, checkpoint, args.tokenizer)
         if state.get("data_sha256") != data_hash:
             raise ValueError(f"{kind}: checkpoint corpus hash mismatch")
-        if kind == "transformer" and state.get("tokenizer_sha256") != tok_hash:
-            raise ValueError("Transformer checkpoint tokenizer hash mismatch")
+        if state.get("tokenizer_sha256") != tok_hash:
+            raise ValueError(f"{kind}: checkpoint tokenizer hash mismatch")
         predictions = []
         for start in range(0, len(tasks), 8):
             batch_tasks = tasks[start:start+8]
@@ -150,6 +150,16 @@ def main():
             "metrics": by_dataset,
         }
         del model
+    lumen_tokens = summary["models"]["lumen"].get("tokens_seen")
+    transformer_tokens = summary["models"]["transformer"].get("tokens_seen")
+    if lumen_tokens != transformer_tokens:
+        raise ValueError(f"Token budgets differ: LUMEN={lumen_tokens}, Transformer={transformer_tokens}")
+    lumen_params = summary["models"]["lumen"]["parameters"]
+    transformer_params = summary["models"]["transformer"]["parameters"]
+    summary["parameter_gap_percent"] = round(
+        abs(lumen_params - transformer_params) / lumen_params * 100, 4
+    )
+    summary["matched_token_budget"] = lumen_tokens
     with (outdir / "predictions.jsonl").open("w", encoding="utf-8") as f:
         for row in all_predictions:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")

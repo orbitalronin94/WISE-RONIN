@@ -97,18 +97,18 @@ def expected_parent_config(kind: str) -> dict:
     }
 
 
-def continuation_config(kind: str) -> dict:
+def continuation_config(kind: str, end_step: int = END_STEP) -> dict:
     config = expected_parent_config(kind)
     config.update({
-        "total_steps": END_STEP,
+        "total_steps": end_step,
         "transition_start": PARENT_STEP,
-        "transition_end": END_STEP,
+        "transition_end": end_step,
     })
     return config
 
 
 def rebase_state(state: dict, kind: str, data_hash: str, tokenizer_hash: str,
-                 source_checkpoint_sha256: str) -> dict:
+                 source_checkpoint_sha256: str, end_step: int = END_STEP) -> dict:
     if kind not in EXPECTED:
         raise ValueError(f"Unknown model kind: {kind}")
     spec = EXPECTED[kind]
@@ -157,13 +157,13 @@ def rebase_state(state: dict, kind: str, data_hash: str, tokenizer_hash: str,
     next_schedule = {
         "kind": "cosine_transition_v1",
         "start_step": PARENT_STEP,
-        "end_step": END_STEP,
+        "end_step": end_step,
         "old_lr": 0.0,
         "new_lr": spec["lr"],
         "warmup_steps": WARMUP_STEPS,
         "current_step": PARENT_STEP,
     }
-    rebased["training_config"] = continuation_config(kind)
+    rebased["training_config"] = continuation_config(kind, end_step)
     rebased["scheduler_transition"] = next_schedule
     rebased["scheduler"] = copy.deepcopy(next_schedule)
     rebased["continuation_parent"] = {
@@ -175,7 +175,7 @@ def rebase_state(state: dict, kind: str, data_hash: str, tokenizer_hash: str,
         "optimizer_state_sha256": optimizer_before,
         "rng_state_sha256": rng_before,
         "tokens_seen": tokens_before,
-        "schedule": "20-step linear warmup from LR=0 to the model's established target LR, then cosine decay to zero at step 4000",
+        "schedule": f"20-step linear warmup from LR=0 to the model's established target LR, then cosine decay to zero at step {end_step}",
     }
     if hash_tree(rebased["model"]) != weights_before:
         raise AssertionError(f"{kind}: weights changed during scheduler rebase")
@@ -193,7 +193,11 @@ def main() -> None:
     parser.add_argument("--data", required=True)
     parser.add_argument("--tokenizer", required=True)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--end-step", type=int, default=END_STEP,
+                        help="Global step at which the rebased cosine schedule reaches zero")
     args = parser.parse_args()
+    if args.end_step <= PARENT_STEP:
+        parser.error("--end-step must be greater than the step-2000 parent")
 
     data_path, tokenizer_path = Path(args.data), Path(args.tokenizer)
     data_hash, tokenizer_hash = sha256_file(data_path), sha256_file(tokenizer_path)
@@ -204,7 +208,7 @@ def main() -> None:
         "source_run": SOURCE_RUN,
         "source_artifact_id": SOURCE_ARTIFACT,
         "parent_step": PARENT_STEP,
-        "target_step": END_STEP,
+        "target_step": args.end_step,
         "data_sha256": data_hash,
         "tokenizer_sha256": tokenizer_hash,
         "models": {},
@@ -214,7 +218,7 @@ def main() -> None:
         source = Path(raw_path)
         source_hash = sha256_file(source)
         state = torch.load(source, map_location="cpu", weights_only=False)
-        rebased = rebase_state(state, kind, data_hash, tokenizer_hash, source_hash)
+        rebased = rebase_state(state, kind, data_hash, tokenizer_hash, source_hash, args.end_step)
         token_counts.add(int(rebased["tokens_seen"]))
         destination = output_dir / f"{kind}_step_2000_continuation.pt"
         torch.save(rebased, destination)

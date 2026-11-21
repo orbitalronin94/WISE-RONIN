@@ -99,8 +99,8 @@ def main():
         parser.error("--steps must be between 1 and 500")
     if args.orpo:
         parser.error("ORPO is not implemented: preference pairs and objective require a separate approved specification")
-    if args.dummy_m1 and (args.steps > 10 or args.resume):
-        parser.error("--dummy-m1 is limited to a fresh run of at most 10 steps")
+    if args.dummy_m1 and args.steps > 10:
+        parser.error("--dummy-m1 is limited to blocks of at most 10 steps")
 
     torch.set_num_threads(2)
     torch.manual_seed(args.seed)

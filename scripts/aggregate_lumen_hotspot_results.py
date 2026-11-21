@@ -53,12 +53,12 @@ def main():
             "max_loss_regression": args.max_loss_regression,
             "checkpoint_step": 3000,
             "objective_unchanged": True,
-            "selection": "parallel 7-hypothesis matrix; same checkpoint, batch, seed, cache and original loss",
+            "selection": "parallel 40-hypothesis matrix around measured 4-thread winner; same checkpoint, batch, seed, cache and original loss",
         }
         Path(args.current_profile).write_text(json.dumps(profile, indent=2) + "\n", encoding="utf-8")
         promoted = True
     report = {
-        "benchmark": "lumen_parallel_seven_hypotheses",
+        "benchmark": "lumen_parallel_40_hypotheses",
         "checkpoint_step": 3000,
         "control_steps_per_second": baseline,
         "control_mean_training_loss": baseline_loss,

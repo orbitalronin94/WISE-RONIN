@@ -1,8 +1,8 @@
-name: RONIN-LUMEN 500-step matched-size pilot
+name: RONIN-LUMEN 500-step matched-size pilot (import-path fix)
 
 on:
   push:
-    branches: [main, pilot/ronin-lumen-500]
+    branches: [main, pilot/ronin-lumen-500, pilot/ronin-lumen-importfix]
     paths:
       - ".github/workflows/pilot.yml"
   workflow_dispatch:

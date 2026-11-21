@@ -63,6 +63,12 @@ def audit_rows(candidates: list[dict[str, Any]], holdout: list[dict[str, Any]]) 
         if expected:
             targets.setdefault(expected, []).append((hid, "expected_exact"))
 
+    # Normalize the 500 frozen prompts once. Re-normalizing each prompt for
+    # every candidate made the 19k x 500 lexical audit needlessly expensive.
+    holdout_users = [
+        (hid, normalize(row.get("user", "")))
+        for hid, row in zip(holdout_ids, holdout)
+    ]
     exact_matches = []
     substring_matches = []
     seen_candidate_hashes: dict[str, int] = {}
@@ -88,8 +94,7 @@ def audit_rows(candidates: list[dict[str, Any]], holdout: list[dict[str, Any]]) 
                 if field_value == target:
                     for hid, kind in refs:
                         matched.add((hid, kind, field_name))
-        for hid, row_holdout in zip(holdout_ids, holdout):
-            user = normalize(row_holdout.get("user", ""))
+        for hid, user in holdout_users:
             if user and len(user) >= 28 and user in text:
                 substring_matches.append({
                     "candidate_row": index, "holdout_id": hid,

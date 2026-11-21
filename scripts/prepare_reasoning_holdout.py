@@ -3,6 +3,8 @@
 from __future__ import annotations
 import argparse, hashlib, json, re, unicodedata
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from datasets import load_dataset
 from huggingface_hub import HfApi
 from data.audit_holdout import audit_rows, read_jsonl

@@ -116,6 +116,7 @@ def audit_rows(candidates: list[dict[str, Any]], holdout: list[dict[str, Any]]) 
         "long_user_substring_match_count": len(substring_matches),
         "duplicate_candidate_count": len(duplicate_candidates),
         "lexical_gate_pass": not exact_matches and not substring_matches,
+        "candidate_integrity_pass": not duplicate_candidates,
         "limitations": [
             "Lexical audit only; it does not prove semantic independence.",
             "Long user-prompt substring matches are conservative flags and require manual review.",
@@ -187,6 +188,8 @@ def main() -> None:
     )}, ensure_ascii=False, indent=2))
     if not report["lexical_gate_pass"]:
         raise SystemExit("Holdout lexical-overlap gate failed; inspect the report.")
+    if not report["candidate_integrity_pass"]:
+        raise SystemExit("Candidate duplicate gate failed; rebuild source staging.")
 
 
 if __name__ == "__main__":

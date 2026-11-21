@@ -14,7 +14,7 @@ class SplineKAN(nn.Module):
         pos = torch.sigmoid(self.proj_in(x)) * (self.n_puntos - 1)
         idx0 = pos.floor().long().clamp(0, self.n_puntos - 2)
         frac = pos - idx0.to(pos.dtype)
-        expanded = self.puntos.unsqueeze(0).unsqueeze(0).expand(*idx0.shape, -1, -1)
+        expanded = self.puntos.unsqueeze(0).unsqueeze(0).expand(*idx0.shape, -1)
         p0 = torch.gather(expanded, -1, idx0.unsqueeze(-1)).squeeze(-1)
         p1 = torch.gather(expanded, -1, (idx0 + 1).unsqueeze(-1)).squeeze(-1)
         return self.proj_out(p0 * (1.0 - frac) + p1 * frac)

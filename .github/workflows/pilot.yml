@@ -76,7 +76,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .cache/ronin-tests-passed
-          key: ronin-lumen-tests-v1-${{ github.sha }}
+          key: ronin-lumen-tests-v1-${{ hashFiles('model/**', 'train/**', 'data/**', 'scripts/**', 'tests/**') }}
 
       - name: Restore prepared corpus, tokenizer and reasoning holdout cache
         id: prepared-cache
@@ -114,7 +114,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .cache/ronin-tests-passed
-          key: ronin-lumen-tests-v1-${{ github.sha }}
+          key: ronin-lumen-tests-v1-${{ hashFiles('model/**', 'train/**', 'data/**', 'scripts/**', 'tests/**') }}
 
       - name: Restore exact parent checkpoints
         id: checkpoint-cache

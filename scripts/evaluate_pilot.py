@@ -28,25 +28,49 @@ def numeric(s):
         value = value[:-2]
     return value
 
-def generate_batch(model, prompts, tokenizer, kind, max_new=64, max_prompt=63):
+def fit_prompt(ids, max_context=128):
+    """Keep both the question opening and its final answer cue within context."""
+    budget = max_context - 1  # reserve one position for BOS
+    if len(ids) <= budget:
+        return list(ids)
+    head = budget // 2
+    tail = budget - head
+    return list(ids[:head]) + list(ids[-tail:])
+
+
+def generate_batch(model, prompts, tokenizer, kind, max_new=64, max_context=128):
+    # LUMEN carries recurrent state per batch row; sequential prompts avoid
+    # right-padding contaminating a shorter prompt's recurrent prefill state.
+    if kind == "lumen" and len(prompts) > 1:
+        return [
+            item
+            for prompt in prompts
+            for item in generate_batch(model, [prompt], tokenizer, kind, max_new, max_context)
+        ]
     bos = tokenizer.tokenizer.token_to_id("[BOS]")
     eos = tokenizer.tokenizer.token_to_id("[EOS]")
     pad = tokenizer.tokenizer.token_to_id("[PAD]")
     sequences = []
     for prompt in prompts:
-        ids = tokenizer.tokenizer.encode(str(prompt), add_special_tokens=False).ids[:max_prompt]
-        sequences.append([bos] + ids)
+        ids = tokenizer.tokenizer.encode(str(prompt), add_special_tokens=False).ids
+        sequences.append([bos] + fit_prompt(ids, max_context=max_context))
     initial_lengths = [len(s) for s in sequences]
     finished = [False] * len(sequences)
-    for _ in range(max_new):
-        width = max(len(s) for s in sequences)
+    for generation_step in range(max_new):
+        # Transformer recomputes a sliding context. LUMEN prefills once, then
+        # consumes one token at a time so its recurrent Delta state is retained.
+        if kind == "lumen" and generation_step > 0:
+            contexts = [[seq[-1]] for seq in sequences]
+        else:
+            contexts = [seq[-max_context:] for seq in sequences]
+        width = max(len(seq) for seq in contexts)
         batch = torch.full((len(sequences), width), pad, dtype=torch.long)
         lengths = []
-        for i, seq in enumerate(sequences):
+        for i, seq in enumerate(contexts):
             lengths.append(len(seq))
             batch[i, :len(seq)] = torch.tensor(seq, dtype=torch.long)
         with torch.no_grad():
-            out = model(batch, reset_state=True) if kind == "lumen" else model(batch)
+            out = model(batch, reset_state=(generation_step == 0)) if kind == "lumen" else model(batch)
             logits = out["logits"] if kind == "lumen" else out
             positions = torch.tensor(lengths, dtype=torch.long) - 1
             next_ids = logits[torch.arange(len(sequences)), positions].argmax(dim=-1).tolist()
@@ -61,7 +85,11 @@ def generate_batch(model, prompts, tokenizer, kind, max_new=64, max_prompt=63):
     outputs = []
     for seq, prompt_len in zip(sequences, initial_lengths):
         generated = seq[prompt_len:]
-        outputs.append(tokenizer.tokenizer.decode(generated, skip_special_tokens=True))
+        outputs.append({
+            "text": tokenizer.tokenizer.decode(generated, skip_special_tokens=True),
+            "eos_terminated": bool(finished[len(outputs)]),
+            "generated_tokens": len(generated),
+        })
     return outputs
 
 def load_model(kind, checkpoint, tokenizer_path):
@@ -109,6 +137,9 @@ def main():
     summary = {"data_sha256": data_hash, "tokenizer_sha256": tok_hash,
                "gsm8k_test_questions": len(gsm), "historical_unique_prompts": len(historical),
                "max_new_tokens": args.max_new_tokens, "decoding": "greedy",
+               "max_context_tokens": 128,
+               "prompt_truncation": "retain first and last tokens within 127-token prompt budget; Transformer uses sliding 128-token context",
+               "lumen_decoding": "128-token prompt prefill then one-token stateful recurrent decoding",
                "gsm8k_sample_seed": 42, "gsm8k_selected_ids": [r["id"] for r in gsm],
                "models": {}}
     all_predictions = []
@@ -123,9 +154,10 @@ def main():
         predictions = []
         for start in range(0, len(tasks), 8):
             batch_tasks = tasks[start:start+8]
-            texts = generate_batch(model, [x[1] for x in batch_tasks], tokenizer, kind,
-                                   max_new=args.max_new_tokens)
-            for (dataset, prompt, expected, raw), response in zip(batch_tasks, texts):
+            generations = generate_batch(model, [x[1] for x in batch_tasks], tokenizer, kind,
+                                          max_new=args.max_new_tokens)
+            for (dataset, prompt, expected, raw), generation in zip(batch_tasks, generations):
+                response = generation["text"]
                 if dataset == "gsm8k":
                     correct = numeric(response) == numeric(expected)
                 else:
@@ -138,6 +170,8 @@ def main():
                     "model": kind, "dataset": dataset, "id": raw.get("id"),
                     "prompt": prompt, "expected": expected,
                     "response": response, "correct": correct,
+                    "eos_terminated": generation["eos_terminated"],
+                    "generated_tokens": generation["generated_tokens"],
                 }
                 predictions.append(record)
                 all_predictions.append(record)
@@ -154,6 +188,17 @@ def main():
             "training_steps": state.get("step"),
             "tokens_seen": state.get("tokens_seen"),
             "metrics": by_dataset,
+            "eos_terminated": sum(bool(row["eos_terminated"]) for row in predictions),
+            "eos_termination_rate": round(
+                sum(bool(row["eos_terminated"]) for row in predictions) / max(1, len(predictions)), 4
+            ),
+            "unique_responses": len({norm(row["response"]) for row in predictions}),
+            "unique_response_ratio": round(
+                len({norm(row["response"]) for row in predictions}) / max(1, len(predictions)), 4
+            ),
+            "mean_generated_tokens": round(
+                sum(row["generated_tokens"] for row in predictions) / max(1, len(predictions)), 2
+            ),
         }
         del model
     lumen_tokens = summary["models"]["lumen"].get("tokens_seen")

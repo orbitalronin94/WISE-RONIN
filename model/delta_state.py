@@ -15,6 +15,9 @@ class EstadoDelta(nn.Module):
         self.tau = nn.Parameter(torch.tensor(float(tau)))
         self.register_buffer("state", torch.empty(0), persistent=True)
         self.last_complexity = None
+        self.last_write_rate = 0.0
+        self.last_state_norm = 0.0
+        self.last_output_norm = 0.0
 
     def reset(self, batch, device, dtype):
         self.state = torch.zeros(batch, self.dim, self.dim, device=device, dtype=dtype)
@@ -25,7 +28,7 @@ class EstadoDelta(nn.Module):
                 or self.state.shape[0] != batch or self.state.device != x.device):
             self.reset(batch, x.device, x.dtype)
         S = self.state.to(dtype=x.dtype)
-        outs, surprises, complexities = [], [], []
+        outs, surprises, complexities, write_rates = [], [], [], []
         for t in range(steps):
             previous_log_prob = torch.log_softmax(S.float(), dim=-1)
             xt = x[:, t]
@@ -36,6 +39,7 @@ class EstadoDelta(nn.Module):
             decay = torch.sigmoid(self.a * surprise + self.b).clamp(0.90, 0.9999)
             write_lr = surprise.clamp(0.1, 1.0)
             gate = (surprise >= self.tau.clamp_min(0.0)).to(x.dtype)
+            write_rates.append(gate.mean().detach())
             S = S * decay.unsqueeze(-1)
             update = torch.einsum("bi,bj->bij", k, err)
             S = S + update * (write_lr * gate * e_delta[:, t]).unsqueeze(-1)
@@ -47,7 +51,11 @@ class EstadoDelta(nn.Module):
             surprises.append(surprise)
         self.state = S
         self.last_complexity = torch.stack(complexities).mean()
-        return torch.stack(outs, dim=1), torch.stack(surprises, dim=1)
+        output = torch.stack(outs, dim=1)
+        self.last_write_rate = float(torch.stack(write_rates).mean().item())
+        self.last_state_norm = float(S.detach().norm().item() / max(1, batch ** 0.5))
+        self.last_output_norm = float(output.detach().norm().item() / max(1, (batch * steps) ** 0.5))
+        return output, torch.stack(surprises, dim=1)
 
     def clear_state(self):
         self.state = torch.empty(0, device=self.state.device if self.state.numel() else None)

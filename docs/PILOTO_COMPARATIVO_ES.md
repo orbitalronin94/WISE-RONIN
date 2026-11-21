@@ -1,6 +1,6 @@
 # Piloto comparativo de razonamiento: RONIN-LUMEN frente a un Transformer de igual tamaño
 
-**Estado:** protocolo preparado; pendiente de ejecutar en GitHub Actions. No contiene resultados de entrenamiento.
+**Estado:** primer bloque de 500 pasos ejecutado; campaña longitudinal por bloques de 500 definida. Los resultados son preliminares y no demuestran superioridad.
 
 ## Objetivo
 
@@ -63,6 +63,34 @@ El checkpoint registra parámetros, hash de datos, hash del tokenizer, semilla, 
 
 LUMEN ejecuta su consolidación offline al llegar al paso 500. El baseline no tiene una operación equivalente porque no tiene memoria lenta ni ciclo de sueño; esta diferencia pertenece al sistema que se está comparando y se documentará en los resultados.
 
+
+## Protocolo longitudinal y trazabilidad de arquitectura
+
+La campaña avanza por hitos acumulativos de 500 pasos: 500 → 1.000 → 1.500 → 2.000 → … Cada bloque debe reanudar ambos modelos desde sus checkpoints anteriores, sin reiniciar pesos, optimizador, scheduler ni RNG.
+
+### Registro obligatorio por hito
+
+Cada ejecución debe publicar un manifiesto de comparación con:
+
+- Identidad de repositorio, rama y commit SHA exacto; versión de Python, PyTorch y dependencias relevantes.
+- Identificador inequívoco de arquitectura y configuración completa de LUMEN y Transformer; módulos, flags y objetivos auxiliares activos.
+- Recuento de parámetros total y, cuando sea posible, por módulo.
+- Hash SHA-256 del corpus, tokenizer, holdout y archivos de configuración.
+- Semilla, batch, longitud de contexto, learning rate, scheduler, weight decay, pasos globales y tokens vistos.
+- Identificador y hash del checkpoint padre, hash del checkpoint resultante y estado de optimizador, scheduler y RNG.
+- Pérdida causal de tokens separada de pérdidas auxiliares; métricas de holdout y predicciones.
+- Tiempo de entrenamiento/evaluación, dispositivo, hilos y memoria máxima observada.
+
+Para LUMEN se añadirán métricas por capa y por unidad de actividad efectiva después de ReLU/Top-K, distribución de activaciones, sesgos homeostáticos, escrituras/lecturas Delta, normas de estado y salida, ocupación de memoria y constancia de si el sueño/consolidación se ejecutó o fue omitido. El indicador agregado de neuronas muertas debe derivarse de actividad efectiva, no solo de actividad pre-enmascarado.
+
+Para el Transformer se guardará su configuración completa y las métricas de entrenamiento/evaluación comparables. Las diferencias inevitables entre arquitecturas —por ejemplo, pérdidas auxiliares, memoria recurrente y consolidación offline— deben figurar en el manifiesto y en el informe.
+
+### Encadenamiento seguro de bloques
+
+Se permite encadenar varios bloques de 500 pasos en un mismo workflow para reutilizar preparación de datos y tokenizer. Cada bloque debe guardar un checkpoint atómico y superar validaciones de carga, hashes, paso global, tokens vistos, estado del optimizador/scheduler/RNG y salud del modelo. El bloque siguiente depende del éxito completo del anterior. Cualquier fallo detiene la cadena y conserva el último checkpoint válido.
+
+El encadenamiento conjunto está implementado en esta rama: ambos trainers guardan/restauran modelo, optimizador, scheduler y RNG; el evaluador acepta cualquier hito global coincidente; y el workflow puede ejecutar varios bloques consecutivos. La implementación todavía debe superar su primera validación integral en Actions. En el primer bootstrap desde el checkpoint histórico de 500 pasos, el baseline Transformer se reproduce determinísticamente para reconstruir el estado de optimizador/RNG que el artefacto original no guardó; se exige igualdad exacta de pesos antes de continuar.
+
 ## Evaluación
 
 ### 1. Razonamiento matemático
@@ -91,20 +119,21 @@ Este holdout no es un benchmark de razonamiento matemático; sirve para comproba
 - Si el Transformer gana, se publicará igualmente; la hipótesis arquitectónica debe poder perder.
 - No se presentará el piloto como comparación con modelos comerciales ni como evidencia de que LUMEN supera a todos los modelos del mismo tamaño.
 
-## Siguiente escalón si el piloto resulta prometedor
+## Siguiente escalón
 
-1. Repetir ambos modelos con al menos cinco semillas.
-2. Extender a 2.000 y 5.000 pasos conservando el presupuesto por comparación.
-3. Ejecutar ablaciones LUMEN: sin JEPA, sin sueño, sin Top-K/homeostasis, sin memoria lenta y sin router KAN.
-4. Evaluar las 500 preguntas GSM8K completas y mantener el holdout histórico congelado.
-5. Separar exactitud, calibración, repetición, EOS, coste CPU, memoria y estabilidad.
+1. Validar en Actions la medición post-Top-K y la puerta de colapso por capa; corregir cualquier regresión detectada.
+2. Probar que una ejecución continua de 1.000 pasos y dos bloques reanudados de 500 producen la misma trayectoria bajo el mismo entorno.
+3. Verificar manifiestos, hashes de padres/hijos y equivalencia de presupuesto en cada hito.
+4. Ejecutar el siguiente bloque de 500 pasos solo después de superar todos los checks.
+5. Continuar la serie; después ampliar semillas, evaluación completa y ablaciones.
 6. Solo después, incorporar el corpus propio y el código con licencia auditada para la campaña 80/20 definitiva.
 
 ## Reproducibilidad
 
 - [Artefacto de staging de 19k filas](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44890014413)
 - [Auditoría del holdout histórico](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44890014413)
-- [Workflow del piloto](../.github/workflows/pilot.yml)
+- [Workflow longitudinal](../.github/workflows/pilot.yml)
+- [Generador de manifiestos por hito](../scripts/write_experiment_manifest.py)
 - [Constructor del corpus provisional](../scripts/build_pilot_corpus.py)
 - [Tokenizer del piloto](../scripts/train_pilot_tokenizer.py)
 - [Baseline Transformer](../train/transformer_baseline.py)
@@ -112,3 +141,13 @@ Este holdout no es un benchmark de razonamiento matemático; sirve para comproba
 - [Evaluador común](../scripts/evaluate_pilot.py)
 
 **Principio:** mismo corpus, tokenizer, semilla, pasos, tokens y coste aproximado de parámetros. Publicaremos las diferencias, también cuando no favorezcan a LUMEN.
+
+## Corrección arquitectónica antes de la continuación
+
+El piloto inicial mostró que Top-K se aplicaba como reemplazo de la representación en cada capa. Eso hacía que cada etapa descartara la mayor parte de las dimensiones y favorecía el apagado progresivo de las capas profundas.
+
+La continuación introduce una transición explícita a `ronin_lumen_v3_1_residual_homeostasis`: Top-K ahora limita la actualización homeostática dispersa, mientras el flujo de representación se conserva mediante una conexión residual. El checkpoint de 500 pasos se conserva como padre de pesos y estado del optimizador, pero el cambio de semántica se registra como una transición de arquitectura en el manifiesto. No debe describirse como una continuación idéntica de V3.0.
+
+El indicador de neuronas funcionales usa actividad después de ReLU/Top-K. Al reanudar, dispone de 100 pasos para inicializar su EMA antes de activar la puerta de colapso; no se reduce el umbral del 20%. Se registran por capa tanto la actividad del update disperso como la actividad de la representación residual.
+
+El evaluador conserva el comienzo y el final de preguntas largas dentro del presupuesto de 127 tokens de prompt y utiliza una ventana deslizante compartida de 128 tokens durante generación. El resumen registra esta política. Se mantiene la misma política para ambos modelos.

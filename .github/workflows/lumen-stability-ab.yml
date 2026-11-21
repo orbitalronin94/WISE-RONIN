@@ -119,7 +119,7 @@ jobs:
               "eager_exit_code": int(os.environ["EAGER_STATUS"]),
               "compiled_exit_code": int(os.environ["COMPILED_STATUS"]),
               "interpretation": "Compare first nonfinite step, loss components, tensor health, recovery checkpoint and wall time. This is diagnostic only; it is not a training continuation or holdout.",
-          }, indent=2) + "\\n")
+          }, indent=2) + "\n")
           PY
           exit 0
 

@@ -16,6 +16,7 @@ class Homeostasis(nn.Module):
         self.last_output_positive = 0.0
         self.last_gate_positive = 0.0
         self.last_output_norm = 0.0
+        self.last_gate_activity_per_unit = None
 
     def forward(self, x):
         self.last_input_positive = float((x.detach() > 0).float().mean().item())
@@ -29,6 +30,11 @@ class Homeostasis(nn.Module):
         _, indices = torch.topk(y, k=k, dim=-1)
         mask = torch.zeros_like(y).scatter_(-1, indices, 1.0)
         gated_update = torch.relu(y) * mask
+        # Diagnostic only: per-unit positive gated activity for rolling health
+        # windows. This value does not participate in the forward computation.
+        self.last_gate_activity_per_unit = (
+            (gated_update.detach() > 0).float().mean(dim=(0, 1))
+        )
 
         # Top-K sparsifies the homeostatic update, not the information stream.
         # Returning only gated_update erased most dimensions at every layer.

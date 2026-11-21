@@ -131,7 +131,10 @@ def main():
     outdir.mkdir(parents=True, exist_ok=True)
     summary = {"data_sha256": data_hash, "tokenizer_sha256": tok_hash,
                "gsm8k_test_questions": len(gsm), "historical_unique_prompts": len(historical),
-               "max_new_tokens": args.max_new_tokens, "decoding": "greedy",\n               "max_context_tokens": 128,\n               "prompt_truncation": "retain first and last tokens within 127-token prompt budget; Transformer uses sliding 128-token context",\n               "lumen_decoding": "128-token prompt prefill then one-token stateful recurrent decoding",
+               "max_new_tokens": args.max_new_tokens, "decoding": "greedy",
+               "max_context_tokens": 128,
+               "prompt_truncation": "retain first and last tokens within 127-token prompt budget; Transformer uses sliding 128-token context",
+               "lumen_decoding": "128-token prompt prefill then one-token stateful recurrent decoding",
                "gsm8k_sample_seed": 42, "gsm8k_selected_ids": [r["id"] for r in gsm],
                "models": {}}
     all_predictions = []

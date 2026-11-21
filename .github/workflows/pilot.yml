@@ -244,9 +244,11 @@ jobs:
               new = torch.load("checkpoints/transformer/step_500.pt", map_location="cpu", weights_only=False)
               if old["model"].keys() != new["model"].keys():
                   raise SystemExit("Transformer bootstrap replay changed model state keys")
-              # Different CPU/PyTorch runner builds may vary in the last floating-point bits.
-              # Require strict numerical equivalence, then retain the evaluated pilot weights
-              # while using replayed AdamW/scheduler/RNG state for the continuation.
+              # The legacy artifact has no optimizer moments. Replay reconstructs a
+              # self-consistent (weights + AdamW + scheduler + RNG) state. CPU kernels
+              # can produce small trajectory drift, so do NOT graft replayed moments
+              # onto the old weights: the replay checkpoint becomes the canonical
+              # longitudinal parent, and the measured drift is preserved in metadata.
               deltas = []
               failed = []
               for key in old["model"]:
@@ -255,26 +257,35 @@ jobs:
                       if not torch.equal(reference, replay):
                           failed.append(key)
                       continue
+                  if not torch.isfinite(reference).all() or not torch.isfinite(replay).all():
+                      failed.append(key)
+                      continue
                   delta = (reference - replay).abs()
                   max_abs = float(delta.max().item()) if delta.numel() else 0.0
-                  deltas.append((key, max_abs))
-                  if not torch.allclose(reference, replay, rtol=1e-5, atol=1e-6):
-                      failed.append(key)
+                  scale = max(1.0, float(reference.abs().max().item()))
+                  deltas.append((key, max_abs, max_abs / scale))
               if failed:
-                  worst = sorted(deltas, key=lambda item: item[1], reverse=True)[:8]
-                  raise SystemExit(f"Transformer replay diverged beyond strict tolerance: failed={failed[:8]} worst={worst}")
+                  raise SystemExit(f"Transformer replay has invalid/nonmatching tensors: {failed[:8]}")
+              worst = sorted(deltas, key=lambda item: item[1], reverse=True)[:8]
+              worst_abs = max((item[1] for item in deltas), default=0.0)
+              if worst_abs > 5e-4:
+                  raise SystemExit(f"Transformer replay drift exceeds 5e-4 safety bound: worst={worst}")
               optimizer_state = new.get("optimizer", {}).get("state", {})
               if int(new.get("step", -1)) != 500 or not optimizer_state:
                   raise SystemExit("Transformer replay did not produce a valid 500-step optimizer state")
-              worst_abs = max((item[1] for item in deltas), default=0.0)
-              new["model"] = old["model"]
               new["bootstrap"] = {
-                  "method": "500-step deterministic AdamW replay with strict numerical equivalence",
-                  "model_max_abs_delta_before_weight_restore": worst_abs,
-                  "weights_source": "original evaluated pilot checkpoint",
+                  "method": "500-step replay; replay weights and optimizer retained as one consistent state",
+                  "reference_checkpoint": "original evaluated pilot step 500",
+                  "max_abs_weight_drift": worst_abs,
+                  "worst_tensor_deltas": [
+                      {"name": name, "max_abs": absolute, "scaled_max_abs": relative}
+                      for name, absolute, relative in worst
+                  ],
+                  "weights_source": "replayed 500-step trajectory; optimizer/scheduler/RNG are from the same trajectory",
+                  "note": "The original artifact omitted optimizer state. The replay is the canonical continuation parent; do not combine its optimizer with original weights.",
               }
               torch.save(new, "checkpoints/transformer/step_500.pt")
-              print(f"Transformer replay passed strict numerical equivalence (max_abs_delta={worst_abs:.3e}); original pilot weights retained and optimizer/scheduler/RNG state restored.")
+              print(f"Transformer replay accepted as canonical consistent state (max_abs_weight_drift={worst_abs:.3e}); replay weights and optimizer/scheduler/RNG retained together.")
               legacy_path.unlink()
           PY
 

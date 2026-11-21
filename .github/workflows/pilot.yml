@@ -339,6 +339,7 @@ jobs:
           set -euo pipefail
           START="${{ steps.plan.outputs.start_step }}"
           BLOCKS="${{ steps.plan.outputs.blocks }}"
+          mkdir -p artifacts/timing
           for ((index=1; index<=BLOCKS; index++)); do
             PREV=$((START + (index - 1) * 250))
             TARGET=$((START + index * 250))
@@ -361,6 +362,7 @@ jobs:
               --lr 2e-5 --warmup 100 --total-steps 2000 \
               --scheduler-transition --transition-start 1000 --transition-end 2000 \
               --warmup-transition 20 --grad-clip 0.5 \
+              --wall-clock-file artifacts/timing/lumen.json \
               --ckpt-dir checkpoints/lumen "${LUMEN_RESUME[@]}"
 
             python -m train.transformer_baseline \
@@ -371,6 +373,7 @@ jobs:
               --lr 5e-5 --warmup 100 --total-steps 2000 \
               --scheduler-transition --transition-start 1000 --transition-end 2000 \
               --warmup-transition 20 --grad-clip 1.0 \
+              --wall-clock-file artifacts/timing/transformer.json \
               --ckpt-dir checkpoints/transformer "${TRANSFORMER_RESUME[@]}"
 
             python scripts/evaluate_pilot.py \
@@ -445,5 +448,6 @@ jobs:
             checkpoints/
             artifacts/evaluations/
             artifacts/manifests/
+            artifacts/timing/
           if-no-files-found: warn
           retention-days: 90

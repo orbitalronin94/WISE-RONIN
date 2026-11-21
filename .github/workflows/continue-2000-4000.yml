@@ -1,6 +1,11 @@
 name: RONIN-LUMEN continuation 2000 to 4000 (parallel models, final holdout)
 
 on:
+  # Merging this prepared experiment to main launches the requested continuation.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/continue-2000-4000.yml'
   workflow_dispatch:
 
 permissions:

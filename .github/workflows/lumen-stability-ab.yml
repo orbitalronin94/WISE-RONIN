@@ -1,0 +1,137 @@
+name: RONIN-LUMEN stability A/B (eager vs compile)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "train/train.py"
+      - ".github/workflows/lumen-stability-ab.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-stability-ab
+  cancel-in-progress: false
+
+jobs:
+  stability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      OMP_DYNAMIC: "FALSE"
+      OMP_PROC_BIND: close
+      OMP_PLACES: cores
+      KMP_AFFINITY: "granularity=fine,compact,1,0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU training dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+
+      - name: Download exact promoted step-3000 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-compiled-matched-3000-44940676355
+          path: artifacts/promoted-step-3000
+          repository: ${{ github.repository }}
+          run-id: 44940676355
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore frozen corpus and token cache
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-continuation-inputs-44936542271
+          path: artifacts/frozen-inputs
+          repository: ${{ github.repository }}
+          run-id: 44936542271
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify and assemble immutable inputs
+        run: |
+          set -euo pipefail
+          mkdir -p data checkpoints/parents checkpoints/eager checkpoints/compiled logs artifacts/diagnostics
+          cp artifacts/promoted-step-3000/checkpoints/lumen/step_3000.pt checkpoints/parents/step_3000.pt
+          cp artifacts/frozen-inputs/data/pilot_train_19k.jsonl data/pilot_train_19k.jsonl
+          cp artifacts/frozen-inputs/data/pilot_tokenized_128.pt data/pilot_tokenized_128.pt
+          cp -a artifacts/frozen-inputs/data/pilot_tokenizer data/pilot_tokenizer
+          python - <<'PY'
+          import hashlib, torch
+          from pathlib import Path
+          checks = {
+              "checkpoints/parents/step_3000.pt": "fcfc740ae1db9e7055cba5dc39f58e9e19327a3baa78ddeb2493e9faa983e8f7",
+              "data/pilot_train_19k.jsonl": "bca06a8f9a11d46bc91b79944243f37e1f0c902bd8a3c16c38dffcb05754c35c",
+              "data/pilot_tokenizer/tokenizer.json": "78b353e908b312722d8de24abce2b9bdc02168e4a2d4f78a7c5a109a2d65d99f",
+          }
+          for path, expected in checks.items():
+              actual = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+              if actual != expected:
+                  raise SystemExit(f"SHA mismatch {path}: {actual}")
+          state = torch.load("checkpoints/parents/step_3000.pt", map_location="cpu", weights_only=False)
+          if state.get("step") != 3000 or state.get("seed") != 42:
+              raise SystemExit("Unexpected parent checkpoint metadata")
+          print("Step-3000 checkpoint and frozen data/tokenizer verified.")
+          PY
+
+      - name: Rebase independent scheduler states
+        run: |
+          set -euo pipefail
+          python scripts/rebase_lumen_schedule.py --input checkpoints/parents/step_3000.pt --output checkpoints/eager/parent.pt --end-step 6000 --warmup-steps 20 --manifest artifacts/diagnostics/eager-rebase.json
+          python scripts/rebase_lumen_schedule.py --input checkpoints/parents/step_3000.pt --output checkpoints/compiled/parent.pt --end-step 6000 --warmup-steps 20 --manifest artifacts/diagnostics/compiled-rebase.json
+
+      - name: Run 50-step eager and compiled A/B from identical parent state
+        shell: bash
+        run: |
+          set +e
+          common=(--steps 50 --phase 1 --pilot-all-rows
+            --data data/pilot_train_19k.jsonl
+            --tokenizer data/pilot_tokenizer/tokenizer.json
+            --token-cache data/pilot_tokenized_128.pt
+            --batch 8 --max-len 128 --seed 42
+            --threads 2 --interop-threads 2
+            --disable-mkldnn --disable-foreach --cpu-affinity
+            --lr 2e-5 --warmup 100 --total-steps 6000
+            --scheduler-transition --transition-start 3000 --transition-end 6000
+            --warmup-transition 20 --grad-clip 0.5
+            --log-every 5 --checkpoint-every 25 --recovery-checkpoint-every 10)
+          python -m train.train "${common[@]}" --ckpt-dir checkpoints/eager --resume checkpoints/eager/parent.pt > logs/eager.log 2>&1
+          eager_status=$?
+          echo "EAGER_EXIT_CODE=$eager_status"
+          python -m train.train "${common[@]}" --compile-mode default --ckpt-dir checkpoints/compiled --resume checkpoints/compiled/parent.pt > logs/compiled.log 2>&1
+          compiled_status=$?
+          echo "COMPILED_EXIT_CODE=$compiled_status"
+          EAGER_STATUS="$eager_status" COMPILED_STATUS="$compiled_status" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path("artifacts/diagnostics/status.json").write_text(json.dumps({
+              "parent_step": 3000,
+              "updates_per_arm": 50,
+              "eager_exit_code": int(os.environ["EAGER_STATUS"]),
+              "compiled_exit_code": int(os.environ["COMPILED_STATUS"]),
+              "interpretation": "Compare first nonfinite step, loss components, tensor health, recovery checkpoint and wall time. This is diagnostic only; it is not a training continuation or holdout.",
+          }, indent=2) + "\n")
+          PY
+          exit 0
+
+      - name: Upload diagnostics even when an arm fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-stability-ab-${{ github.run_id }}
+          path: |
+            logs/
+            checkpoints/eager/
+            checkpoints/compiled/
+            artifacts/diagnostics/
+          if-no-files-found: warn
+          retention-days: 90

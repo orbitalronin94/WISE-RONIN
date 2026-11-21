@@ -26,6 +26,57 @@ from train.scheduler_transition import CosineTransitionScheduler
 LOG = logging.getLogger("lumen.train")
 
 
+
+def _tensor_health(value):
+    if not isinstance(value, torch.Tensor):
+        return str(value)
+    tensor = value.detach()
+    if tensor.numel() == 0:
+        return f"shape={tuple(tensor.shape)} empty"
+    finite = torch.isfinite(tensor)
+    finite_count = int(finite.sum().item())
+    finite_values = tensor[finite]
+    if finite_count:
+        max_abs = float(finite_values.abs().max().item())
+        rms = float(finite_values.float().pow(2).mean().sqrt().item())
+    else:
+        max_abs = float("nan")
+        rms = float("nan")
+    return (
+        f"shape={tuple(tensor.shape)} finite={finite_count}/{tensor.numel()} "
+        f"max_abs={max_abs:.6g} rms={rms:.6g}"
+    )
+
+
+def log_nonfinite_diagnostics(model, output, metrics, loss, optimizer, step, reason):
+    """Emit the first useful numerical boundary when a training step becomes invalid."""
+    LOG.error("NONFINITE_DIAGNOSTICS step=%d reason=%s loss=%s", step, reason, _tensor_health(loss))
+    for key, value in output.items():
+        if isinstance(value, torch.Tensor):
+            LOG.error("NONFINITE_OUTPUT step=%d %s %s", step, key, _tensor_health(value))
+    for key, value in metrics.items():
+        LOG.error("NONFINITE_LOSS_COMPONENT step=%d %s %s", step, key, _tensor_health(value))
+    for index, layer in enumerate(model.delta_layers):
+        LOG.error("NONFINITE_DELTA_STATE step=%d layer=%d %s", step, index, _tensor_health(layer.state))
+    LOG.error(
+        "NONFINITE_MEMORY step=%d occupancy=%.4f lenta=%s counters=%s",
+        step, model.memoria.occupancy(),
+        _tensor_health(model.memoria.lenta),
+        _tensor_health(model.memoria.contador_lenta),
+    )
+    for name, parameter in model.named_parameters():
+        if not torch.isfinite(parameter.detach()).all():
+            LOG.error("NONFINITE_PARAMETER step=%d name=%s %s", step, name, _tensor_health(parameter))
+    for index, (name, buffer) in enumerate(model.named_buffers()):
+        if buffer.is_floating_point() and buffer.numel() and not torch.isfinite(buffer).all():
+            LOG.error("NONFINITE_BUFFER step=%d name=%s %s", step, name, _tensor_health(buffer))
+    for parameter, state in optimizer.state.items():
+        for key, value in state.items():
+            if isinstance(value, torch.Tensor) and value.is_floating_point() and value.numel():
+                if not torch.isfinite(value).all():
+                    LOG.error("NONFINITE_OPTIMIZER_STATE step=%d key=%s %s", step, key, _tensor_health(value))
+
+
 def capture_rng(local_rng):
     return {
         "python": random.getstate(),
@@ -137,6 +188,9 @@ def migrate_legacy_homeostasis(model, optimizer):
 def main():
     parser = argparse.ArgumentParser(description="RONIN-LUMEN CPU training")
     parser.add_argument("--steps", type=int, default=500)
+    parser.add_argument("--log-every", type=int, default=100, help="Training metric log interval")
+    parser.add_argument("--checkpoint-every", type=int, default=250, help="Named checkpoint interval")
+    parser.add_argument("--recovery-checkpoint-every", type=int, default=0, help="Overwrite latest_good.pt every N successful updates; 0 disables")
     parser.add_argument("--threads", type=int, default=2,
                         help="PyTorch intra-op CPU threads; benchmark 1/2/4 on the target runner")
     parser.add_argument("--interop-threads", type=int, default=1)
@@ -177,6 +231,8 @@ def main():
 
     if args.steps < 1 or (args.steps > 500 and not args.dummy_m1):
         parser.error("--steps must be between 1 and 500")
+    if args.log_every < 1 or args.checkpoint_every < 1 or args.recovery_checkpoint_every < 0:
+        parser.error("log/checkpoint intervals must be positive; recovery interval may be zero")
     if args.threads < 1 or args.interop_threads < 1:
         parser.error("--threads and --interop-threads must be at least 1")
     if args.orpo:
@@ -399,6 +455,7 @@ def main():
             pad_id=0,
         )
         if not torch.isfinite(loss.detach()).all():
+            log_nonfinite_diagnostics(model, output, metrics, loss, optimizer, step, "non-finite loss; optimizer update skipped")
             raise FloatingPointError(
                 f"non-finite loss at global step {step}; optimizer update skipped"
             )
@@ -406,11 +463,38 @@ def main():
         backward_started = time.perf_counter()
         loss.backward()
         profile["backward"] += time.perf_counter() - backward_started
-        torch.nn.utils.clip_grad_norm_(
-            model.parameters(), args.grad_clip,
-            foreach=not args.disable_foreach, error_if_nonfinite=True,
-        )
+        try:
+            grad_norm = torch.nn.utils.clip_grad_norm_(
+                model.parameters(), args.grad_clip,
+                foreach=not args.disable_foreach, error_if_nonfinite=True,
+            )
+        except RuntimeError:
+            log_nonfinite_diagnostics(model, output, metrics, loss, optimizer, step, "non-finite gradient norm")
+            for name, parameter in model.named_parameters():
+                if parameter.grad is not None and not torch.isfinite(parameter.grad).all():
+                    LOG.error("NONFINITE_GRADIENT step=%d name=%s %s", step, name, _tensor_health(parameter.grad))
+            raise
         optimizer.step()
+        invalid_parameters = any(
+            not torch.isfinite(parameter.detach()).all()
+            for parameter in model.parameters()
+        )
+        invalid_optimizer_state = False
+        if step % args.log_every == 0:
+            invalid_optimizer_state = any(
+                isinstance(value, torch.Tensor) and value.is_floating_point()
+                and value.numel() and not torch.isfinite(value).all()
+                for state_values in optimizer.state.values()
+                for value in state_values.values()
+            )
+        if invalid_parameters or invalid_optimizer_state:
+            log_nonfinite_diagnostics(
+                model, output, metrics, loss, optimizer, step,
+                "optimizer produced non-finite parameters or moments",
+            )
+            raise FloatingPointError(
+                f"optimizer produced non-finite state at global step {step}"
+            )
         scheduler.step()
         for target in (6.0, 5.8):
             if target not in reached_targets and loss.item() <= target:
@@ -423,7 +507,7 @@ def main():
             enable_fake_int8(model)
             quant_enabled = True
 
-        if step % 100 == 0 or step == start + 1:
+        if step % args.log_every == 0 or step == start + 1:
             dead_by_layer = [organ.neuronas_muertas() for organ in model.homeo]
             dead = max(dead_by_layer, default=1.0)
             entropy = float(model.presupuesto.entropy(output["energy"]).detach())
@@ -435,12 +519,13 @@ def main():
             LOG.info(
                 "step=%d loss=%.5f token=%.5f latent=%.5f div=%.5f "
                 "router=%.5f rep=%.5f F_complexity=%.5f dead=%.2f%% "
-                "energy_entropy=%.4f PE=%.4f ZE_conflict=%.4f ZE_erase=%d tokens_seen=%d lr=%.3e",
+                "energy_entropy=%.4f PE_mean=%.4f PE_max=%.4f slow_mem=%.3f ZE_conflict=%.4f ZE_erase=%d tokens_seen=%d lr=%.3e",
                 step, loss.item(), metrics["L_token"].item(),
                 metrics["L_latente"].item(), metrics["L_div"].item(),
                 metrics["L_router"].item(), metrics["L_rep"].item(),
                 metrics["F_complexity"].item(), dead * 100, entropy,
-                float(output["surprise"].mean().detach()), ze_conflict, ze_erase,
+                float(output["surprise"].mean().detach()), float(output["surprise"].max().detach()),
+                model.memoria.occupancy(), ze_conflict, ze_erase,
                 tokens_seen, scheduler.get_last_lr()[0],
             )
             layer_records = []
@@ -536,26 +621,31 @@ def main():
             LOG.info("vocabulary prune candidates=%d (tokenizer remap required before applying)",
                      len(candidates))
 
-        if step % 250 == 0:
+        if step % args.checkpoint_every == 0:
             save_checkpoint(Path(args.ckpt_dir) / f"step_{step}.pt",
                             model, optimizer, scheduler, step, args, data_hash, local_rng,
                             tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events)
 
+        if args.recovery_checkpoint_every and step % args.recovery_checkpoint_every == 0:
+            save_checkpoint(Path(args.ckpt_dir) / "latest_good.pt",
+                            model, optimizer, scheduler, step, args, data_hash, local_rng,
+                            tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events)
+
         profile["wall"] += time.perf_counter() - step_started
-        if step % 100 == 0:
+        if step % args.log_every == 0:
             total = profile["wall"]
             known = profile["forward"] + profile["backward"] + profile["sleep"]
             LOG.info(
-                "profile_100: forward=%.3fs, backward=%.3fs, sleep=%.3fs, "
+                "profile_%d: forward=%.3fs, backward=%.3fs, sleep=%.3fs, "
                 "python_overhead=%.3fs, total=%.3fs",
-                profile["forward"], profile["backward"], profile["sleep"],
+                args.log_every, profile["forward"], profile["backward"], profile["sleep"],
                 max(0.0, total - known), total,
             )
             for key in profile:
                 profile[key] = 0.0
 
     final_step = start + args.steps
-    if final_step % 250:
+    if final_step % args.checkpoint_every:
         save_checkpoint(Path(args.ckpt_dir) / f"step_{final_step}.pt",
                         model, optimizer, scheduler, final_step, args, data_hash, local_rng,
                         tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events)

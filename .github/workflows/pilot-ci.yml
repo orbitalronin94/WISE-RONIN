@@ -11,6 +11,7 @@ on:
       - "tests/**"
       - ".github/workflows/pilot-ci.yml"
       - ".github/workflows/pilot.yml"
+      - ".github/workflows/continue-2000-4000.yml"
   pull_request:
     branches: [main]
     paths:
@@ -53,22 +54,26 @@ jobs:
           from pathlib import Path
           import yaml
 
-          workflow = yaml.safe_load(Path(".github/workflows/pilot.yml").read_text())
-          for job_name, job in workflow.get("jobs", {}).items():
-              for index, step in enumerate(job.get("steps", []), 1):
-                  script = step.get("run")
-                  if not script:
-                      continue
-                  script = re.sub(r"\$\{\{.*?\}\}", "0", script)
-                  result = subprocess.run(
-                      ["bash", "-n"], input=script, text=True, capture_output=True
-                  )
-                  if result.returncode:
-                      raise SystemExit(
-                          f"{job_name} step {index} ({step.get('name')}): "
-                          f"{result.stderr}"
+          for workflow_path in (
+              Path(".github/workflows/pilot.yml"),
+              Path(".github/workflows/continue-2000-4000.yml"),
+          ):
+              workflow = yaml.safe_load(workflow_path.read_text())
+              for job_name, job in workflow.get("jobs", {}).items():
+                  for index, step in enumerate(job.get("steps", []), 1):
+                      script = step.get("run")
+                      if not script:
+                          continue
+                      script = re.sub(r"\$\{\{.*?\}\}", "0", script)
+                      result = subprocess.run(
+                          ["bash", "-n"], input=script, text=True, capture_output=True
                       )
-          print("pilot.yml YAML and all embedded Bash blocks are syntactically valid")
+                      if result.returncode:
+                          raise SystemExit(
+                              f"{workflow_path}: {job_name} step {index} "
+                              f"({step.get('name')}): {result.stderr}"
+                          )
+              print(f"{workflow_path}: YAML and embedded Bash blocks are valid")
           PY
 
       - name: Compile and run all tests (no corpus download or training)

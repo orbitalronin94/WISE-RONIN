@@ -615,9 +615,9 @@ def main():
             total = profile["wall"]
             known = profile["forward"] + profile["backward"] + profile["sleep"]
             LOG.info(
-                "profile_100: forward=%.3fs, backward=%.3fs, sleep=%.3fs, "
+                "profile_%d: forward=%.3fs, backward=%.3fs, sleep=%.3fs, "
                 "python_overhead=%.3fs, total=%.3fs",
-                profile["forward"], profile["backward"], profile["sleep"],
+                args.log_every, profile["forward"], profile["backward"], profile["sleep"],
                 max(0.0, total - known), total,
             )
             for key in profile:

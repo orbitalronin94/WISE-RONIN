@@ -43,3 +43,12 @@ def test_generate_batch_slides_within_shared_128_token_context():
     assert max(model.seen_widths) <= 128
     assert model.seen_widths == [128, 1]
     assert model.reset_flags == [True, False]
+
+def test_lumen_prompts_are_prefilled_individually_to_avoid_padding_state_leaks():
+    model = FakeModel()
+    outputs = generate_batch(model, ["question one", "question two"],
+                             FakeTokenizerWrapper(), "lumen",
+                             max_new=64, max_context=128)
+    assert outputs == ["", ""]
+    assert model.reset_flags == [True, False, True, False]
+    assert model.seen_widths == [128, 1, 128, 1]

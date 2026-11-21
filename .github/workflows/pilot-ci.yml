@@ -45,6 +45,32 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           python -m pip install "datasets>=3,<4" "huggingface_hub>=0.25,<1.0" tokenizers numpy tqdm pytest
+      - name: Validate pilot workflow YAML and embedded Bash syntax
+        run: |
+          python - <<'PY'
+          import re
+          import subprocess
+          from pathlib import Path
+          import yaml
+
+          workflow = yaml.safe_load(Path(".github/workflows/pilot.yml").read_text())
+          for job_name, job in workflow.get("jobs", {}).items():
+              for index, step in enumerate(job.get("steps", []), 1):
+                  script = step.get("run")
+                  if not script:
+                      continue
+                  script = re.sub(r"\$\{\{.*?\}\}", "0", script)
+                  result = subprocess.run(
+                      ["bash", "-n"], input=script, text=True, capture_output=True
+                  )
+                  if result.returncode:
+                      raise SystemExit(
+                          f"{job_name} step {index} ({step.get('name')}): "
+                          f"{result.stderr}"
+                      )
+          print("pilot.yml YAML and all embedded Bash blocks are syntactically valid")
+          PY
+
       - name: Compile and run all tests (no corpus download or training)
         run: |
           python -m compileall -q model train data scripts

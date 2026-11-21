@@ -5,8 +5,9 @@ from data.audit_holdout import audit_rows
 
 def holdout_rows():
     return [
-        {"id": f"H-{i:03d}", "user": f"unique prompt number {i:03d}",
-         "hecho_esperado": f"expected fact {i:03d}"}
+        {"id": f"H-{i:03d}",
+         "user": f"this is a unique holdout prompt number {i:03d} with sufficient length",
+         "hecho_esperado": f"expected factual answer number {i:03d}"}
         for i in range(1, 501)
     ]
 
@@ -24,8 +25,9 @@ def test_audit_uses_historical_holdout_schema_and_passes_clean_data():
 
 def test_audit_detects_exact_user_and_expected_matches():
     rows = [
-        {"prompt": "unique prompt number 001", "completion": "Unrelated answer"},
-        {"prompt": "Another question", "completion": "expected fact 002"},
+        {"prompt": "this is a unique holdout prompt number 001 with sufficient length",
+         "completion": "Unrelated answer"},
+        {"prompt": "Another question", "completion": "expected factual answer number 002"},
     ]
     report = audit_rows(rows, holdout_rows())
     assert report["exact_match_count"] == 2
@@ -35,7 +37,7 @@ def test_audit_detects_exact_user_and_expected_matches():
 def test_audit_flags_long_holdout_prompt_embedded_in_candidate():
     rows = [{
         "prompt": "",
-        "completion": "A long introduction followed by unique prompt number 001 and more text.",
+        "completion": "A long introduction followed by this is a unique holdout prompt number 001 with sufficient length and more text.",
     }]
     report = audit_rows(rows, holdout_rows())
     assert report["long_user_substring_match_count"] == 1

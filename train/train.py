@@ -222,6 +222,17 @@ def main():
                 float(output["surprise"].mean().detach()), ze_conflict, ze_erase,
                 tokens_seen, scheduler.get_last_lr()[0],
             )
+            layer_diag = " | ".join(
+                f"L{i}:write={delta.last_write_rate:.3f},"
+                f"state={delta.last_state_norm:.3e},"
+                f"delta_out={delta.last_output_norm:.3e},"
+                f"in+={homeo.last_input_positive:.3f},"
+                f"out+={homeo.last_output_positive:.3f},"
+                f"homeo_out={homeo.last_output_norm:.3e},"
+                f"dead={homeo.neuronas_muertas():.1%}"
+                for i, (delta, homeo) in enumerate(zip(model.delta_layers, model.homeo))
+            )
+            LOG.info("layer_diagnostics step=%d %s", step, layer_diag)
             if step >= 100 and dead > 0.20:
                 save_checkpoint(
                     Path(args.ckpt_dir) / f"step_{step}_STOP.pt",

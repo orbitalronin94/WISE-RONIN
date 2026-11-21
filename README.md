@@ -303,3 +303,15 @@ El trainer mantiene el guardarraíl de valores no finitos y la misma semilla, co
 Para reducir I/O sin perder recuperación: métricas cada 25 pasos, checkpoint completo cada 500 y recuperación rodante cada 100. El workflow conserva bloques reanudables 3.000→3.500→4.000 y un único holdout final si el entrenamiento alcanza el paso 4.000.
 
 Estas cotas son una corrección de estabilidad derivada de la forma de las operaciones; no constituyen todavía evidencia de que LUMEN haya recuperado calidad generativa. El resultado se juzgará con el holdout y el manifiesto del entrenamiento, sin presentar la mera ausencia de NaN como mejora de capacidad.
+
+
+
+### Cómputo por eventos: primera explotación de Top-K
+
+La corrección de estabilidad mantiene el flujo residual denso, pero la actualización homeostática ya era Top-K: con `k_top=16` y dimensión 256, solo 6,25 % de las coordenadas puede contribuir a esa actualización. La implementación anterior construía una máscara densa y aplicaba ReLU y multiplicación sobre las 256 coordenadas. Ahora selecciona primero los índices, reúne únicamente esos valores, aplica ReLU sobre los eventos seleccionados y dispersa el resultado en el residual. La salida y sus gradientes se conservan exactamente respecto de la formulación densa.
+
+Este es un primer paso de cómputo dirigido por eventos, no una afirmación de que el 93,75 % de las multiplicaciones del modelo haya desaparecido. Top-K sigue inspeccionando el vector completo, las proyecciones lineales y la recurrencia Delta continúan siendo densas y el residual de información se conserva íntegro. El ahorro directo se limita al trabajo elemento a elemento de la actualización homeostática; el entrenamiento 3.000→4.000 permitirá medir si compensa el coste de gather/scatter en CPU.
+
+**Siguiente escalón de esparsidad:** agrupar unidades en bloques estructurados y omitir bloques inactivos mediante kernels que realmente eviten sus multiplicaciones. No se debe convertir simplemente pesos en cero y seguir usando GEMM denso. La tasa `write_rate=1.0` observada en Delta tampoco permite asumir que su puerta actual ya ahorra cómputo.
+
+**Poda periódica** queda como intervención posterior, reversible y estructurada, con restauración posible y medición de FLOPs/latencia real. **Aprendizaje local de tres factores** y **memoria de trabajo con mantenimiento sin spikes** quedan fuera de este cambio: afectan al motor de aprendizaje y a la dinámica de estado, respectivamente, y no deben mezclarse con la corrección de estabilidad.

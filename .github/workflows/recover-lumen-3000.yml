@@ -78,13 +78,6 @@ jobs:
           PY
 
       - name: Replay only the known-clean interval 2000 to 3000
-        env:
-          OMP_NUM_THREADS: "2"
-          MKL_NUM_THREADS: "2"
-          OMP_DYNAMIC: "FALSE"
-          OMP_PROC_BIND: "close"
-          OMP_PLACES: "cores"
-          KMP_AFFINITY: "granularity=fine,compact,1,0"
         shell: bash
         run: |
           set -euo pipefail
@@ -96,7 +89,6 @@ jobs:
               --data data/pilot_train_19k.jsonl \
               --tokenizer data/pilot_tokenizer/tokenizer.json \
               --token-cache data/pilot_tokenized_128.pt --batch 8 --max-len 128 --seed 42 --threads 2 \
-              --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity \
               --lr 2e-5 --warmup 100 --total-steps 4000 \
               --scheduler-transition --transition-start 2000 --transition-end 4000 \
               --warmup-transition 20 --grad-clip 0.5 \

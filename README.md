@@ -73,30 +73,42 @@ Every 500 training steps:
 
 The full binding requirements, equations, dataset recipe, training schedule, metrics, and stop conditions are in [DOCUMENTO_MAESTRO_RONIN_LUMEN_V1.md](DOCUMENTO_MAESTRO_RONIN_LUMEN_V1.md). That document is normative.
 
-## Project status — M1 only
+## Project status — architecture integration and runner validation
 
 <sub>Current branch: `lumen-v1/m1-refactor` · Pull request: #13 · Not merged</sub>
 
-The current branch contains:
-- an intact archive of the tracked WISE-RONIN V2 source files under `archive/v2/`;
-- a file inventory with blob hashes and sizes;
-- the initial V1 package structure and central configuration;
-- a minimal CPU model shell;
-- a dummy trainer with checkpoint/resume support;
-- an evaluation loader for the frozen holdout.
+The branch now contains executable implementations of the eight architectural organs and a CPU trainer, with runner validation in progress:
+- four recurrent surprise-gated Delta layers with explicit batch-boundary state reset;
+- live embedding usage accounting and non-destructive prune proposals;
+- per-token energy allocation, homeostasis and Top-K sparsity;
+- elastic memory and a bounded slow-memory bank with consolidation;
+- a learned router, spline-KAN operation head and language MLP;
+- sleep consolidation over stored slow memories, without embedding updates;
+- JEPA-style next-eight-token latent prediction and a differentiable repetition regularizer;
+- checkpoint/resume for model, optimizer, scheduler, global step, corpus hash and RNG states;
+- curriculum selection with strict phase windows and a 70/30 stratified phase-2 sampler.
 
-**No LUMEN organ has been implemented yet.** The M1 shell is not the final architecture and must not be presented as a trained LUMEN model. Placeholder modules and workflows are intentionally inert.
+The integrated model currently has **2,281,841 parameters**. This is below the 6M ceiling, but below the 3–4M target band; the difference is intentional to preserve room for later controlled expansion. This count is a static model count, not a measured on-disk fp16/int8 package size.
 
-### M1 smoke commands
+The runner workflow now compiles the model, checks the parameter budget, runs unit tests and performs an explicit 10-step dummy smoke. These jobs must pass before the architecture can be considered runner-validated. The dummy mode is only a smoke test; it is not evidence of learning and is never used as the production corpus.
+
+Some mechanisms remain deliberately gated rather than falsely claimed complete:
+- vocabulary pruning currently emits candidates only; actual token replacement requires an atomic tokenizer/embedding remap;
+- ORPO fails closed until preference pairs and its objective are specified;
+- fake-int8 is an activation simulation, not a quantized model export;
+- slow-memory consolidation and sleep need behavioral tests and ablations;
+- the final training corpus and BPE tokenizer do not yet exist.
+
+### Smoke and production commands
 
 ```bash
 python -m pip install -r requirements.txt
-python train/train.py --steps 10
-python train/train.py --resume checkpoints/step_10.pt --steps 10
-python eval/eval.py --holdout data/holdout_500.jsonl
+python -m train.train --dummy-m1 --steps 10 --phase 1
+python -m scripts.train_tokenizer --data data/train_25k.jsonl
+python -m train.train --steps 500 --phase 1
 ```
 
-A local smoke-equivalent run has completed 10 steps, saved a checkpoint, resumed through steps 11–20, and saved a second checkpoint. A GitHub Actions runner-level proof is still required before M1 can be marked complete.
+Production training is blocked until the 25,000-row corpus, tokenizer, provenance manifest and holdout-overlap audit are complete.
 
 ## Data preparation status
 

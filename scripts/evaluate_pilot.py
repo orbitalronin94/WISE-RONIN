@@ -39,6 +39,13 @@ def fit_prompt(ids, max_context=128):
 
 
 def generate_batch(model, prompts, tokenizer, kind, max_new=64, max_context=128):
+    # LUMEN carries recurrent state per batch row; sequential prompts avoid
+    # right-padding contaminating a shorter prompt's recurrent prefill state.
+    if kind == "lumen" and len(prompts) > 1:
+        return [
+            generate_batch(model, [prompt], tokenizer, kind, max_new, max_context)[0]
+            for prompt in prompts
+        ]
     bos = tokenizer.tokenizer.token_to_id("[BOS]")
     eos = tokenizer.tokenizer.token_to_id("[EOS]")
     pad = tokenizer.tokenizer.token_to_id("[PAD]")

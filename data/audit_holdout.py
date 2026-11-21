@@ -84,10 +84,10 @@ def audit_rows(candidates: list[dict[str, Any]], holdout: list[dict[str, Any]]) 
         for field_name, field_value in (("prompt", prompt), ("completion", completion), ("combined", text)):
             if not field_value:
                 continue
-            for target, refs in targets.items():
-                if field_value == target:
-                    for hid, kind in refs:
-                        matched.add((hid, kind, field_name))
+            # Exact normalized matches are a dictionary lookup, not a scan of
+            # every holdout target for every candidate field.
+            for hid, kind in targets.get(field_value, ()):
+                matched.add((hid, kind, field_name))
         for hid, row_holdout in zip(holdout_ids, holdout):
             user = normalize(row_holdout.get("user", ""))
             if user and len(user) >= 28 and user in text:

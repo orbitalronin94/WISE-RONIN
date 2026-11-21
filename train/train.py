@@ -39,6 +39,14 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({
         "model": model.state_dict(),
+        "architecture_id": "ronin_lumen_v3_pilot",
+        "architecture": {
+            "model": "RoninLumen", "config": CONFIG.to_dict(),
+            "v32_ze": args.v32_ze, "pilot_all_rows": args.pilot_all_rows,
+            "no_sleep": args.no_sleep, "no_jepa": args.no_jepa,
+            "no_rep": args.no_rep,
+        },
+        "params": sum(parameter.numel() for parameter in model.parameters()),
         "optimizer": optimizer.state_dict(),
         "scheduler": scheduler.state_dict(),
         "step": step,
@@ -157,7 +165,7 @@ def main():
         LOG.info("resumed step=%d tokens_seen=%d", start, tokens_seen)
 
     phase_ranges = {1: (0, 2000), 2: (2000, 8000), 3: (8000, 10000)}
-    low, high = phase_ranges[args.phase]
+    low, high = ((0, args.total_steps) if args.pilot_all_rows else phase_ranges[args.phase])
     if not args.dummy_m1 and not (low <= start < high and start + args.steps <= high):
         raise ValueError(
             f"Phase {args.phase} accepts start in [{low},{high}) and must end by {high}; "

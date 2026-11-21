@@ -116,6 +116,8 @@ def main():
             raise ValueError(f"{kind}: checkpoint corpus hash mismatch")
         if state.get("tokenizer_sha256") != tok_hash:
             raise ValueError(f"{kind}: checkpoint tokenizer hash mismatch")
+        if state.get("step") != 500 or state.get("seed") != 42:
+            raise ValueError(f"{kind}: expected the matched 500-step seed-42 checkpoint")
         predictions = []
         for start in range(0, len(tasks), 8):
             batch_tasks = tasks[start:start+8]
@@ -161,6 +163,8 @@ def main():
     summary["parameter_gap_percent"] = round(
         abs(lumen_params - transformer_params) / lumen_params * 100, 4
     )
+    if summary["parameter_gap_percent"] >= 1.0:
+        raise ValueError("Parameter counts are not within the 1% matched-size tolerance")
     summary["matched_token_budget"] = lumen_tokens
     with (outdir / "predictions.jsonl").open("w", encoding="utf-8") as f:
         for row in all_predictions:

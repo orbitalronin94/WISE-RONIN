@@ -22,6 +22,10 @@ def main():
     args = p.parse_args()
     train_rows = read_jsonl(args.train_data)
     train_texts = [norm(str(r.get("prompt", "")) + " " + str(r.get("completion", ""))) for r in train_rows]
+    train_text_set = set(train_texts)
+    # A newline delimiter preserves per-row substring semantics while avoiding
+    # a Python-level scan across all 19k rows for every test question.
+    train_blob = "\n".join(train_texts)
     info = HfApi().dataset_info("openai/gsm8k")
     revision = info.sha
     ds = load_dataset("openai/gsm8k", "main", split="test", revision=revision)
@@ -34,7 +38,8 @@ def main():
         expected = answer.rsplit("####", 1)[1].strip().replace(",", "")
         qn = norm(question)
         if (not qn or qn in seen_questions
-                or any(qn == text or (len(qn) >= 28 and qn in text) for text in train_texts)):
+                or qn in train_text_set
+                or (len(qn) >= 28 and qn in train_blob)):
             skipped += 1
             continue
         seen_questions.add(qn)

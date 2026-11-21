@@ -1,13 +1,12 @@
-name: LUMEN parallel seven-hypothesis CPU benchmark
+name: LUMEN parallel seven-hypothesis CPU benchmark (MKLDNN baseline)
 
 on:
   workflow_dispatch:
-    inputs:
-      auto_merge:
-        description: Automatically merge a winning runtime profile after speed, loss and parity gates pass
-        required: true
-        type: boolean
-        default: true
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/benchmark-lumen-hotspots.yml
 
 permissions:
   contents: write
@@ -64,7 +63,7 @@ jobs:
           test -s benchmark-inputs/data/pilot_tokenized_128.pt
       - name: Verify exact Delta and Homeostasis fast paths
         run: PYTHONPATH=. pytest -q tests/test_hotspot_fastpaths.py
-      - name: Build control plus seven one-factor hypotheses from current profile
+      - name: Build control plus seven one-factor hypotheses from promoted MKLDNN profile
         id: matrix
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
@@ -156,7 +155,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Download all eight parallel results
+      - name: Download control plus seven parallel hypotheses
         uses: actions/download-artifact@v4
         with:
           pattern: lumen-profile-*
@@ -186,30 +185,3 @@ jobs:
             config/lumen_cpu_profile.json
           if-no-files-found: error
           retention-days: 90
-      - name: Create profile promotion pull request
-        if: ${{ steps.selection.outputs.promoted == 'true' }}
-        id: cpr
-        uses: peter-evans/create-pull-request@v7
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: automation/lumen-cpu-profile
-          delete-branch: true
-          commit-message: "Promote loss-gated LUMEN CPU profile"
-          title: "Promote measured LUMEN CPU speed winner"
-          body: |
-            Automated promotion from eight simultaneous matched jobs: one control plus seven speed hypotheses.
-
-            Same step-3000 checkpoint, frozen corpus/tokenizer/cache, batch, seed, optimizer state and original loss objective.
-            Promotion requires >=5% median steps/s gain and mean training loss no more than +0.01 above control.
-            Delta/Homeostasis fast paths were parity-tested before workers started.
-            Full per-profile timings and loss measurements are attached to this run.
-          add-paths: |
-            config/lumen_cpu_profile.json
-      - name: Auto-merge verified profile promotion
-        if: ${{ inputs.auto_merge && steps.selection.outputs.promoted == 'true' && steps.cpr.outputs.pull-request-number != '' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
-        run: |
-          set -euo pipefail
-          gh pr merge "$PR_NUMBER" --squash --delete-branch

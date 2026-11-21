@@ -15,8 +15,8 @@ import torch
 from model.config import CONFIG
 from model.lumen import RoninLumen
 from train.curriculum import datos_para_fase, sample_phase2
-from train.dataset import (BPETokenizer, collate_rows, collate_token_ids,
-                            load_jsonl, load_token_cache)
+from train.dataset import (BPETokenizer, collate_rows, collate_cached_indices,
+                            load_jsonl, load_token_cache, pack_token_cache)
 from train.loss import perdida_total
 from train.sleep import sueno
 from train.quant import fake_int8_tensor
@@ -61,6 +61,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "data_sha256": data_hash,
         "rng": capture_rng(local_rng),
         "torch_version": torch.__version__,
+        "cpu_threads": torch.get_num_threads(),
         "delta_policy": "reset_at_each_batch_boundary",
         "v32_ze": args.v32_ze,
         "pilot_all_rows": args.pilot_all_rows,
@@ -135,6 +136,8 @@ def migrate_legacy_homeostasis(model, optimizer):
 def main():
     parser = argparse.ArgumentParser(description="RONIN-LUMEN CPU training")
     parser.add_argument("--steps", type=int, default=500)
+    parser.add_argument("--threads", type=int, default=2,
+                        help="PyTorch intra-op CPU threads; benchmark 1/2/4 on the target runner")
     parser.add_argument("--phase", type=int, choices=(1, 2, 3), required=True)
     parser.add_argument("--resume")
     parser.add_argument("--data", default="data/train_25k.jsonl")
@@ -167,6 +170,8 @@ def main():
 
     if args.steps < 1 or (args.steps > 500 and not args.dummy_m1):
         parser.error("--steps must be between 1 and 500")
+    if args.threads < 1:
+        parser.error("--threads must be at least 1")
     if args.orpo:
         parser.error("ORPO is not implemented: preference pairs and objective need a separate approved specification")
     if args.dummy_m1 and args.steps > 10:
@@ -176,7 +181,8 @@ def main():
     if args.scheduler_transition and not args.resume:
         parser.error("--scheduler-transition requires an exact resumable parent checkpoint")
 
-    torch.set_num_threads(2)
+    torch.set_num_threads(args.threads)
+    LOG.info("cpu_runtime: intraop_threads=%d", args.threads)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     device = torch.device("cpu")
@@ -194,7 +200,8 @@ def main():
         phase_data = rows if args.pilot_all_rows else datos_para_fase(rows, args.phase)
 
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay
+        model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay,
+        foreach=True,
     )
     scheduler = None if args.scheduler_transition else make_scheduler(optimizer, args.warmup, args.total_steps)
     start, state = 0, None
@@ -203,6 +210,7 @@ def main():
     if not args.dummy_m1:
         tokenizer_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
     tokenized_rows, row_indices = None, {}
+    packed_token_rows, token_lengths = None, None
     if args.token_cache:
         if args.dummy_m1:
             raise ValueError("--token-cache cannot be used with --dummy-m1")
@@ -210,7 +218,9 @@ def main():
             args.token_cache, data_hash, tokenizer_hash, args.max_len, len(rows)
         )
         row_indices = {id(row): index for index, row in enumerate(rows)}
-        LOG.info("loaded validated token cache rows=%d max_len=%d", len(tokenized_rows), args.max_len)
+        packed_token_rows, token_lengths = pack_token_cache(tokenized_rows, args.max_len)
+        tokenized_rows = None
+        LOG.info("loaded packed token cache rows=%d max_len=%d", len(rows), args.max_len)
     if args.resume:
         state = torch.load(args.resume, map_location="cpu", weights_only=False)
         parent_arch = state.get("architecture_id", "legacy_preversioned")
@@ -273,6 +283,8 @@ def main():
             LOG.warning("Migrated legacy checkpoint: initialized post-gate activity EMA for %d homeostasis layers",
                         len(missing))
         optimizer.load_state_dict(state["optimizer"])
+        for group in optimizer.param_groups:
+            group["foreach"] = True
         if parent_arch != "ronin_lumen_v3_1_residual_homeostasis":
             migrate_legacy_homeostasis(model, optimizer)
         start = int(state["step"])
@@ -326,19 +338,7 @@ def main():
     sleep_done = bool(model.memoria.occupancy() >= 0.8)
     model.train()
     activity_windows = [deque(maxlen=100) for _ in model.homeo]
-    profile = {"forward": 0.0, "backward": 0.0, "sleep": 0.0,
-               "homeostasis_in_forward": 0.0, "wall": 0.0}
-    homeostasis_started = {}
-    def homeo_pre(module, _inputs):
-        homeostasis_started[id(module)] = time.perf_counter()
-    def homeo_post(module, _inputs, _output):
-        started = homeostasis_started.pop(id(module), None)
-        if started is not None:
-            profile["homeostasis_in_forward"] += time.perf_counter() - started
-    hook_handles = []
-    for organ in model.homeo:
-        hook_handles.append(organ.register_forward_pre_hook(homeo_pre))
-        hook_handles.append(organ.register_forward_hook(homeo_post))
+    profile = {"forward": 0.0, "backward": 0.0, "sleep": 0.0, "wall": 0.0}
     block_started = time.perf_counter()
     elapsed_offset = 0.0
     if args.wall_clock_file and Path(args.wall_clock_file).is_file():
@@ -353,11 +353,12 @@ def main():
         else:
             chosen = (sample_phase2(phase_data, args.batch, local_rng)
                       if args.phase == 2 else local_rng.choices(phase_data, k=args.batch))
-            if tokenized_rows is None:
+            if packed_token_rows is None:
                 tokens = collate_rows(chosen, tokenizer, args.max_len)
             else:
-                tokens = collate_token_ids(
-                    [tokenized_rows[row_indices[id(row)]] for row in chosen]
+                tokens = collate_cached_indices(
+                    packed_token_rows, token_lengths,
+                    [row_indices[id(row)] for row in chosen],
                 )
 
         tokens_seen += int(tokens.ne(0).sum())
@@ -380,7 +381,7 @@ def main():
         backward_started = time.perf_counter()
         loss.backward()
         profile["backward"] += time.perf_counter() - backward_started
-        torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip, foreach=True)
         optimizer.step()
         scheduler.step()
         for target in (6.0, 5.8):
@@ -518,15 +519,13 @@ def main():
             known = profile["forward"] + profile["backward"] + profile["sleep"]
             LOG.info(
                 "profile_100: forward=%.3fs, backward=%.3fs, sleep=%.3fs, "
-                "homeostasis_in_forward=%.3fs, python_overhead=%.3fs, total=%.3fs",
+                "python_overhead=%.3fs, total=%.3fs",
                 profile["forward"], profile["backward"], profile["sleep"],
-                profile["homeostasis_in_forward"], max(0.0, total - known), total,
+                max(0.0, total - known), total,
             )
             for key in profile:
                 profile[key] = 0.0
 
-    for handle in hook_handles:
-        handle.remove()
     final_step = start + args.steps
     if final_step % 250:
         save_checkpoint(Path(args.ckpt_dir) / f"step_{final_step}.pt",

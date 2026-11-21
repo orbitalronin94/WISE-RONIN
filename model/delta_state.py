@@ -1,6 +1,7 @@
 """Surprise-gated recurrent Delta memory with per-token state-complexity diagnostics."""
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 
 class EstadoDelta(nn.Module):
@@ -28,14 +29,18 @@ class EstadoDelta(nn.Module):
                 or self.state.shape[0] != batch or self.state.device != x.device):
             self.reset(batch, x.device, x.dtype)
         S = self.state.to(dtype=x.dtype)
+        # K/V/Q projections are token-independent; fuse them into one sequence-wide GEMM.
+        projected = F.linear(x, torch.cat(
+            (self.proj_k.weight, self.proj_v.weight, self.proj_q.weight), dim=0
+        ))
+        k_all, v_all, q_all = projected.chunk(3, dim=-1)
         outs, surprises = [], []
         complexities, write_rates = [], []
         for t in range(steps):
             if compute_complexity:
                 previous_log_prob = torch.log_softmax(S.float(), dim=-1)
-            xt = x[:, t]
-            k, v, q = self.proj_k(xt), self.proj_v(xt), self.proj_q(xt)
-            pred = torch.einsum("bi,bij->bj", k, S)
+            k, v, q = k_all[:, t], v_all[:, t], q_all[:, t]
+            pred = torch.bmm(k.unsqueeze(1), S).squeeze(1)
             err = v - pred
             surprise = err.norm(dim=-1, keepdim=True) / (self.dim ** 0.5)
             decay = torch.sigmoid(self.a * surprise + self.b).clamp(0.90, 0.9999)
@@ -44,14 +49,14 @@ class EstadoDelta(nn.Module):
             if collect_diagnostics:
                 write_rates.append(gate.mean().detach())
             S = S * decay.unsqueeze(-1)
-            update = torch.einsum("bi,bj->bij", k, err)
+            update = torch.bmm(k.unsqueeze(2), err.unsqueeze(1))
             S = S + update * (write_lr * gate * e_delta[:, t]).unsqueeze(-1)
             if compute_complexity:
                 current_log_prob = torch.log_softmax(S.float(), dim=-1)
                 current_prob = current_log_prob.exp()
                 kl = (current_prob * (current_log_prob - previous_log_prob)).sum(dim=-1).mean()
                 complexities.append(kl.to(x.dtype))
-            outs.append(torch.einsum("bi,bij->bj", q, S))
+            outs.append(torch.bmm(q.unsqueeze(1), S).squeeze(1))
             surprises.append(surprise)
         self.state = S
         self.last_complexity = torch.stack(complexities).mean() if compute_complexity else None

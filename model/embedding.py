@@ -14,8 +14,8 @@ class VivoEmbedding(nn.Module):
 
     def forward(self, x):
         with torch.no_grad():
-            ids, counts = x.unique(return_counts=True)
-            self.uso.index_add_(0, ids, counts.to(self.uso.dtype))
+            counts = torch.bincount(x.reshape(-1), minlength=self.vocab)
+            self.uso.add_(counts.to(self.uso.dtype))
             self.pasos_desde_poda.add_(1)
         return self.emb(x)
 

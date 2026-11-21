@@ -49,3 +49,14 @@ def test_delta_v31_fast_path_preserves_outputs_and_gradients():
         assert name_ref == name_opt
         if param_ref.grad is not None:
             torch.testing.assert_close(param_opt.grad, param_ref.grad)
+
+
+def test_embedding_usage_histogram_matches_token_counts():
+    from model.embedding import VivoEmbedding
+
+    embedding = VivoEmbedding(vocab=8, dim=4)
+    tokens = torch.tensor([[1, 1, 2], [0, 2, 3]])
+    embedding(tokens)
+    expected = torch.tensor([1, 2, 2, 1, 0, 0, 0, 0], dtype=torch.float32)
+    torch.testing.assert_close(embedding.uso, expected)
+    assert embedding.pasos_desde_poda.item() == 1

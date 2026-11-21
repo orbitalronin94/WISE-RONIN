@@ -14,8 +14,8 @@ from torch import nn
 from torch.nn import functional as F
 
 from model.config import CONFIG
-from train.dataset import (BPETokenizer, collate_rows, collate_token_ids,
-                            load_jsonl, load_token_cache)
+from train.dataset import (BPETokenizer, collate_rows, collate_cached_indices,
+                            load_jsonl, load_token_cache, pack_token_cache)
 from train.scheduler_transition import CosineTransitionScheduler
 
 LOG = logging.getLogger("lumen.baseline")
@@ -120,6 +120,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args,
         "scheduler_transition": scheduler.state_dict() if getattr(args, 'scheduler_transition', False) else None,
         "rng": capture_rng(local_rng),
         "torch_version": torch.__version__,
+        "cpu_threads": torch.get_num_threads(),
     }, path)
     LOG.info("checkpoint=%s step=%d", path, step)
 
@@ -131,6 +132,8 @@ def main():
     p.add_argument("--token-cache", help="Validated pre-tokenized corpus cache")
     p.add_argument("--steps", type=int, default=500,
                    help="Number of additional steps in this block (maximum 500)")
+    p.add_argument("--threads", type=int, default=2,
+                   help="PyTorch intra-op CPU threads; benchmark 1/2/4 on the target runner")
     p.add_argument("--resume", help="Previous global-step checkpoint")
     p.add_argument("--batch", type=int, default=8)
     p.add_argument("--max-len", type=int, default=128)
@@ -148,10 +151,13 @@ def main():
     args = p.parse_args()
     if not 1 <= args.steps <= 500:
         p.error("--steps must be between 1 and 500")
+    if args.threads < 1:
+        p.error("--threads must be at least 1")
     if getattr(args, 'scheduler_transition', False) and not args.resume:
         p.error("--scheduler-transition requires an exact resumable parent checkpoint")
 
-    torch.set_num_threads(2)
+    torch.set_num_threads(args.threads)
+    LOG.info("cpu_runtime: intraop_threads=%d", args.threads)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     rows, data_hash = load_jsonl(args.data)
@@ -160,16 +166,22 @@ def main():
         raise ValueError("Baseline requires the shared 4k pilot tokenizer with PAD=0")
     tokenizer_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
     tokenized_rows, row_indices = None, {}
+    packed_token_rows, token_lengths = None, None
     if args.token_cache:
         tokenized_rows = load_token_cache(
             args.token_cache, data_hash, tokenizer_hash, args.max_len, len(rows)
         )
         row_indices = {id(row): index for index, row in enumerate(rows)}
-        LOG.info("loaded validated token cache rows=%d max_len=%d", len(tokenized_rows), args.max_len)
+        packed_token_rows, token_lengths = pack_token_cache(tokenized_rows, args.max_len)
+        tokenized_rows = None
+        LOG.info("loaded packed token cache rows=%d max_len=%d", len(rows), args.max_len)
 
     model = SmallTransformerLM(CONFIG.vocab_size, args.max_len).cpu()
     params = sum(x.numel() for x in model.parameters())
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay)
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay,
+        foreach=True,
+    )
     scheduler = None if getattr(args, 'scheduler_transition', False) else make_scheduler(optimizer, args.warmup, args.total_steps)
     local_rng = random.Random(args.seed)
     tokens_seen, start, state = 0, 0, None
@@ -213,6 +225,8 @@ def main():
             raise ValueError("Checkpoint lacks optimizer/scheduler/RNG state; exact resume is impossible")
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
+        for group in optimizer.param_groups:
+            group["foreach"] = True
         start = int(state["step"])
         if getattr(args, 'scheduler_transition', False):
             saved_transition = state.get("scheduler_transition")
@@ -261,11 +275,12 @@ def main():
     for step in range(start + 1, start + args.steps + 1):
         step_started = time.perf_counter()
         chosen = local_rng.choices(rows, k=args.batch)
-        if tokenized_rows is None:
+        if packed_token_rows is None:
             tokens = collate_rows(chosen, tokenizer, args.max_len)
         else:
-            tokens = collate_token_ids(
-                [tokenized_rows[row_indices[id(row)]] for row in chosen]
+            tokens = collate_cached_indices(
+                packed_token_rows, token_lengths,
+                [row_indices[id(row)] for row in chosen],
             )
         tokens_seen += int(tokens.ne(0).sum())
         forward_started = time.perf_counter()
@@ -280,7 +295,7 @@ def main():
         backward_started = time.perf_counter()
         loss.backward()
         profile["backward"] += time.perf_counter() - backward_started
-        torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip, foreach=True)
         optimizer.step()
         scheduler.step()
         for target in (7.0, 6.0, 5.8):

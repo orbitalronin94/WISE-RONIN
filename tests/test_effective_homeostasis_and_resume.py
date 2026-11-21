@@ -16,7 +16,10 @@ def test_dead_neurons_are_measured_after_relu_and_topk():
     output = organ(torch.ones(2, 4, 8))
 
     assert organ.last_input_positive == 1.0
-    assert torch.count_nonzero(output).item() == 0
+    # The sparse gate emits no update, but the residual information stream
+    # must remain intact instead of being erased by Top-K.
+    assert torch.equal(output, torch.ones_like(output))
+    assert organ.last_gate_positive == 0.0
     assert organ.neuronas_muertas() == 1.0
 
 

@@ -15,7 +15,7 @@ def write_source_artifact(tmp_path, approved):
         "license": "CC-BY-4.0",
     }
     source_path = tmp_path / "example.jsonl"
-    raw = (json.dumps(row) + "\\n").encode()
+    raw = (json.dumps(row) + "\n").encode()
     source_path.write_bytes(raw)
     manifest = {
         "status": "source_candidates_only_not_final_training_dataset",

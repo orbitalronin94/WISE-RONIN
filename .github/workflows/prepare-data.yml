@@ -2,6 +2,13 @@ name: Prepare RONIN-LUMEN source libraries
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - lumen-v1/m1-refactor
+    paths:
+      - scripts/download_sources.py
+      - data/README.md
+      - .github/workflows/prepare-data.yml
 
 permissions:
   contents: read

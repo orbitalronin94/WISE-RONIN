@@ -14,12 +14,12 @@ on:
       start_step:
         description: "Último hito válido compartido (0 para empezar; después 500, 1000...)"
         required: true
-        default: "1000"
+        default: "500"
         type: string
       blocks:
         description: "Número de bloques consecutivos de 500 pasos"
         required: true
-        default: "10"
+        default: "1"
         type: string
 
 permissions:
@@ -55,8 +55,8 @@ jobs:
         id: plan
         shell: bash
         run: |
-          START="${{ inputs.start_step || '1000' }}"
-          BLOCKS="${{ inputs.blocks || '10' }}"
+          START="${{ inputs.start_step || '500' }}"
+          BLOCKS="${{ inputs.blocks || '1' }}"
           if ! [[ "$START" =~ ^[0-9]+$ && "$BLOCKS" =~ ^[0-9]+$ ]]; then
             echo "start_step and blocks must be non-negative/positive integers" >&2
             exit 1

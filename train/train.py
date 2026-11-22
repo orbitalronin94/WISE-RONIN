@@ -96,7 +96,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({
         "model": model.state_dict(),
-        "architecture_id": "ronin_lumen_v3_1_residual_homeostasis",
+        "architecture_id": "ronin_lumen_v3_1_lowrank_delta_homeostasis",
         "architecture": {
             "model": "RoninLumen", "config": CONFIG.to_dict(),
             "v32_ze": args.v32_ze, "pilot_all_rows": args.pilot_all_rows,

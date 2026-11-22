@@ -106,6 +106,14 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.PARENT_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact frozen v2 corpus, tokenizer and token cache
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-paired-v2-prepared-45071952349
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify exact Lumen lineage and active organs
         run: |
           set -euo pipefail
@@ -222,6 +230,14 @@ jobs:
         with:
           name: ronin-transformer-step73500-v2-45071952349
           path: transformer-parent
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact frozen v2 corpus, tokenizer and token cache
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-paired-v2-prepared-45071952349
+          path: prepared
           repository: ${{ github.repository }}
           run-id: ${{ env.PARENT_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

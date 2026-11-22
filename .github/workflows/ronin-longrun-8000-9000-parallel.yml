@@ -130,6 +130,7 @@ jobs:
               --scheduler-transition --transition-start 8000 --transition-end 9000 \
               --warmup-transition 1 --grad-clip 0.5 \
               --log-every 25 --checkpoint-every 250 --recovery-checkpoint-every 100 \
+              --parameter-check-every 25 \
               --wall-clock-file artifacts/timing/lumen.json \
               --ckpt-dir checkpoints/lumen --resume "$resume"
             resume="checkpoints/lumen/step_${target}.pt"

@@ -45,8 +45,8 @@ class BPETokenizer:
         content_budget = max_len - 2
         if not prompt_ids:
             return [self.bos_id, *completion_ids[:content_budget], self.eos_id]
-        if max_len < 4:
-            raise ValueError("max_len must be at least 4 for prompt/SEP/completion/EOS")
+        if max_len < 5:
+            raise ValueError("max_len must be at least 5 for BOS/prompt/SEP/completion/EOS")
 
         # Retain the end of long prompts: it is most likely to contain the
         # actual question and assistant prefix. Leave at least one token for

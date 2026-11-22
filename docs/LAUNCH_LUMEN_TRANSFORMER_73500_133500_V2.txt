@@ -1,0 +1,16 @@
+AUTHORIZED PAIRED CONTINUATION
+Parent run: 45071952349
+Parent global step: 73500
+Target global step: 133500
+Additional steps per model: 60000
+Lumen architecture: ronin_lumen_v3_2_parallel_delta
+Lumen organs: all enabled
+Lumen Delta parallel refinements: 2
+Transformer: matched baseline, unchanged architecture
+Corpus: frozen Spanish v2 prepared artifact from run 45071952349
+Tokenizer SHA256: d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe
+Seed: 42
+Batch: 8
+Context: 128
+Holdout: same frozen 2431-question v2 holdout
+Optimizer moments and RNG: preserve from exact parent checkpoints

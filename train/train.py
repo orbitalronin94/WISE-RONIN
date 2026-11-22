@@ -457,8 +457,10 @@ def main():
         if parent_data_hash != data_hash:
             if not args.allow_corpus_transition:
                 raise ValueError("Checkpoint training corpus hash mismatch; use --allow-corpus-transition only for an intentional corpus change")
-            if parent_arch != "ronin_lumen_v3_3_neuroplasticity" or int(state.get("step", -1)) != 1000:
-                raise ValueError("Corpus transition is restricted to the verified neuroplasticity step-1000 parent")
+            if parent_arch != "ronin_lumen_v3_3_neuroplasticity" or int(state.get("step", -1)) not in {1000, 66000}:
+                raise ValueError(
+                    "Corpus transition is restricted to verified neuroplasticity parents at step 1000 or paired step 66000"
+                )
             if state.get("tokenizer_sha256") != tokenizer_hash:
                 raise ValueError("Corpus transition requires the exact same tokenizer hash")
             if not args.pilot_all_rows:

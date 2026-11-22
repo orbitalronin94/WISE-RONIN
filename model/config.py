@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 class LumenConfig:
     model_dim: int = 256
     delta_layers: int = 4
+    delta_rank: int = 64
     vocab_size: int = 4096
     max_vocab_size: int = 8192
     top_k_low: int = 16

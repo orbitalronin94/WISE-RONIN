@@ -37,13 +37,13 @@ No se vuelven a implementar mecanismos que ya existen en el repositorio:
 - Seed: 42.
 - Batch: 8.
 - Contexto: 128 tokens.
-- Corpus y tokenizer: artefacto español v2 compartido, idénticos para ambos modelos.
+- Corpus y tokenizer: artefacto español v1 compartido, idénticos para ambos modelos.
 - Checkpoints: cada 250 pasos; recuperación cada 100 pasos para Lumen.
 - Logs: cada 100 pasos.
 - Replay: habilitado; se registra si no hay memoria suficiente para ejecutarlo.
 - Comparación: loss, NLL, tokens vistos, tiempo por bloque, pasos/s, memoria, estabilidad numérica y, después, holdout común.
 
-El corpus v2 debe terminar su construcción y superar las comprobaciones de manifiesto, hashes y splits antes de que arranque el entrenamiento. No se permite sustituirlo silenciosamente por v1. El workflow de entrenamiento solo se dispara al actualizar `docs/LAUNCH_NEUROPLASTICITY_RUN.txt`, que se creará después de verificar el artefacto v2; no tiene fallback a v1.
+El corpus v1 ya está congelado: 70.105 registros de entrenamiento, 1.413 de validación y 2.431 de holdout. Se verifica el SHA-256 de los tres splits, el tokenizer compartido de 4.096 y la caché precomputada de 128 tokens antes de arrancar. No se permite sustituirlo silenciosamente por v1. El workflow de entrenamiento solo se dispara al actualizar `docs/LAUNCH_NEUROPLASTICITY_RUN.txt`, que se creará después de verificar el artefacto v1; usa el tokenizer de 4.096 y la caché precomputada del mismo artefacto.
 
 ## Interpretación
 

@@ -16,3 +16,6 @@ Holdout: same frozen 2431-question v2 holdout
 Optimizer moments and RNG: preserve from exact parent checkpoints
 
 Execution repair: six consecutive 10,000-step resumable segments per model, preserving the scheduler transition state and optimizer/RNG state at each segment boundary. The first segment restarts the scheduler from the exact 73,500 parent; later segments restore the saved transition state. Each segment requires its exact boundary checkpoint before continuing.
+
+
+Execution repair 2: explicitly download the frozen preparation artifact inside BOTH training jobs; prepare-v2 has a separate runner and its filesystem is not shared. Training starts only after corpus, tokenizer and token-cache files are present.

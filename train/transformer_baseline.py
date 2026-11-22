@@ -131,7 +131,7 @@ def main():
     p.add_argument("--tokenizer", default="data/pilot_tokenizer/tokenizer.json")
     p.add_argument("--token-cache", help="Validated pre-tokenized corpus cache")
     p.add_argument("--steps", type=int, default=500,
-                   help="Number of additional steps in this block (maximum 500)")
+                   help="Number of additional steps in this block (maximum 1000)")
     p.add_argument("--threads", type=int, default=2,
                    help="PyTorch intra-op CPU threads; benchmark 1/2/4 on the target runner")
     p.add_argument("--resume", help="Previous global-step checkpoint")
@@ -151,8 +151,8 @@ def main():
     p.add_argument("--wall-clock-file")
     p.add_argument("--ckpt-dir", default="checkpoints/transformer")
     args = p.parse_args()
-    if not 1 <= args.steps <= 500:
-        p.error("--steps must be between 1 and 500")
+    if not 1 <= args.steps <= 1000:
+        p.error("--steps must be between 1 and 1000")
     if args.threads < 1 or args.parameter_check_every < 1:
         p.error("--threads and --parameter-check-every must be at least 1")
     if getattr(args, 'scheduler_transition', False) and not args.resume:

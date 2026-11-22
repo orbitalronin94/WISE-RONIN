@@ -90,3 +90,41 @@ def test_full_rank_projection_is_orthonormal():
         layer.memory_projection.T @ layer.memory_projection,
         identity, atol=1e-5, rtol=1e-5,
     )
+
+
+
+def test_parallel_delta_scan_matches_sequential_reference_and_gradients():
+    import copy
+
+    torch.manual_seed(29)
+    reference = EstadoDelta(dim=32, tau=0.001, rank=12, parallel_refinements=3)
+    parallel = copy.deepcopy(reference)
+    reference.parallel_scan = False
+    parallel.parallel_scan = True
+
+    x_ref = (torch.randn(2, 24, 32) * 0.1).requires_grad_(True)
+    x_fast = x_ref.detach().clone().requires_grad_(True)
+    energy = torch.ones(2, 24, 1)
+
+    out_ref, surprise_ref = reference(x_ref, energy, reset_state=True)
+    out_fast, surprise_fast = parallel(x_fast, energy, reset_state=True)
+
+    assert torch.allclose(out_fast, out_ref, atol=2e-5, rtol=2e-4)
+    assert torch.allclose(surprise_fast, surprise_ref, atol=2e-5, rtol=2e-4)
+    assert torch.allclose(parallel.state, reference.state, atol=2e-5, rtol=2e-4)
+
+    loss_ref = out_ref.square().mean() + surprise_ref.mean()
+    loss_fast = out_fast.square().mean() + surprise_fast.mean()
+    loss_ref.backward()
+    loss_fast.backward()
+
+    assert torch.allclose(x_fast.grad, x_ref.grad, atol=2e-5, rtol=2e-3)
+    for (name_ref, parameter_ref), (name_fast, parameter_fast) in zip(
+        reference.named_parameters(), parallel.named_parameters()
+    ):
+        assert name_ref == name_fast
+        if parameter_ref.grad is not None:
+            assert parameter_fast.grad is not None
+            assert torch.allclose(
+                parameter_fast.grad, parameter_ref.grad, atol=2e-5, rtol=2e-3
+            ), name_ref

@@ -6,7 +6,7 @@ La línea experimental activa deja de ser WISE-RONIN. El objetivo ahora es deter
 
 El repositorio conserva su nombre técnico actual (`WISE-RONIN`), pero la identidad y el plan de trabajo documentados aquí corresponden a **Lumen-Ronin**. No se reutilizarán checkpoints anteriores: ambos modelos comenzarán en **step 0**, con inicialización nueva.
 
-> **Estado a 22 de noviembre de 2026:** Delta de bajo rango y reserva de glucosa integrados en `main`. Se ha preparado y lanzado el piloto emparejado desde step 0 hasta 1.000 pasos para Lumen y Transformer, con corpus español y tokenizer compartidos; los resultados de entrenamiento y holdout aún deben evaluarse antes de autorizar una campaña larga.
+> **Estado a 22 de noviembre de 2026:** Delta de bajo rango, reserva de glucosa y una reformulación paralela de la recurrencia Delta están integrados en `main`. El piloto emparejado confirmó que el Transformer completó 1.000 pasos en 141,8 s; Lumen llegó a 100 pasos en 179,7 s antes de cancelarse. La nueva ruta Delta debe superar pruebas de equivalencia y un benchmark real antes de considerarse ganadora.
 
 ## Decisión de proyecto
 
@@ -19,7 +19,7 @@ El repositorio conserva su nombre técnico actual (`WISE-RONIN`), pero la identi
 
 ## Referencia de rendimiento y problema
 
-En una medición previa de Lumen V3.1, ambos modelos tenían un tamaño cercano a 2,3 millones de parámetros. Lumen registró una pérdida de 6,353 frente a 7,838 del Transformer en aquel punto de comparación, pero necesitó 183 segundos por 100 pasos frente a 13,7 segundos: aproximadamente **13,3 veces más lento**.
+En una medición previa de Lumen V3.1, ambos modelos tenían un tamaño cercano a 2,3 millones de parámetros. Lumen registró una pérdida de 6,353 frente a 7,838 del Transformer en aquel punto de comparación, pero necesitó 183 segundos por 100 pasos frente a 13,7 segundos: aproximadamente **13,3 veces más lento**. En el piloto fresco del 22 de noviembre, el Transformer completó 1.000 pasos en 141,8 s; Lumen completó solo sus primeros 100 pasos en 179,7 s antes de que el job se cancelara.
 
 Ese resultado es una señal de que hay que investigar, no una prueba definitiva de superioridad de calidad: ambos obtuvieron 0/155 en aquel holdout y no lograron generar respuestas válidas de forma fiable. La pérdida de entrenamiento no sustituye la evaluación de generaciones.
 
@@ -99,17 +99,9 @@ Cada perfil debe declarar hardware/runner, versión de Python y PyTorch, hilos i
 
 ### 2. Bucle recurrente de EstadoDelta
 
-**Sospecha prioritaria.** `EstadoDelta.forward` proyecta K/V/Q de forma conjunta, pero actualiza el estado recurrente con un bucle Python secuencial sobre cada token. La recurrencia real no puede paralelizarse sin más: el estado de cada token depende del anterior.
+La recurrencia depende del estado previo, pero su actualización tiene estructura algebraica: para coeficientes de puerta/decaimiento fijados, el estado de cada instante puede expresarse como una suma causal ponderada. La nueva ruta calcula las interacciones K-K y Q-K con productos matriciales por lotes y resuelve las puertas sorpresa-dependientes mediante tres refinamientos de punto fijo. Así evita materializar el estado completo en cada token y reduce los nodos de autograd del bucle Python.
 
-Plan:
-
-1. Perfilar por separado proyecciones, normalizaciones, operaciones `bmm`, gates y actualización recurrente.
-2. Reducir asignaciones temporales y conversiones redundantes dentro del bucle.
-3. Probar compilación de la región recurrente, midiendo compilación, ejecución y coste de backward.
-4. Evaluar variantes vectorizadas solo si preservan exactamente la dependencia temporal y se demuestra equivalencia numérica/funcional.
-5. Mantener una implementación de referencia para comparar salidas, estados y gradientes.
-
-No sustituir la recurrencia por una aproximación paralela solo para elevar pasos/s.
+La ruta secuencial exacta se conserva mediante `parallel_scan=False` y se usa para la auditoría de equivalencia. La ruta paralela es una evaluación iterativa de la recurrencia no lineal, no una identidad exacta tras un número finito de refinamientos; por ello se exige comparar salidas, sorpresa, estado final y gradientes con tolerancias explícitas. Se mantiene la misma fórmula de escritura y el mismo rango de estado. El benchmark local CPU del módulo Delta (batch 8, contexto 128, dimensión 256, rango 64) mostró una mejora de orden de magnitud en forward+backward, pero esa cifra no se extrapola al modelo completo: el runner de Actions debe confirmarla.
 
 ### 3. Homeostasis y Top-K
 
@@ -286,7 +278,7 @@ La tabla describe las implementaciones presentes en este repositorio, no todos l
 
 **1. VivoEmbedding — vocabulario con observabilidad.** Mantiene un contador de uso por token y puede proponer candidatos sin uso para una poda posterior. No modifica el tokenizer ni elimina IDs por su cuenta: la integridad del vocabulario congelado tiene prioridad sobre una poda automática.
 
-**2. EstadoDelta — memoria asociativa recurrente.** Proyecta K, V y Q, predice el contenido asociado a una clave desde el estado actual y calcula el error de predicción. La sorpresa derivada de ese error gobierna la escritura; una puerta aprendible y el presupuesto Delta modulan cuánto se incorpora. El estado se actualiza token a token, y la consulta lee de ese estado. La versión actual comprime el espacio de claves mediante una proyección ortogonal fija de rango 64 (frente a dimensión 256), reduciendo el tamaño de la matriz recurrente de 256×256 a 64×256 por capa. Es una aproximación de bajo rango, no una equivalencia matemática exacta a rango 64.
+**2. EstadoDelta — memoria asociativa recurrente.** Proyecta K, V y Q, predice el contenido asociado a una clave desde el estado actual y calcula el error de predicción. La sorpresa derivada de ese error gobierna la escritura; una puerta aprendible y el presupuesto Delta modulan cuánto se incorpora. El estado recurrente conserva la misma regla de decaimiento y escritura de rango uno. La implementación de entrenamiento actual evalúa esa recurrencia mediante una forma cerrada causal y tres refinamientos de punto fijo sobre las puertas dependientes del estado; la ruta token a token permanece como referencia exacta. La versión comprime el espacio de claves mediante una proyección ortogonal fija de rango 64 (frente a dimensión 256), reduciendo el tamaño de la matriz de estado de 256×256 a 64×256 por capa.
 
 **3. Homeostasis — regulación de actividad.** Selecciona las unidades Top-K y mide la actividad que realmente sobrevive a la puerta. Una media móvil exponencial de esa actividad efectiva ajusta un sesgo por unidad para aproximarse al objetivo de actividad. No es una simple máscara de sparsity: intenta cerrar un lazo de regulación sobre qué unidades están participando de verdad.
 
@@ -325,6 +317,10 @@ La comparación emparejada desde cero es el primer juicio, no el veredicto final
 Para que la comparación sea honesta, hay que publicar por separado la cross-entropy común, las pérdidas propias de Lumen, los parámetros entrenables, tokens vistos, pasos/s, tokens/s, consumo de CPU/tiempo, métricas de generación y hashes de datos y tokenizer. También hay que declarar que el baseline actual es un Transformer pequeño y concreto —decoder causal de cuatro capas, dimensión 192, cuatro cabezas y FFN 576—, no «el Transformer» en abstracto.
 
 **La tesis de trabajo no es que la biología tenga razón por ser biología. Es que sus soluciones contienen hipótesis de ingeniería que la escala, por sí sola, no responde.** Lumen debe ganarse su lugar en los logs, no en la retórica.
+
+### Nueva ruta Delta paralela (22 de noviembre)
+
+La implementación mantiene la recurrencia de decaimiento y escritura rank-one. Con coeficientes fijados, la actualización se resuelve como una suma causal; las lecturas se expresan mediante matrices de Gram K-K y Q-K. Como la sorpresa y la puerta dependen del estado previo, se aplican tres refinamientos de punto fijo. La versión secuencial exacta permanece disponible como referencia. Las pruebas comparan salida, sorpresa, estado y gradientes; la mejora de velocidad del módulo aislado observada en CPU local es una hipótesis de rendimiento que debe confirmarse en el runner completo. Homeostasis también evita ordenar los índices Top-K, porque su orden no interviene en la función.
 
 ---
 

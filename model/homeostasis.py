@@ -34,7 +34,7 @@ class Homeostasis(nn.Module):
         # coordinates. The previous dense ReLU + dense mask multiplication
         # performed elementwise work over all dim coordinates even though
         # only k_top coordinates can contribute to the update.
-        _, indices = torch.topk(y, k=k, dim=-1)
+        _, indices = torch.topk(y, k=k, dim=-1, sorted=False)
         selected = torch.gather(y, dim=-1, index=indices)
         selected_update = torch.relu(selected)
         # Top-K sparsifies the homeostatic update, not the information stream.

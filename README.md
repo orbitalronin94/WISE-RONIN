@@ -31,16 +31,15 @@ El repositorio conserva el nombre técnico **WISE-RONIN**. El proyecto activo es
 <details>
 <summary><strong>La campaña activa</strong></summary>
 
-- Último checkpoint emparejado completado y evaluado: **step 61.000**.
-- Continuación activa: **61.000 → 66.000**, run [45061486739](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45061486739).
-- Quality gate: correcto.
-- Transformer: entrenamiento hasta 66.000 completado.
-- Lumen: entrenamiento todavía en curso al corte de esta documentación.
-- Holdout final de 66.000: pendiente; no se atribuyen resultados antes de que termine.
+**Último checkpoint emparejado evaluado: step 66.000.** El holdout de 66k está completado; sus resultados se resumen abajo.
 
-El bloque actual mantiene todos los órganos activos. Lumen usa el perfil seleccionado de dolor ×1,50 y placer ×1,50 sobre los ajustes previos, con Delta en dos refinamientos paralelos. El Transformer conserva su configuración baseline. Ambos parten de sus checkpoints 61k del run [45044892658](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45044892658), el mismo corpus/tokenizer, batch 8, contexto 128 y seed 42.
+- Lumen: 792/2.431 (32,58 %), NLL 6,0756.
+- Transformer: 824/2.431 (33,90 %), NLL 6,4868.
+- Ambos modelos completaron el tramo 61k→66k y fueron evaluados sobre el mismo holdout.
 
-Existe otro run 41k→61k en paralelo ([45054687034](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45054687034)); no es el padre utilizado por la continuación actual. La procedencia de los checkpoints se mantiene explícita para no mezclar ejecuciones.
+**Estado operativo: pausa de entrenamiento.** No se lanzarán más entrenamientos de Lumen ni del Transformer hasta terminar la nueva versión del corpus español compartido, generar su manifiesto y hashes, preparar la tokenización/caché compatibles y verificar que validación y holdout siguen intactos.
+
+La próxima versión de datos incorporará las fuentes CSIC, TDX y CoWeSe, bajo una única preparación compartida por ambos modelos. El Transformer y Lumen no tendrán corpus separados. CoWeSe queda sujeto a una comprobación adicional de derechos de los textos de origen: su registro distribuye el corpus bajo CC BY 4.0, pero sus autores indican que no son titulares de los textos recolectados.
 
 </details>
 
@@ -117,21 +116,16 @@ La crónica completa explica qué cambió en cada tramo, qué runs fallaron desp
 
 | Modelo | Aciertos | Accuracy | NLL media |
 |---|---:|---:|---:|
-| Lumen-Ronin | 795/2.431 | 32,70 % | **6,1771** |
-| Transformer baseline | **824/2.431** | **33,90 %** | 6,4988 |
+| Lumen-Ronin | 792/2.431 | 32,58 % | **6,0756** |
+| Transformer baseline | **824/2.431** | **33,90 %** | 6,4868 |
 
-La lectura honesta es doble:
-
-- El Transformer aventaja a Lumen por 29 respuestas en accuracy.
-- Lumen obtiene una NLL media 0,3217 menor.
-
-No hay una victoria total. Lumen conserva una ventaja en NLL; el baseline mantiene una pequeña ventaja en aciertos. La diferencia de accuracy no debe proclamarse concluyente sin el análisis emparejado correspondiente.
+En 66k, el Transformer mantiene 32 aciertos más (+1,32 puntos porcentuales), mientras Lumen obtiene una NLL 0,4112 menor. Frente a 61k, Lumen pierde 3 aciertos pero mejora su NLL en 0,1015; Transformer conserva los mismos aciertos y mejora su NLL en 0,0120. Son resultados descriptivos: no equivalen a una victoria global ni sustituyen un análisis por pregunta.
 
 La serie histórica completa está en la [crónica experimental](docs/CRONICA_EXPERIMENTAL_ES.md). Las generaciones libres se documentan aparte porque no son comparables directamente con el test de opción múltiple.
 
 ## Corpus y evaluación
 
-El entrenamiento emparejado actual utiliza un corpus español congelado, preparado con seed 42:
+El último entrenamiento emparejado utilizó el corpus español v1 congelado, preparado con seed 42. Ese corpus queda cerrado para preservar la comparabilidad histórica. La siguiente campaña queda bloqueada hasta publicar el corpus v2 compartido:
 
 | Split | Filas |
 |---|---:|
@@ -141,7 +135,7 @@ El entrenamiento emparejado actual utiliza un corpus español congelado, prepara
 
 El holdout contiene 1.931 preguntas SIQA-es y 500 OpenBookQA-es. Está separado del entrenamiento y no alimenta glucosa, dolor ni placer. La preparación aplica deduplicación, limpieza, filtros por componente y una política explícita de licencias.
 
-La procedencia, fuentes, manifiesto y hashes están en [data/README.md](data/README.md).
+La procedencia, fuentes, manifiesto, hashes y estado de la ampliación están en [data/README.md](data/README.md). La ampliación se aplicará por igual a Lumen y Transformer; ningún modelo volverá a entrenar con v1 mientras esté pendiente la preparación y auditoría de v2.
 
 ## Cómo se investiga
 

@@ -31,11 +31,19 @@ def perdida_total(output, targets, model, use_jepa=True, use_rep=True,
 
     repetition_loss = logits.new_zeros(())
     if use_rep and steps >= 3:
-        probabilities = torch.softmax(logits, dim=-1)
-        triple_repeat_probability = (
-            probabilities[:, :-2] * probabilities[:, 1:-1] * probabilities[:, 2:]
-        ).sum(dim=-1)
-        repetition_loss = triple_repeat_probability.mean()
+        # Exact log-domain form of sum_v p_t(v) p_{t+1}(v) p_{t+2}(v).
+        # Avoids materializing three full B x T x V softmax tensors.
+        logits_0 = logits[:, :-2]
+        logits_1 = logits[:, 1:-1]
+        logits_2 = logits[:, 2:]
+        log_z0 = torch.logsumexp(logits_0, dim=-1)
+        log_z1 = torch.logsumexp(logits_1, dim=-1)
+        log_z2 = torch.logsumexp(logits_2, dim=-1)
+        log_triple = (
+            torch.logsumexp(logits_0 + logits_1 + logits_2, dim=-1)
+            - log_z0 - log_z1 - log_z2
+        )
+        repetition_loss = log_triple.exp().mean()
 
     complexity = output.get("free_energy_complexity", logits.new_zeros(()))
     if not use_free_energy:

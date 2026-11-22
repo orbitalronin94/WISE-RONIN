@@ -709,8 +709,8 @@ def main():
                 tokens_seen, scheduler.get_last_lr()[0],
             )
             LOG.info(
-                "neuroplasticity step=%d chunk_size=%d eligibility_norms=%s modulator=%s",
-                step, output["chunk_size"],
+                "neuroplasticity step=%d chunk_sizes=%s eligibility_norms=%s modulator=%s",
+                step, output["chunk_sizes"],
                 [round(layer.last_eligibility_norm, 6) for layer in model.delta_layers],
                 [round(float(layer.eligibility_modulator.item()), 5) for layer in model.delta_layers],
             )

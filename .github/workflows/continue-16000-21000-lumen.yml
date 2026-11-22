@@ -102,7 +102,7 @@ jobs:
           set -euo pipefail
           mkdir -p checkpoints/lumen logs
           python -m train.train \
-            --steps 5000 --resume parent-lumen/checkpoints/lumen/step_26000.pt \
+            --steps 5000 --resume parent-lumen/checkpoints/lumen/step_21000.pt \
             --phase 1 --pilot-all-rows --no-sleep \
             --data artifacts/spanish-v1/train.jsonl \
             --tokenizer data/spanish/tokenizer/tokenizer.json \
@@ -190,7 +190,7 @@ jobs:
           set -euo pipefail
           mkdir -p checkpoints/transformer logs
           python -m train.transformer_baseline \
-            --steps 5000 --resume parent-transformer/checkpoints/transformer/step_26000.pt \
+            --steps 5000 --resume parent-transformer/checkpoints/transformer/step_21000.pt \
             --data artifacts/spanish-v1/train.jsonl \
             --tokenizer data/spanish/tokenizer/tokenizer.json \
             --token-cache data/spanish/train_tokens_128.pt \

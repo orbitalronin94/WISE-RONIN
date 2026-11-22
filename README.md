@@ -23,6 +23,60 @@ En una medición previa de Lumen V3.1, ambos modelos tenían un tamaño cercano 
 
 Ese resultado es una señal de que hay que investigar, no una prueba definitiva de superioridad de calidad: ambos obtuvieron 0/155 en aquel holdout y no lograron generar respuestas válidas de forma fiable. La pérdida de entrenamiento no sustituye la evaluación de generaciones.
 
+## Autopsia de los logs existentes (22 de noviembre)
+
+No hace falta volver a ejecutar la batería de benchmarks ya disponible. Los resultados existentes permiten separar los costes dominantes de los secundarios y descartar varias optimizaciones que se habían activado en el perfil llamado `fast`.
+
+### Evidencia directa del entrenamiento emparejado
+
+En [run 45003881342](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45003881342), Lumen y Transformer continuaron desde el mismo step 8.250, con el mismo corpus/tokenizer, batch 8, contexto 128 y cuatro hilos. El entrenamiento de ambos jobs terminó correctamente y el holdout emparejado también; el run global quedó marcado como fallido por probes secundarios de LR, no por los dos entrenamientos principales.
+
+| Modelo | Tiempo típico por 100 pasos | Forward | Backward | Overhead Python |
+|---|---:|---:|---:|---:|
+| Lumen | 102–110 s | 30–32 s | 68–72 s | 3,0–3,2 s |
+| Transformer | 13,8–14,0 s | 3,86–3,90 s | 8,57–8,76 s | 1,3–1,35 s |
+
+La brecha real en ese run es de aproximadamente **7,5–8 veces**. No la explican la carga del batch, los checkpoints, el sueño ni el logging: la mayor parte del tiempo está dentro del forward/backward de Lumen. Sus cuatro capas Delta ejecutan una recurrencia secuencial de 128 posiciones por capa; cada posición contiene varias operaciones pequeñas dependientes del estado anterior y autograd debe conservar/trazar esa cadena.
+
+Los órganos no aparecen muertos: los logs muestran `write=1.000` y `dead=0.00%` en las cuatro capas. Por tanto, no hay evidencia para reducir actividad, eliminar Homeostasis ni debilitar Delta como atajo de velocidad.
+
+### Qué ya se probó y qué dicen los resultados
+
+| Experimento | Resultado registrado | Conclusión |
+|---|---|---|
+| [Pipeline real: eager](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44941577031) | 1,0725 pasos/s; 0,93242 s/paso | Referencia del perfil por etapas |
+| Pipeline sin JEPA/repetición | 1,1117 pasos/s; 0,89949 s/paso | Solo ~3,7% más rápido. Las pérdidas auxiliares no explican la brecha principal |
+| Pipeline sin snapshots de salud | 0,7822 pasos/s | No produjo una mejora; no hay base para quitar telemetría |
+| Pipeline `torch.compile` (benchmark corto anterior) | 2,8558 pasos/s; compilación informada de 1,455 s | Resultado prometedor, pero no se reprodujo así en el trainer completo posterior |
+| [A/B real eager vs compile](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45003557749) | Eager: 50 pasos en 57,18 s. Compiled: 50 pasos en 1.423,42 s | El trainer completo incurrió en unos 22,5 min de compilación inicial y pausas adicionales de compilación |
+| [Ablación de fastpaths](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44954484448) | Delta pre-normalizado: 0,3208 pasos/s; scatter fusionado: 0,5238 pasos/s; control: 0,6629 pasos/s | Ambos fastpaths empeoran el throughput y deben apagarse |
+| Perfil de cuatro hilos del mismo benchmark | 0,7249 pasos/s frente a 0,6629 del control | Mejora medida de ~9,3%; conservar 4 hilos, con los demás ajustes de ese perfil |
+| [Sueño/replay](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45008983356) | Checkpoint 3000: ocupación 0 y 0 registros de memoria lenta | En el entrenamiento real el sueño se salta por falta de registros; no es el cuello de botella |
+
+El benchmark por etapas de [44941577031](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44941577031) también muestra que batch y serialización son insignificantes frente al cómputo: batch ronda 0,00014 s, optimizer 0,005–0,007 s y serializar un checkpoint ~0,025 s. En eager, forward y backward suman ~0,906 s de los ~0,932 s por paso. El objetivo debe ser abaratar la celda recurrente y su backward, no optimizar la carga de datos o el guardado.
+
+### Correcciones concretas deducidas
+
+1. **Desactivar los dos fastpaths que salieron perdedores.** Volver a `delta_pre_normalize=false` y `homeostasis_fused_scatter=false`. La prueba de paridad numérica confirma que las variantes preservan la salida/gradiente dentro de tolerancia, pero la medición de throughput demuestra que son más lentas; paridad no equivale a optimización.
+2. **Restaurar el perfil CPU medido, no el perfil llamado “fast”.** El perfil actual `lumen_cpu_profile_fast.json` activa `foreach=true`, `interop_threads=1`, afinidad desactivada y los dos fastpaths perdedores. El perfil de cuatro hilos ganador medido usó 4 intra-op, 2 inter-op, MKLDNN activado, foreach desactivado y afinidad fijada. Esos valores son la referencia disponible más sólida para el siguiente entrenamiento.
+3. **No retirar JEPA/repetición ni snapshots.** La ablación de auxiliares solo ganó ~3,7%; eliminarla cambia el objetivo por una ganancia pequeña. Desactivar snapshots no aceleró el perfil medido. Ninguna de las dos acciones resuelve el coste dominante.
+4. **No tratar sueño/replay como culpable.** En el checkpoint inspeccionado no había memoria lenta consolidada y el trainer omitía el sueño; cambiar el intervalo de 500 pasos no recuperaría el tiempo perdido.
+5. **No activar `torch.compile` indiscriminadamente en el trainer.** El benchmark corto anterior no representa el coste de integración observado en el A/B posterior. En el A/B real hubo una compilación inicial enorme y más pausas de compilación. Tras estabilizarse, el tramo final compilado sí rondó 1,8 pasos/s frente a ~0,87 del eager de ese A/B; el coste de arranque/recompilación implica un punto de equilibrio aproximado de 2,3k pasos. Solo tiene sentido en una campaña larga si se evita recompilar y se amortiza ese arranque; no en smoke tests ni bloques cortos.
+6. **Atacar la recurrencia Delta, no sus órganos.** El coste está concentrado en forward/backward. La solución de arquitectura/ejecución debe reducir el número de operaciones pequeñas y nodos de autograd por token, idealmente fusionando el cuerpo recurrente y su backward en una unidad compilada/optimizada que conserve exactamente el orden temporal, las escrituras y las puertas. No convertir la recurrencia en una operación paralela aproximada.
+
+### Perfil de partida que queda documentado
+
+- 4 hilos intra-op y 2 inter-op.
+- MKLDNN activado.
+- AdamW `foreach=false`.
+- Afinidad CPU fijada a los cuatro cores asignados.
+- `delta_pre_normalize=false`.
+- `homeostasis_fused_scatter=false`.
+- JEPA, repetición, diversidad, router, Homeostasis y Delta conservados.
+- Sueño en 500 pasos, sin cambiarlo mientras no haya registros de memoria lenta.
+
+Este perfil es una selección basada en resultados existentes, no una afirmación de que la brecha arquitectónica ya esté resuelta. La prioridad pendiente es optimizar la ejecución recurrente de Delta y su backward sin cambiar la función de los órganos.
+
 ## Esquema de optimización previo al entrenamiento
 
 Las optimizaciones se aplicarán en orden, midiendo cada una de forma aislada y conservando una ruta de referencia. No se aceptará una mejora de throughput si cambia la semántica del modelo, rompe gradientes o degrada la estabilidad.
@@ -193,13 +247,11 @@ El corpus resultante es principalmente SFT/QA/instrucciones, texto paralelo y ma
 
 ## Próximos hitos
 
-1. Congelar el código y los inputs de referencia para tener una medición reproducible de ambos modelos.
-2. Ejecutar el perfil por etapas y localizar los mayores costes reales.
-3. Aplicar optimizaciones de ejecución de una en una, con pruebas de equivalencia y regresión.
-4. Elegir un perfil CPU común y repetir el benchmark varias veces.
-5. Verificar y publicar el corpus/tokenizer exactos que compartirán ambos modelos.
-6. Ejecutar smoke test desde step 0, incluyendo backward, checkpoint y reanudación.
-7. Lanzar bloques emparejados Lumen/Transformer desde step 0 y revisar calidad antes de ampliar duración.
+1. Revertir los dos fastpaths que los logs muestran como regresiones y restaurar el perfil CPU medido de cuatro hilos.
+2. Corregir el camino de ejecución de Delta para reducir coste de forward/backward sin alterar su recurrencia ni los órganos.
+3. Tratar `torch.compile` como opción exclusiva de campañas largas, contabilizando su arranque y evitando recompilaciones.
+4. Verificar/publicar el corpus y tokenizer definitivos que compartirán ambos modelos.
+5. Iniciar Lumen-Ronin y Transformer desde step 0 con pesos y estados de optimizador nuevos, en ejecución emparejada.
 
 ## Código y workflows
 

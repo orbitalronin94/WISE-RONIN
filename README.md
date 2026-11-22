@@ -193,13 +193,13 @@ La configuración actual registra consolidación cada 500 pasos y hasta 50 pasos
 - No ejecutar replay, sueño ni escrituras de memoria durante evaluación.
 - Mantener exactamente el mismo tokenizer y contrato de EOS entre entrenamiento y evaluación.
 
-## Protocolo de comparación desde cero
+## Protocolo de comparación inicial desde cero (histórico)
 
-Lumen-Ronin y Transformer deben ejecutarse como tareas paralelas dentro de una misma campaña emparejada, sin que una use más datos o un presupuesto distinto.
+La campaña emparejada inicial desde step 0 ya cumplió su función de control. El resultado actual que gobierna la siguiente fase es el holdout de step 16.000: Lumen continúa como modelo principal y el Transformer queda como referencia histórica de comparación. No se exige duplicar cada continuación con un Transformer.
 
 | Elemento | Condición inicial |
 |---|---|
-| Paso inicial | 0 para ambos |
+| Paso inicial | 0 para ambos en la campaña inicial (histórico) |
 | Semilla | 42 |
 | Batch | 8 |
 | Longitud de secuencia | 128 |
@@ -210,7 +210,7 @@ Lumen-Ronin y Transformer deben ejecutarse como tareas paralelas dentro de una m
 | Evaluación | Mismo holdout congelado, una evaluación emparejada al final de cada bloque |
 | Recuperación | Checkpoint independiente para cada modelo |
 
-El protocolo de bloques cortos sirve para comprobar que la velocidad y la calidad se sostienen. No se inicia una campaña larga hasta superar el smoke test, comprobar checkpoint/resume y revisar generaciones reales.
+El protocolo inicial permitió validar los dos puntos de partida y construir una referencia emparejada. La campaña actual ya dispone de checkpoint Lumen 16.000, estado de AdamW recuperable y holdout congelado. La continuación autorizada es Lumen 16.000 → 21.000 con LR en meseta y decaimiento final no nulo.
 
 ### Métricas obligatorias
 
@@ -230,9 +230,9 @@ La comparación debe incluir tanto calidad por paso como calidad por unidad de t
 
 Existe una preparación anterior de corpus español licenciado y una mezcla con material histórico propio documentada en PR #64 y PR #65. La ejecución de mezcla procesó 147.627 filas históricas y seleccionó 10.341 grupos canónicos; los logs registraron 80.446 filas de train, 1.413 de validation y 2.431 de holdout.
 
-Sin embargo, la ejecución [45008699964](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45008699964) falló en una aserción del manifiesto después de la extracción y no publicó el artefacto combinado. Por tanto, **ese conjunto no se considera todavía un artefacto de entrenamiento verificado**. Antes de usarlo hay que corregir la clave de validación, publicar el artefacto y verificar ficheros, manifiesto, hashes y separación de splits.
+La ejecución antigua [45008699964](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45008699964) falló al publicar su artefacto y queda como antecedente histórico. La campaña posterior [45014470774](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45014470774) publicó el corpus/tokenizer español congelado; la continuación [45021399600](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45021399600) verificó manifiesto, ficheros y las 2.431 filas del holdout antes de entrenar y evaluar step 16.000. Es ese artefacto posterior, no el intento fallido antiguo, el que utiliza la continuación actual.
 
-El corpus resultante es principalmente SFT/QA/instrucciones, texto paralelo y material sintético propio; no debe presentarse como pretraining general de todo el español. El mismo conjunto y tokenizer exactos se usarán en los dos modelos. No se entrenará con validation ni holdout.
+El corpus resultante es principalmente SFT/QA/instrucciones, texto paralelo y material sintético propio; no debe presentarse como pretraining general de todo el español. El mismo conjunto y tokenizer se mantienen para reproducibilidad y comparación con el baseline. No se entrena con validation ni holdout.
 
 ## Estado de decisiones
 
@@ -240,20 +240,20 @@ El corpus resultante es principalmente SFT/QA/instrucciones, texto paralelo y ma
 |---|---|
 | Abandonar WISE-RONIN como línea activa | Adoptado |
 | Lumen-Ronin frente a Transformer | Adoptado |
-| Ambos desde step 0 | Adoptado |
+| Campaña emparejada inicial desde step 0 | Completada; referencia histórica |
 | Preservar la semántica de los órganos durante optimización | Obligatorio |
 | Medir cada etapa antes de modificarla | Obligatorio |
 | Mantener sueño cada 500 pasos al inicio | Conservado provisionalmente |
 | Homeostasis sin cambios funcionales iniciales | Conservado |
-| Campaña larga antes de cerrar benchmark y corpus | No autorizada |
+| Continuación Lumen 16.000 → 21.000 | Autorizada; holdout final incluido |
 
 ## Próximos hitos
 
-1. Revertir los dos fastpaths que los logs muestran como regresiones y restaurar el perfil CPU medido de cuatro hilos.
-2. Corregir el camino de ejecución de Delta para reducir coste de forward/backward sin alterar su recurrencia ni los órganos.
-3. Tratar `torch.compile` como opción exclusiva de campañas largas, contabilizando su arranque y evitando recompilaciones.
-4. Verificar/publicar el corpus y tokenizer definitivos que compartirán ambos modelos.
-5. Iniciar Lumen-Ronin y Transformer desde step 0 con pesos y estados de optimizador nuevos, en ejecución emparejada.
+1. Completar la continuación Lumen 16.000 → 21.000 con AdamW y buffers de los órganos preservados.
+2. Confirmar en logs la meseta de LR a 3e-5 y el suelo coseno de 1,5e-5; comprobar que no se agota el scheduler antes del último paso.
+3. Evaluar Lumen step 21.000 sobre el mismo holdout español congelado, informando accuracy y NLL por separado.
+4. Comparar el resultado con Lumen 16.000 y con el Transformer 16.000 como referencias, sin confundir diferencia numérica con significación estadística.
+5. Optimizar velocidad de Delta solo mediante cambios medidos que preserven la semántica y los órganos.
 
 ## Dos hipótesis de arquitectura: Lumen-Ronin frente al Transformer
 

@@ -209,6 +209,7 @@ def main():
         "name":"WISE-RONIN Spanish-only corpus v1","seed":SEED,"language":"es",
         "rows_raw":len(raw),"rows_deduplicated":len(rows),"train_rows":len(train),
         "validation_rows":len(val),"holdout_rows":len(ev),
+        "holdout_source_counts":dict(Counter(r["source"] for r in ev)),
         "source_counts":dict(Counter(r["source"] for r in rows)),
         "task_counts":dict(Counter(r["task"] for r in rows)),
         "alia_component_counts":dict(Counter(r.get("source_component","") for r in rows if r.get("source_component"))),

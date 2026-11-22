@@ -53,6 +53,8 @@ def main():
                 j = rng.randrange(seen[bucket])
                 if j < q:
                     reservoir[j] = item
+    if sum(seen.values()) != int(manifest["train_rows"]):
+        raise SystemExit(f"Manifest row count mismatch: {sum(seen.values())} != {manifest['train_rows']}")
     for name, q in QUOTAS.items():
         if len(reservoirs[name]) != q:
             raise SystemExit(f"Insufficient rows in {name}: {len(reservoirs[name])}/{q}; seen={seen[name]}")

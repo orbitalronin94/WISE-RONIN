@@ -42,7 +42,7 @@ def main():
     keys=("logits","activations","hidden","router","surprise","energy","free_energy_complexity")
     max_output_diff=0.0
     for key in keys:
-        torch.testing.assert_close(out_a[key],out_b[key],rtol=a.rtol,atol=a.atol,msg=lambda msg:f"{key}: {msg}")
+        torch.testing.assert_close(out_a[key],out_b[key],rtol=a.rtol,atol=a.atol,msg=f"Output mismatch in {key}")
         if out_a[key].numel():
             max_output_diff=max(max_output_diff,float((out_a[key]-out_b[key]).abs().max()))
     if len(grad_a)!=len(grad_b):
@@ -53,7 +53,7 @@ def main():
             if ga is not None or gb is not None: raise AssertionError(f"Gradient presence mismatch at parameter {index}")
             continue
         torch.testing.assert_close(ga,gb,rtol=a.rtol,atol=a.atol,
-                                   msg=lambda msg:f"parameter {index}: {msg}")
+                                   msg=f"Gradient mismatch at parameter {index}")
         if ga.numel(): max_grad_diff=max(max_grad_diff,float((ga-gb).abs().max()))
     print({"parity":"PASS","loss":float(loss_a.detach()),
            "max_output_abs_diff":max_output_diff,

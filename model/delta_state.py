@@ -5,7 +5,7 @@ from torch.nn import functional as F
 
 
 class EstadoDelta(nn.Module):
-    def __init__(self, dim=256, tau=0.15, rank=64, parallel_refinements=3):
+    def __init__(self, dim=256, tau=0.15, rank=64, parallel_refinements=6):
         super().__init__()
         self.dim = dim
         self.rank = min(int(rank), dim)

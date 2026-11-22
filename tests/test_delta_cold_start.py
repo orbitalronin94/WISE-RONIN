@@ -97,7 +97,7 @@ def test_parallel_delta_scan_matches_sequential_reference_and_gradients():
     import copy
 
     torch.manual_seed(29)
-    reference = EstadoDelta(dim=32, tau=0.001, rank=12, parallel_refinements=3)
+    reference = EstadoDelta(dim=32, tau=0.001, rank=12, parallel_refinements=6)
     parallel = copy.deepcopy(reference)
     reference.parallel_scan = False
     parallel.parallel_scan = True

@@ -48,3 +48,26 @@ def test_transition_state_roundtrip():
     restored.load_state_dict(saved)
     assert restored.current_step == 1250
     assert restored.get_last_lr() == scheduler.get_last_lr()
+
+
+def test_plateau_then_cosine_decay_keeps_nonzero_lr_floor():
+    parameter = torch.nn.Parameter(torch.tensor([1.0]))
+    optimizer = torch.optim.AdamW([parameter], lr=0.0)
+    scheduler = CosineTransitionScheduler(
+        optimizer, start_step=16000, end_step=21000,
+        old_lr=0.0, new_lr=3e-5, warmup_steps=100,
+        plateau_steps=3900, min_lr_ratio=0.5,
+    )
+    assert math.isclose(scheduler.lr_at_step(16000), 0.0, abs_tol=1e-12)
+    assert math.isclose(scheduler.lr_at_step(16100), 3e-5, rel_tol=1e-8)
+    assert math.isclose(scheduler.lr_at_step(20000), 3e-5, rel_tol=1e-8)
+    assert math.isclose(scheduler.lr_at_step(20500), 2.25e-5, rel_tol=1e-8)
+    assert math.isclose(scheduler.lr_at_step(21000), 1.5e-5, rel_tol=1e-8)
+    saved = scheduler.state_dict()
+    restored = CosineTransitionScheduler(
+        optimizer, start_step=16000, end_step=21000,
+        old_lr=0.0, new_lr=3e-5, warmup_steps=100,
+        plateau_steps=3900, min_lr_ratio=0.5,
+    )
+    restored.load_state_dict(saved)
+    assert restored.get_last_lr() == scheduler.get_last_lr()

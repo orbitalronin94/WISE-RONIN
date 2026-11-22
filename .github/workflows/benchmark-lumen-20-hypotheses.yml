@@ -100,3 +100,5 @@ jobs:
           path: artifacts/
           if-no-files-found: warn
           retention-days: 30
+
+# Benchmark uses repository-root imports; fixed in the benchmark script.

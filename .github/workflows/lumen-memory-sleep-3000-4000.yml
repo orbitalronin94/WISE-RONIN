@@ -2,15 +2,6 @@ name: RONIN-LUMEN memory + sleep pilot 3000 to 4000
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/lumen-memory-sleep-3000-4000.yml"
-      - "train/train.py"
-      - "train/sleep.py"
-      - "model/memory.py"
-      - "model/delta_state.py"
-      - "model/homeostasis.py"
 
 permissions:
   contents: read

@@ -2,12 +2,6 @@ name: RONIN-LUMEN sleep/replay benchmark
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "scripts/benchmark_sleep.py"
-      - ".github/workflows/benchmark-sleep.yml"
-      - "README.md"
 
 permissions:
   contents: read

@@ -6,6 +6,16 @@ El repositorio mantiene el nombre técnico WISE-RONIN, pero el proyecto activo, 
 
 > **Estado experimental — 22 de noviembre de 2026, checkpoint 21.000:** Lumen obtuvo **837/2.431 (34,430%)** en el holdout español congelado; el Transformer obtuvo **766/2.431 (31,510%)**. Lumen aventajó al baseline por 71 respuestas (+2,921 puntos porcentuales). Lumen lidera en accuracy, pero el Transformer conserva menor NLL media (6,7644 frente a 7,1043). El resultado favorece a Lumen en clasificación, no demuestra superioridad en calibración ni en todas las métricas.
 
+## La tesis del perro de Pavlov
+
+> **LUMEN es un perro.** Un perro de Pavlov que aprende lento, pero aprende. Que saliva, que tiene hambre, que le duele, que le da placer. Y un perro, aunque sea más lento que un loro para repetir, es más listo que un loro para aprender.
+
+La comparación es una declaración de diseño, no una afirmación de conciencia animal. El loro representa aquí la reproducción rápida de secuencias: puede parecer brillante por lo que repite, sin que esa fluidez demuestre que haya construido una respuesta robusta. El perro representa un sistema cuyo aprendizaje está modulado por señales internas y por las consecuencias de su conducta.
+
+En LUMEN, esa metáfora tiene correspondencias técnicas concretas: **glucosa** regula el presupuesto energético; **dolor** señala regresiones y favorece la protección; **placer** responde a mejoras y puede favorecer moderadamente la plasticidad y la consolidación. No son adornos narrativos ni emociones humanas: son mecanismos computacionales explícitos, medibles y acotados.
+
+La apuesta es que aprender no consiste únicamente en minimizar una loss ni en repetir con velocidad. También importa cómo se distribuyen los recursos, cómo se responde a los errores y cómo se refuerzan las mejoras. Por eso LUMEN no pretende ganar por ser el loro más rápido: pretende demostrar, mediante holdouts y comparaciones reproducibles, que sus órganos producen un aprendizaje más útil.
+
 ## Decisión de proyecto
 
 - **Modelo principal:** Lumen-Ronin, arquitectura recurrente ronin_lumen_v3_2_parallel_delta.

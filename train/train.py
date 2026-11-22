@@ -374,8 +374,13 @@ def main():
             mismatches = [key for key in stable_keys
                           if parent_config.get(key) != expected_training_config.get(key)]
             saved_transition = state.get("scheduler_transition")
-            if mismatches or not saved_transition or int(saved_transition.get("current_step", -1)) != int(state.get("step", -2)):
-                raise ValueError(f"Cannot restart scheduler from this checkpoint; mismatches={mismatches}")
+            saved_step = int(state.get("step", -1))
+            scheduler_step = int(saved_transition.get("current_step", -1)) if saved_transition else -1
+            if mismatches or not saved_transition or scheduler_step not in (saved_step, saved_step + 1):
+                raise ValueError(
+                    f"Cannot restart scheduler from this checkpoint; mismatches={mismatches}, "
+                    f"checkpoint_step={saved_step}, scheduler_step={scheduler_step}"
+                )
         elif state.get("training_config") not in (None, expected_training_config):
             raise ValueError("Checkpoint training hyperparameters mismatch")
         if state.get("seed", args.seed) != args.seed:

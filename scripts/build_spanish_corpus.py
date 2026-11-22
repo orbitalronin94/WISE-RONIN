@@ -187,7 +187,7 @@ def write(path, rows):
 def main():
     p=argparse.ArgumentParser()
     p.add_argument("--output-dir",default="artifacts/spanish-v1")
-    p.add_argument("--max-alia",type=int,default=40000)
+    p.add_argument("--max-alia",type=int,default=30000)
     p.add_argument("--max-general",type=int,default=25000)
     p.add_argument("--max-legal",type=int,default=10000)
     p.add_argument("--max-uji",type=int,default=20000)

@@ -42,6 +42,7 @@ PROFILES = {
     "fused_adamw_bf16": {"fused": True, "bf16": True},
     "compile_default_bf16": {"compile": "default", "bf16": True},
     "compile_reduce_overhead_threads_1": {"compile": "reduce-overhead", "threads": 1},
+    "threads_2_mkldnn_off_foreach_off": {"threads": 2, "mkldnn": False, "foreach": False},
 }
 
 def configure(profile):
@@ -85,6 +86,7 @@ def execute(name, steps, warmup, seed, batch, seq_len, output_path):
         }
         if profile.get("fused"):
             optimizer_kwargs["fused"] = True
+            optimizer_kwargs["foreach"] = False
         optimizer = torch.optim.AdamW(model.parameters(), **optimizer_kwargs)
         set_to_none = bool(profile.get("set_to_none", True))
         use_bf16 = bool(profile.get("bf16", False))
@@ -106,8 +108,6 @@ def execute(name, steps, warmup, seed, batch, seq_len, output_path):
         for _ in range(warmup):
             last_loss = update()
         warmup_elapsed = time.perf_counter() - warmup_started
-        if hasattr(torch, "_dynamo") and profile.get("compile"):
-            torch._dynamo.reset()
         started = time.perf_counter()
         losses = []
         for _ in range(steps):

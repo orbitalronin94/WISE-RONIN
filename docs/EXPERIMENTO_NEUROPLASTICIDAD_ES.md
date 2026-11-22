@@ -22,7 +22,7 @@ No se vuelven a implementar mecanismos que ya existen en el repositorio:
 
 - Ningún órgano se desactiva.
 - El chunking no sustituye la secuencia token a token: añade un resumen residual limitado al 2,5 % de la norma de entrada.
-- Las trazas se almacenan como buffers, se actualizan sin gradiente y se limitan antes de acumularse.
+- Las trazas se almacenan como buffers, se actualizan sin gradiente y se limitan antes de acumularse. Esta es una aproximación asociativa del principio de elegibilidad: **no** implementa todavía una regla local de tres factores que actualice directamente cada parámetro sináptico.
 - Los estados recurrentes transitorios se reinician en cada minibatch; las trazas de elegibilidad sí persisten y forman parte del checkpoint.
 - El modulador de elegibilidad está acotado a ±0,25.
 - El Transformer no recibe chunking, trazas ni órganos de Lumen: permanece como baseline independiente.

@@ -335,6 +335,10 @@ def main():
     model = RoninLumen(v32_ze=args.v32_ze).to(device)
     for layer in model.delta_layers:
         layer.pre_normalize_sequence = bool(runtime_profile.get("delta_pre_normalize", False))
+        refinements = int(runtime_profile.get("delta_parallel_refinements", layer.parallel_refinements))
+        if not 1 <= refinements <= 6:
+            raise ValueError("delta_parallel_refinements must be between 1 and 6")
+        layer.parallel_refinements = refinements
     for organ in model.homeo:
         organ.fused_scatter_add = bool(runtime_profile.get("homeostasis_fused_scatter", False))
     LOG.info("lumen_fastpaths: delta_pre_normalize=%s homeostasis_fused_scatter=%s",

@@ -23,9 +23,6 @@ class AdaptiveChunking(nn.Module):
         self.max_chunk = int(max_chunk)
         self.gain = float(gain)
         self.surprise_scale = float(surprise_scale)
-        self.context_gate = nn.Linear(2 * dim, dim)
-        nn.init.zeros_(self.context_gate.weight)
-        nn.init.zeros_(self.context_gate.bias)
         self.last_chunk_size = self.max_chunk
         self.last_chunk_count = 0
 
@@ -52,7 +49,9 @@ class AdaptiveChunking(nn.Module):
 
         pooled = F.adaptive_avg_pool1d(x.transpose(1, 2), chunks)
         context = F.interpolate(pooled, size=steps, mode="nearest").transpose(1, 2)
-        gate = torch.sigmoid(self.context_gate(torch.cat((x, context), dim=-1)))
+        # Parameter-free similarity gate: keep the matched-size comparison fair.
+        similarity = (x * context).sum(dim=-1, keepdim=True) / math.sqrt(self.dim)
+        gate = torch.sigmoid(similarity)
         update = self.gain * gate * context
         # Keep the new path bounded relative to the original representation.
         update_norm = update.norm(dim=-1, keepdim=True).clamp_min(1e-6)

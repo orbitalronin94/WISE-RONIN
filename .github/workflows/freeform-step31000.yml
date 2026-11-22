@@ -1,0 +1,86 @@
+name: Informal free-form holdout at step 31000 (Lumen vs Transformer)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/freeform_generation_holdout.py
+      - .github/workflows/freeform-step31000.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-freeform-step31000
+  cancel-in-progress: false
+
+env:
+  SOURCE_RUN_ID: "45034338841"
+  PREPARED_RUN_ID: "45021399600"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+
+jobs:
+  freeform-holdout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU inference runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download frozen Spanish holdout and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-45021399600
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact Lumen step-31000 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step31000-45034338841
+          path: lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact Transformer step-31000 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-transformer-step31000-45034338841
+          path: transformer
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify inputs and generate 100 paired free-form answers
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          test -s prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl
+          test -s prepared/data/spanish/tokenizer/tokenizer.json
+          test -s lumen/checkpoints/lumen/step_31000.pt
+          test -s transformer/checkpoints/transformer/step_31000.pt
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/freeform_generation_holdout.py \
+            --holdout prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl \
+            --tokenizer prepared/data/spanish/tokenizer/tokenizer.json \
+            --lumen lumen/checkpoints/lumen/step_31000.pt \
+            --transformer transformer/checkpoints/transformer/step_31000.pt \
+            --out-dir results/freeform-step31000 \
+            --sample-size 100 --seed 31000 --expected-step 31000 \
+            --threads 4 --max-len 128 --max-new-tokens 64
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-step31000-freeform-100-${{ github.run_id }}
+          path: results/freeform-step31000/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6

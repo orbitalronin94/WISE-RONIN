@@ -1,13 +1,6 @@
 name: Build Spanish-only licensed corpus v1
 
 on:
-  push:
-    branches:
-      - dataset/spanish-only-v1
-    paths:
-      - scripts/build_spanish_corpus.py
-      - tests/test_build_spanish_corpus.py
-      - .github/workflows/build-spanish-corpus.yml
   pull_request:
     branches: [main]
     paths:
@@ -20,8 +13,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: wise-ronin-spanish-corpus-v1
-  cancel-in-progress: false
+  group: wise-ronin-spanish-corpus-v1-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:

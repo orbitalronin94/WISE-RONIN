@@ -116,3 +116,18 @@ No iniciar nuevos entrenamientos, benchmarks de entrenamiento ni continuaciones 
 - ambos workflows de entrenamiento apunten al mismo artefacto versionado.
 
 El corpus v1 y sus hashes anteriores se conservan como referencia histórica. La versión v2 será una nueva versión de datos, no una reescritura retrospectiva de los resultados 0→66k.
+
+
+### Constructor reproducible y artefact congelado
+
+El constructor está en `scripts/build_spanish_corpus_v2.py` y la ejecución automatizada en [build-spanish-corpus-v2.yml](../.github/workflows/build-spanish-corpus-v2.yml).
+
+- Run de construcción: [45065329753](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45065329753).
+- Fuentes ingeridas: CSIC y TDX, descargadas de Zenodo y verificadas contra los MD5 publicados.
+- Tokenizador: se reutiliza el tokenizador BPE compartido del artefacto preparado 16k; no se reentrena ni cambia el vocabulario.
+- Formato: JSONL compatible con el cargador actual. Los textos largos se dividen en ventanas de hasta 126 tokens BPE para dejar espacio a BOS/EOS en el contexto de 128.
+- Evaluación: validación y holdout se copian byte por byte desde v1 y se verifican por SHA-256.
+- Salida prevista: artefacto Actions `wise-ronin-spanish-corpus-v2-RUN_ID`, con `train.jsonl`, `validation.jsonl`, `holdout_multiple_choice.jsonl`, `manifest.json` y `tokenizer.json`.
+- Retención prevista: 90 días. El manifiesto registra hashes, procedencia, DOI, licencia y recuentos reales.
+
+**No declarar v2 listo para entrenar hasta que el run termine en verde y exista el artefacto descargable.** El manifiesto de construcción y los logs son la autoridad para los recuentos; las cifras de los registros originales son solo referencias de proveedor.

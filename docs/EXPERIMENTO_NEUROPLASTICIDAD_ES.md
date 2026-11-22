@@ -43,7 +43,7 @@ No se vuelven a implementar mecanismos que ya existen en el repositorio:
 - Replay: habilitado; se registra si no hay memoria suficiente para ejecutarlo.
 - Comparación: loss, NLL, tokens vistos, tiempo por bloque, pasos/s, memoria, estabilidad numérica y, después, holdout común.
 
-El corpus v2 debe terminar su construcción y superar las comprobaciones de manifiesto, hashes y splits antes de que arranque el entrenamiento. No se permite sustituirlo silenciosamente por v1.
+El corpus v2 debe terminar su construcción y superar las comprobaciones de manifiesto, hashes y splits antes de que arranque el entrenamiento. No se permite sustituirlo silenciosamente por v1. El workflow de entrenamiento solo se dispara al actualizar `docs/LAUNCH_NEUROPLASTICITY_RUN.txt`, que se creará después de verificar el artefacto v2; no tiene fallback a v1.
 
 ## Interpretación
 

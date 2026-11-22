@@ -39,6 +39,14 @@ def write_jsonl(path: Path, rows):
     return count, digest.hexdigest()
 
 
+def copy_jsonl(source: Path, destination: Path):
+    """Preserve evaluation files byte-for-byte, not merely record-for-record."""
+    payload = source.read_bytes()
+    destination.write_bytes(payload)
+    count = sum(1 for line in payload.splitlines() if line.strip())
+    return count, hashlib.sha256(payload).hexdigest()
+
+
 def normalize(value: str) -> str:
     return " ".join(str(value or "").casefold().split())
 

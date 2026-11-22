@@ -1,0 +1,257 @@
+name: RONIN paired continuation 11000 to 16000 + affect organs + final Spanish holdout
+
+on:
+  push:
+    branches:
+      - run/step11000-to16000-affect
+    paths:
+      - .github/workflows/continue-11000-16000-affect.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-paired-11000-to-16000-affect
+  cancel-in-progress: false
+
+env:
+  PARENT_RUN_ID: "45014470774"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-final-45014470774
+          path: .
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify frozen Spanish data and tokenizer
+        run: |
+          test -s artifacts/spanish-v1/train.jsonl
+          test -s artifacts/spanish-v1/holdout_multiple_choice.jsonl
+          test -s data/spanish/tokenizer/tokenizer.json
+          test -s data/spanish/train_tokens_128.pt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("artifacts/spanish-v1")
+          manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+          assert manifest["language"] == "es"
+          holdout = [json.loads(x) for x in (root / "holdout_multiple_choice.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(holdout) == 2431, len(holdout)
+          assert all(row.get("language") == "es" for row in holdout)
+          print("Frozen Spanish holdout:", len(holdout))
+          print("Manifest:", manifest)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-${{ github.run_id }}
+          path: |
+            artifacts/spanish-v1/
+            data/spanish/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  train-lumen:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-${{ github.run_id }}
+          path: .
+      - name: Download exact Lumen step-11000 parent
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step11000-45014470774
+          path: parent-lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify parent and continue Lumen with three regulators
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import torch
+          p="parent-lumen/checkpoints/lumen/step_11000.pt"
+          s=torch.load(p,map_location="cpu",weights_only=False)
+          assert s["step"] == 11000, s.get("step")
+          assert s["architecture_id"] == "ronin_lumen_v3_2_parallel_delta", s.get("architecture_id")
+          assert s["pilot_all_rows"] is True
+          assert s["training_config"]["lr"] == 3e-5
+          assert s["scheduler_transition"]["current_step"] == 11000
+          print("Lumen parent validated:", s["step"], s["architecture_id"], s["training_config"])
+          PY
+          mkdir -p checkpoints/lumen logs
+          python -m train.train \
+            --steps 5000 --resume parent-lumen/checkpoints/lumen/step_11000.pt \
+            --phase 1 --pilot-all-rows --no-sleep \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/lumen_cpu_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 16000 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 11000 --transition-end 16000 --warmup-transition 100 \
+            --log-every 100 --checkpoint-every 250 --recovery-checkpoint-every 100 \
+            --parameter-check-every 100 --ckpt-dir checkpoints/lumen 2>&1 | tee logs/lumen-11000-16000.log
+          python - <<'PY'
+          import torch
+          s=torch.load("checkpoints/lumen/step_16000.pt",map_location="cpu",weights_only=False)
+          assert s["step"] == 16000
+          assert s["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          assert s["scheduler_transition"]["current_step"] == 16000
+          assert "pain.pain" in s["model"] and "pleasure.pleasure" in s["model"]
+          print("Lumen final checkpoint verified: step", s["step"])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-lumen-step16000-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/
+            logs/lumen-11000-16000.log
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+
+  train-transformer:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-${{ github.run_id }}
+          path: .
+      - name: Download exact Transformer step-11000 parent
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-transformer-step11000-45014470774
+          path: parent-transformer
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify parent and continue Transformer
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import torch
+          p="parent-transformer/checkpoints/transformer/step_11000.pt"
+          s=torch.load(p,map_location="cpu",weights_only=False)
+          assert s["step"] == 11000, s.get("step")
+          assert s["training_config"]["lr"] == 7.5e-5
+          assert s["scheduler_transition"]["current_step"] == 11000
+          print("Transformer parent validated:", s["step"], s["training_config"])
+          PY
+          mkdir -p checkpoints/transformer logs
+          python -m train.transformer_baseline \
+            --steps 5000 --resume parent-transformer/checkpoints/transformer/step_11000.pt \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 --threads 4 \
+            --lr 7.5e-5 --warmup 100 --total-steps 16000 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 11000 --transition-end 16000 --warmup-transition 100 \
+            --parameter-check-every 100 --ckpt-dir checkpoints/transformer 2>&1 | tee logs/transformer-11000-16000.log
+          python - <<'PY'
+          import torch
+          s=torch.load("checkpoints/transformer/step_16000.pt",map_location="cpu",weights_only=False)
+          assert s["step"] == 16000
+          assert s["scheduler_transition"]["current_step"] == 16000
+          print("Transformer final checkpoint verified: step", s["step"])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-transformer-step16000-${{ github.run_id }}
+          path: |
+            checkpoints/transformer/
+            logs/transformer-11000-16000.log
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+
+  final-holdout:
+    needs: [prepare, train-lumen, train-transformer]
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU evaluation runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-${{ github.run_id }}
+          path: prepared
+      - uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step16000-${{ github.run_id }}
+          path: lumen
+      - uses: actions/download-artifact@v4
+        with:
+          name: ronin-transformer-step16000-${{ github.run_id }}
+          path: transformer
+      - name: Score the untouched paired Spanish holdout
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          test -s prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl
+          test -s prepared/data/spanish/tokenizer/tokenizer.json
+          test -s lumen/checkpoints/lumen/step_16000.pt
+          test -s transformer/checkpoints/transformer/step_16000.pt
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/evaluate_multiple_choice_holdout.py \
+            --holdout prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl \
+            --tokenizer prepared/data/spanish/tokenizer/tokenizer.json \
+            --lumen lumen/checkpoints/lumen/step_16000.pt \
+            --transformer transformer/checkpoints/transformer/step_16000.pt \
+            --expected-step 16000 --out results/step16000_final_holdout.json --threads 4 --max-len 128
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-step16000-final-spanish-holdout-${{ github.run_id }}
+          path: results/step16000_final_holdout.json
+          if-no-files-found: warn
+          retention-days: 90

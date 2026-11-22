@@ -30,10 +30,11 @@ SOURCES = {
     "BSC-LT/ALIA-2606-SFT": "CC-BY-4.0; component allowlist enforced",
     "OysterCoreAI/SFT-General-Spanish-50K": "CC-BY-4.0",
     "somosnlp/instruct-legal-refugiados-es": "Apache-2.0",
+    "gplsi/uji_parallel_va_es": "CC-BY-4.0 (Spanish ES column only)",
 }
 
 def clean(v):
-    s = unicodedata.normalize("NFC", html.unescape(str(v or ""))).replace("\x00", " ")
+    s = unicodedata.normalize("NFC", html.unescape(str(v or ""))).replace("\u00a0", " ").replace("\x00", " ")
     s = re.sub(r"[ \t]+", " ", s)
     return re.sub(r"\n[ \t]*\n[ \t]*\n+", "\n\n", s).strip()
 
@@ -131,6 +132,19 @@ def build_legal(limit):
             if len(out) >= limit: return out
     return out
 
+def build_uji(limit):
+    out = []
+    for index, item in enumerate(stream("gplsi/uji_parallel_va_es", buffer=10000)):
+        # Keep only the explicit Spanish column; never ingest the Valencian VA column.
+        text = clean(item.get("ES", ""))
+        row = make("", text, "gplsi/uji_parallel_va_es", "CC-BY-4.0",
+                   "lm_text", f"{item.get('source','')}-{index}")
+        if row:
+            out.append(row)
+            if len(out) >= limit:
+                return out
+    return out
+
 def build_eval():
     out = []
     for item in stream("BSC-LT/SIQA_es", "validation", 3000):
@@ -169,8 +183,9 @@ def main():
     p.add_argument("--max-alia",type=int,default=40000)
     p.add_argument("--max-general",type=int,default=25000)
     p.add_argument("--max-legal",type=int,default=10000)
+    p.add_argument("--max-uji",type=int,default=20000)
     a=p.parse_args(); root=Path(a.output_dir); root.mkdir(parents=True,exist_ok=True)
-    raw=build_alia(a.max_alia)+build_general(a.max_general)+build_legal(a.max_legal)
+    raw=build_alia(a.max_alia)+build_general(a.max_general)+build_legal(a.max_legal)+build_uji(a.max_uji)
     unique={}
     for row in raw: unique.setdefault(key(row["prompt"],row["completion"]),row)
     rows=list(unique.values())

@@ -151,8 +151,8 @@ def main():
     p.add_argument("--wall-clock-file")
     p.add_argument("--ckpt-dir", default="checkpoints/transformer")
     args = p.parse_args()
-    if not 1 <= args.steps <= 1000:
-        p.error("--steps must be between 1 and 1000")
+    if not 1 <= args.steps <= 10000:
+        p.error("--steps must be between 1 and 10000")
     if args.threads < 1 or args.parameter_check_every < 1:
         p.error("--threads and --parameter-check-every must be at least 1")
     if getattr(args, 'scheduler_transition', False) and not args.resume:
@@ -204,13 +204,15 @@ def main():
         }
         expected_resume_config = expected_config
         if getattr(args, 'scheduler_transition', False) and not state.get("scheduler_transition") and int(state.get("step", -1)) == args.transition_start:
-            parent_config = {
-                "batch": args.batch, "max_len": args.max_len, "lr": 1.5e-4,
-                "warmup": 100, "total_steps": 10000,
-                "weight_decay": CONFIG.weight_decay,
+            parent_config = state.get("training_config") or {}
+            required_parent = {
+                "batch": args.batch, "max_len": args.max_len, "lr": args.lr,
+                "warmup": args.warmup, "weight_decay": CONFIG.weight_decay,
             }
-            if state.get("training_config") != parent_config:
-                raise ValueError("Step-1000 parent training config differs from the frozen baseline")
+            if any(parent_config.get(key) != value for key, value in required_parent.items()):
+                raise ValueError("Parent checkpoint batch/length/LR/warmup/weight-decay mismatch")
+            if int(parent_config.get("total_steps", -1)) < args.transition_start:
+                raise ValueError("Parent scheduler horizon ends before the transition step")
             expected_resume_config = parent_config
         checks = {
             "architecture_id": (state.get("architecture_id"), ARCHITECTURE_ID),
@@ -251,6 +253,7 @@ def main():
                     "weights_preserved=True, optimizer_moments_preserved=True",
                     start, old_lr, args.lr,
                 )
+                scheduler.step()  # Set the LR for the first update after the parent checkpoint.
             else:
                 raise ValueError("scheduler-transition requires the exact step-1000 parent or a transition checkpoint")
         else:

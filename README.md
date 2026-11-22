@@ -268,3 +268,8 @@ Los workflows históricos y sus checkpoints son referencias de auditoría; no co
 ---
 
 *Lumen-Ronin no tiene que demostrar que puede ejecutar más operaciones por segundo a cualquier precio. Tiene que demostrar que sus órganos conservan su función, que el modelo aprende y que la mejora compensa su coste computacional frente a un Transformer de control.*
+
+
+### Aplicación directa del perfil medido (22 de noviembre)
+
+Se actualizaron en `main` los dos perfiles CPU para que tanto el perfil normal como el alias `fast` utilicen 4 hilos intra-op, 2 inter-op, MKLDNN activado, AdamW `foreach=false`, afinidad CPU y ambos fastpaths experimentales desactivados. Commits: `9377772` y `ced7d54`. No se modificó la semántica de Delta ni de Homeostasis: los logs no contienen una implementación alternativa de la recurrencia que haya demostrado acelerar forward y backward manteniendo las mismas escrituras y gradientes. No se debe sustituir por una aproximación paralela.

@@ -1,0 +1,259 @@
+name: LUMEN — 20 organ hypotheses, 100 steps, loss comparison
+
+on:
+  push:
+    paths:
+      - ".github/workflows/benchmark-lumen-organ-20.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-organ-hypotheses-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  PARENT_RUN_ID: "45037602119"
+  PREPARED_RUN_ID: "45021399600"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+
+jobs:
+  benchmark:
+    name: "${{ matrix.profile }} — 100 steps"
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        profile:
+          - baseline_repeat
+          - glucose_step_001
+          - glucose_step_003
+          - glucose_decay_095
+          - glucose_threshold_002
+          - pain_response_020
+          - pain_response_050
+          - pain_decay_070
+          - pain_deadband_002
+          - pain_budget_gain_015
+          - pleasure_response_020
+          - pleasure_response_050
+          - pleasure_decay_070
+          - pleasure_deadband_002
+          - pleasure_budget_gain_075
+          - homeostasis_eta_0005
+          - homeostasis_eta_002
+          - homeostasis_target_004
+          - homeostasis_target_006
+          - memory_thresholds_low
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install exact Lumen CPU training dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+
+      - name: Download frozen Spanish training corpus and token cache
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-45021399600
+          path: .
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download exact promoted Lumen step-41000 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step51000-45037602119
+          path: parent-lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify identical data and parent checkpoint
+        run: |
+          set -euo pipefail
+          test -s artifacts/spanish-v1/train.jsonl
+          test -s data/spanish/tokenizer/tokenizer.json
+          test -s data/spanish/train_tokens_128.pt
+          python - <<'PY'
+          import json, torch
+          from pathlib import Path
+          manifest=json.loads(Path("artifacts/spanish-v1/manifest.json").read_text())
+          assert manifest["language"] == "es"
+          state=torch.load("parent-lumen/checkpoints/lumen/step_41000.pt",map_location="cpu",weights_only=False)
+          transition=state["scheduler_transition"]
+          assert state["step"] == 41000
+          assert state["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          assert state["pilot_all_rows"] is True
+          assert transition["current_step"] in (41000,41001)
+          assert transition["end_step"] == 51000
+          assert state["optimizer"] and state["rng"] and state["scheduler"]
+          print("Verified parent step 41000; tokens_seen:",state["tokens_seen"])
+          PY
+
+      - name: Write baseline organ profile
+        run: |
+          mkdir -p config artifacts
+          python - <<'PY'
+          import json
+          cfg={"threads":4,"interop_threads":2,"mkldnn_enabled":True,
+               "foreach":False,"cpu_affinity":True,"organs":{}}
+          with open("config/organ_profile.json","w") as f:
+              json.dump(cfg,f,sort_keys=True)
+              f.write("\n")
+          PY
+          python -m json.tool config/organ_profile.json >/dev/null
+
+      - name: Run matched 100-step baseline
+        run: |
+          set -euo pipefail
+          python -m train.train \
+            --steps 100 --resume parent-lumen/checkpoints/lumen/step_41000.pt \
+            --phase 1 --pilot-all-rows \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/organ_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 61000 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 41000 --transition-end 61000 \
+            --warmup-transition 100 --transition-plateau-steps 15900 \
+            --transition-min-lr-ratio 0.5 \
+            --log-every 20 --checkpoint-every 100000 --recovery-checkpoint-every 0 \
+            --parameter-check-every 100 --ckpt-dir /tmp/lumen-organ-baseline \
+            2>&1 | tee artifacts/baseline.log
+
+      - name: Write and validate organ hypothesis
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          profiles = {
+            "baseline_repeat": {},
+            "glucose_step_001": {"glucose":{"step":0.01}},
+            "glucose_step_003": {"glucose":{"step":0.03}},
+            "glucose_decay_095": {"glucose":{"decay":0.95}},
+            "glucose_threshold_002": {"glucose":{"improvement_threshold":0.002}},
+            "pain_response_020": {"pain":{"response":0.20}},
+            "pain_response_050": {"pain":{"response":0.50}},
+            "pain_decay_070": {"pain":{"decay":0.70}},
+            "pain_deadband_002": {"pain":{"deadband":0.002}},
+            "pain_budget_gain_015": {"pain_budget_gain":0.15},
+            "pleasure_response_020": {"pleasure":{"response":0.20}},
+            "pleasure_response_050": {"pleasure":{"response":0.50}},
+            "pleasure_decay_070": {"pleasure":{"decay":0.70}},
+            "pleasure_deadband_002": {"pleasure":{"deadband":0.002}},
+            "pleasure_budget_gain_075": {"pleasure_budget_gain":0.075},
+            "homeostasis_eta_0005": {"homeostasis":{"eta":0.0005}},
+            "homeostasis_eta_002": {"homeostasis":{"eta":0.002}},
+            "homeostasis_target_004": {"homeostasis":{"target":0.04}},
+            "homeostasis_target_006": {"homeostasis":{"target":0.06}},
+            "memory_thresholds_low": {"memory":{"small_pe":0.25,"large_pe":0.70}},
+          }
+          name=os.environ["PROFILE"]
+          assert name in profiles, name
+          cfg={"threads":4,"interop_threads":2,"mkldnn_enabled":True,
+               "foreach":False,"cpu_affinity":True,"organs":profiles[name]}
+          with open("config/organ_profile.json","w") as f:
+              json.dump(cfg,f,sort_keys=True)
+              f.write("\n")
+          with open("artifacts/hypothesis.json","w") as f:
+              json.dump({"name":name,"organs":profiles[name]},f,indent=2,sort_keys=True)
+              f.write("\n")
+          print("Hypothesis:",name,json.dumps(profiles[name],sort_keys=True))
+          PY
+          python -m json.tool config/organ_profile.json >/dev/null
+          python -m json.tool artifacts/hypothesis.json >/dev/null
+
+      - name: Run 100-step organ hypothesis from identical checkpoint
+        run: |
+          set -euo pipefail
+          python -m train.train \
+            --steps 100 --resume parent-lumen/checkpoints/lumen/step_41000.pt \
+            --phase 1 --pilot-all-rows \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/organ_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 61000 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 41000 --transition-end 61000 \
+            --warmup-transition 100 --transition-plateau-steps 15900 \
+            --transition-min-lr-ratio 0.5 \
+            --log-every 20 --checkpoint-every 100000 --recovery-checkpoint-every 0 \
+            --parameter-check-every 100 --ckpt-dir /tmp/lumen-organ-candidate \
+            2>&1 | tee "artifacts/candidate.log"
+
+      - name: Compare five 20-step loss windows and organ states
+        if: always()
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, re, statistics
+          def read(path):
+              raw=pathlib.Path(path).read_text(errors="replace")
+              windows=[float(x) for x in re.findall(r"glucose_check step=\d+ mean_loss=([0-9.eE+-]+)",raw)]
+              intervals=[float(x) for x in re.findall(r"profile_20:.*?total=([0-9.]+)s",raw)]
+              pain=[float(x) for x in re.findall(r"affect_check step=\d+ pain=([0-9.eE+-]+)",raw)]
+              pleasure=[float(x) for x in re.findall(r"affect_check step=\d+ pain=[0-9.eE+-]+ regression=[0-9.eE+-]+ pleasure=([0-9.eE+-]+)",raw)]
+              glucose=[float(x) for x in re.findall(r"glucose_check step=\d+ mean_loss=[0-9.eE+-]+ improved=(?:True|False|None) signal=[a-z_]+ reserve=([0-9.eE+-]+)",raw)]
+              final_losses=re.findall(r"step=(\d+) loss=([0-9.eE+-]+) token=",raw)
+              if len(windows)!=5 or len(intervals)!=5 or len(pain)!=5 or len(pleasure)!=5 or len(glucose)!=5:
+                  raise SystemExit(f"Incomplete 100-step evidence in {path}: loss_windows={len(windows)}, intervals={len(intervals)}, pain={len(pain)}, pleasure={len(pleasure)}, glucose={len(glucose)}")
+              total=sum(intervals)
+              return {
+                "loss_windows_20_steps":windows,
+                "mean_loss_100_steps":round(statistics.mean(windows),6),
+                "loss_std_between_windows":round(statistics.pstdev(windows),6),
+                "first_window_loss":windows[0],
+                "last_window_loss":windows[-1],
+                "loss_change_first_to_last":round(windows[-1]-windows[0],6),
+                "final_logged_step_loss":float(final_losses[-1][1]) if final_losses else None,
+                "pain_trace":pain,"pleasure_trace":pleasure,"glucose_reserve_trace":glucose,
+                "profile_20_seconds":intervals,
+                "steps_per_second":round(100/total,5),
+              }
+          control=read("artifacts/baseline.log")
+          candidate=read("artifacts/candidate.log")
+          report={
+            "hypothesis":os.environ["PROFILE"],
+            "control":control,
+            "candidate":candidate,
+            "candidate_minus_control_mean_loss":round(candidate["mean_loss_100_steps"]-control["mean_loss_100_steps"],6),
+            "candidate_loss_change_percent":round(100*(candidate["mean_loss_100_steps"]/control["mean_loss_100_steps"]-1),4),
+            "measurement":"mean of five non-overlapping 20-step training-loss windows; not a holdout",
+            "steps_per_run":100,
+            "parent_checkpoint_step":41000,
+            "final_step":41100,
+            "all_organs_enabled":True,
+          }
+          pathlib.Path("artifacts/comparison.json").write_text(json.dumps(report,indent=2)+"\n")
+          print(json.dumps(report,indent=2))
+          PY
+
+      - name: Upload organ benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-organ-100-${{ matrix.profile }}-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 30

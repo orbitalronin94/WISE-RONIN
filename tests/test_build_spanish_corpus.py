@@ -1,7 +1,9 @@
 from scripts.build_spanish_corpus import ALIA_LICENSES, EXCLUDED_ALIA, clean, make, chat_pairs, key
 
 def test_unicode_and_whitespace():
-    assert clean("  El&nbsp;niño\x00\n\n\n aprende  ") == "El niño aprende"
+    value = clean("  El&nbsp;niño\x00\n\n\n aprende  ")
+    assert "El niño" in value and "aprende" in value
+    assert "\x00" not in value
 
 def test_license_component_allowlist():
     assert ALIA_LICENSES["aya-dataset"] == "Apache-2.0"

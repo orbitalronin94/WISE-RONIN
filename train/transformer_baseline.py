@@ -225,6 +225,7 @@ def main():
             saved_transition = state.get("scheduler_transition")
             if mismatches or not saved_transition or int(saved_transition.get("current_step", -1)) != int(state.get("step", -2)):
                 raise ValueError(f"Cannot restart scheduler from this checkpoint; mismatches={mismatches}")
+            expected_resume_config = parent_config
         checks = {
             "architecture_id": (state.get("architecture_id"), ARCHITECTURE_ID),
             "seed": (state.get("seed"), args.seed),

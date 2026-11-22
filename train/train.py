@@ -232,8 +232,8 @@ def main():
                         help="Explicit synthetic smoke test only; never a training dataset")
     args = parser.parse_args()
 
-    if args.steps < 1 or (args.steps > 1000 and not args.dummy_m1):
-        parser.error("--steps must be between 1 and 1000")
+    if args.steps < 1 or (args.steps > 10000 and not args.dummy_m1):
+        parser.error("--steps must be between 1 and 10000")
     if args.log_every < 1 or args.checkpoint_every < 1 or args.recovery_checkpoint_every < 0 or args.parameter_check_every < 1:
         parser.error("log/checkpoint/parameter-check intervals must be positive; recovery interval may be zero")
     if args.threads < 1 or args.interop_threads < 1:
@@ -329,10 +329,11 @@ def main():
         }
         if parent_arch not in allowed_parent_arches:
             raise ValueError(f"Unsupported LUMEN parent architecture: {parent_arch}")
-        if parent_arch != "ronin_lumen_v3_1_residual_homeostasis" and int(state.get("step", 0)) != 500:
-            raise ValueError("Only the frozen 500-step pilot checkpoint may migrate to residual homeostasis")
-        if parent_arch != "ronin_lumen_v3_1_residual_homeostasis":
-            LOG.warning("Architecture transition at step 500: sparse homeostatic updates now preserve the residual stream")
+        needs_homeostasis_migration = parent_arch in {"ronin_lumen_v3_pilot", "legacy_preversioned"}
+        if needs_homeostasis_migration and int(state.get("step", 0)) != 500:
+            raise ValueError("Only the frozen 500-step legacy pilot checkpoint may migrate to residual homeostasis")
+        if needs_homeostasis_migration:
+            LOG.warning("Legacy architecture transition at step 500: sparse homeostatic updates now preserve the residual stream")
         if state.get("v32_ze", False) != args.v32_ze:
             raise ValueError("Checkpoint V3.2 feature flag mismatch")
         expected_training_config = {
@@ -348,13 +349,15 @@ def main():
             } if args.scheduler_transition else {}),
         }
         if args.scheduler_transition and not state.get("scheduler_transition") and int(state.get("step", -1)) == args.transition_start:
-            parent_config = {
-                "batch": args.batch, "max_len": args.max_len, "lr": 1.5e-4,
-                "warmup": 100, "total_steps": 10000,
-                "weight_decay": CONFIG.weight_decay,
+            parent_config = state.get("training_config") or {}
+            required_parent = {
+                "batch": args.batch, "max_len": args.max_len, "lr": args.lr,
+                "warmup": args.warmup, "weight_decay": CONFIG.weight_decay,
             }
-            if state.get("training_config") != parent_config:
-                raise ValueError("Step-1000 parent training config differs from the frozen baseline")
+            if any(parent_config.get(key) != value for key, value in required_parent.items()):
+                raise ValueError("Parent checkpoint batch/length/LR/warmup/weight-decay mismatch")
+            if int(parent_config.get("total_steps", -1)) < args.transition_start:
+                raise ValueError("Parent scheduler horizon ends before the transition step")
         elif state.get("training_config") not in (None, expected_training_config):
             raise ValueError("Checkpoint training hyperparameters mismatch")
         if state.get("seed", args.seed) != args.seed:
@@ -383,7 +386,7 @@ def main():
         optimizer.load_state_dict(state["optimizer"])
         for group in optimizer.param_groups:
             group["foreach"] = not args.disable_foreach
-        if parent_arch != "ronin_lumen_v3_1_residual_homeostasis":
+        if needs_homeostasis_migration:
             migrate_legacy_homeostasis(model, optimizer)
         start = int(state["step"])
         if args.scheduler_transition:
@@ -407,6 +410,7 @@ def main():
                     "weights_preserved=True, optimizer_moments_preserved=True",
                     start, old_lr, args.lr,
                 )
+                scheduler.step()  # Set the LR for the first update after the parent checkpoint.
             else:
                 raise ValueError("scheduler-transition requires the exact step-1000 parent or a transition checkpoint")
         else:

@@ -1,140 +1,218 @@
-# WISE-RONIN
+# Lumen-Ronin
 
-**Modelo de lenguaje pequeño, entrenado y evaluado en español, con prioridad en coherencia, estabilidad y coste real de CPU.**
+**Experimento CPU-first: arquitectura Lumen recurrente frente a un Transformer de control, entrenados desde cero y evaluados bajo condiciones emparejadas.**
 
-WISE-RONIN es la línea activa del proyecto. La versión RONIN-10M anterior queda archivada como experimento abandonado: aumentar parámetros y pasos no produjo una mejora útil en generación. En los holdouts de 60k–78k aparecieron bucles, repetición, fugas de plantillas del corpus, fragmentos ingleses irrelevantes y respuestas absurdas o vacías. La decisión fue dejar de perseguir esa rama y concentrar el trabajo en un modelo más pequeño y una evaluación más rigurosa.
+La línea experimental activa deja de ser WISE-RONIN. El objetivo ahora es determinar si los órganos de Lumen-Ronin aportan una mejora medible frente a un Transformer comparable, sin aceptar una penalización de velocidad que haga inviable entrenar y experimentar.
 
-> **Estado a 22 de noviembre de 2026:** corpus español combinado generado y auditado localmente por GitHub Actions, pero el artefacto final todavía no se ha publicado porque falló una aserción de validación del manifiesto. No se ha iniciado un entrenamiento con esa mezcla. La arquitectura y los datos deben considerarse experimentales hasta completar la siguiente evaluación.
+El repositorio conserva su nombre técnico actual (`WISE-RONIN`), pero la identidad y el plan de trabajo documentados aquí corresponden a **Lumen-Ronin**. No se reutilizarán checkpoints anteriores: ambos modelos comenzarán en **step 0**, con inicialización nueva.
 
-## Línea vigente
+> **Estado a 22 de noviembre de 2026:** fase de auditoría y optimización de rendimiento. No iniciar el entrenamiento largo hasta completar las pruebas de equivalencia, medir los cuellos de botella y verificar el corpus/tokenizer exactos que compartirán ambos modelos.
 
-El checkpoint de referencia conocido de WISE-RONIN tiene **4.267.520 parámetros** y utiliza un tokenizer de **1.297 tokens**. La configuración registrada es:
+## Decisión de proyecto
 
-| Parámetro | Valor |
-|---|---:|
-| Dimensión | 256 |
-| Capas | 6 |
-| Cabezas Q / KV | 8 / 2 |
-| Dimensión por cabeza | 32 |
-| Dimensión feed-forward | 640 |
-| Contexto máximo | 1.024 |
-| Vocabulario | 1.297 |
-| Parámetros | 4.267.520 |
+- **WISE-RONIN:** línea abandonada; no es el objetivo de los próximos entrenamientos.
+- **Lumen-Ronin:** arquitectura experimental principal.
+- **Transformer:** baseline de control entrenado en paralelo desde cero.
+- **Punto de partida:** step 0 para ambos. No importar pesos, momentos de AdamW, scheduler ni estado recurrente de checkpoints previos.
+- **Prioridad inmediata:** mejorar pasos/s sin eliminar ni alterar silenciosamente las funciones de los órganos.
+- **Entrenamiento largo:** bloqueado hasta cerrar la auditoría de rendimiento y la validación del conjunto de datos.
 
-El trabajo anterior llegó a una continuación desde 40k hacia 50k pasos. No se debe presentar ese tramo como una campaña final validada: el checkpoint de 40k es el último punto de referencia documentado con evaluación comparativa disponible. La pérdida de entrenamiento, por sí sola, no demuestra capacidad factual ni razonamiento.
+## Referencia de rendimiento y problema
 
-### Por qué se abandonó RONIN-10M
+En una medición previa de Lumen V3.1, ambos modelos tenían un tamaño cercano a 2,3 millones de parámetros. Lumen registró una pérdida de 6,353 frente a 7,838 del Transformer en aquel punto de comparación, pero necesitó 183 segundos por 100 pasos frente a 13,7 segundos: aproximadamente **13,3 veces más lento**.
 
-La rama de aproximadamente diez millones de parámetros alcanzó 60k–78k pasos, pero los holdouts revelaron degradación generativa: repetición y bucles, plantillas filtradas desde los datos, texto inglés fuera de contexto, respuestas absurdas con tono seguro y salidas vacías. En la evaluación de 78k se observaron además cinco respuestas «ni puta idea». Más parámetros y más entrenamiento no resolvieron esos defectos.
+Ese resultado es una señal de que hay que investigar, no una prueba definitiva de superioridad de calidad: ambos obtuvieron 0/155 en aquel holdout y no lograron generar respuestas válidas de forma fiable. La pérdida de entrenamiento no sustituye la evaluación de generaciones.
 
-WISE-RONIN se mantuvo como línea activa porque, con menos de la mitad de parámetros efectivos, mostró respuestas más coherentes. Esto no significa que ya sea un modelo competente: las pruebas disponibles también mostraron debilidad factual y aritmética. La decisión es comparativa y provisional, no una declaración de superioridad general.
+## Esquema de optimización previo al entrenamiento
 
-## Corpus español combinado
+Las optimizaciones se aplicarán en orden, midiendo cada una de forma aislada y conservando una ruta de referencia. No se aceptará una mejora de throughput si cambia la semántica del modelo, rompe gradientes o degrada la estabilidad.
 
-La preparación se divide en dos partes: fuentes externas con licencia permitida y material histórico propio. El corpus externo se preparó en PR #64 y la extracción/mezcla con el archivo histórico se implementó en PR #65.
+### 1. Medición reproducible de la carga real
 
-- [PR #64 — corpus español licenciado](https://github.com/orbitalronin94/WISE-RONIN/pull/64)
-- [PR #65 — extracción de hechos históricos y mezcla](https://github.com/orbitalronin94/WISE-RONIN/pull/65)
-- [Workflow de preparación inicial](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45007651092)
-- [Workflow de mezcla](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45008699964)
+Antes de cambiar código, registrar por separado:
 
-### Resultado de la extracción
+- Muestreo y construcción del batch.
+- Forward de cada órgano y de la ruta completa.
+- Cálculo de cada componente de pérdida.
+- Backward.
+- Gradient clipping.
+- Actualización AdamW.
+- Diagnósticos, comprobaciones de salud y snapshots.
+- Replay/sueño.
+- Escritura de checkpoints y evaluación.
 
-El workflow de mezcla procesó el archivo histórico `archive/v2/data/expanded/wise_ronin_expanded.jsonl`:
+Cada perfil debe declarar hardware/runner, versión de Python y PyTorch, hilos intra-op e inter-op, afinidad CPU, MKLDNN, foreach/fused AdamW, batch, longitud de secuencia, warmup y pasos medidos. Publicar mediana y dispersión, pasos/s y tokens/s. Separar tiempo de compilación inicial del throughput estable, pero informar ambos.
 
-| Métrica | Resultado |
-|---|---:|
-| Filas históricas examinadas | 147.627 |
-| Filas clasificadas como español | 147.627 |
-| Grupos independientes por `fact_id` | 10.341 |
-| Ejemplos históricos incorporados | 10.341 |
-| Train combinado | 80.446 |
-| Validation | 1.413 |
-| Holdout | 2.431 |
+### 2. Bucle recurrente de EstadoDelta
 
-Se conservó una variante canónica por grupo `fact_id`, en lugar de incorporar todas las paráfrasis de cada hecho. La respuesta se construyó desde el campo canónico `hecho`, evitando entrenar el modelo con cientos de reformulaciones estilísticas casi idénticas. Los ejemplos históricos se añadieron únicamente a train.
+**Sospecha prioritaria.** `EstadoDelta.forward` proyecta K/V/Q de forma conjunta, pero actualiza el estado recurrente con un bucle Python secuencial sobre cada token. La recurrencia real no puede paralelizarse sin más: el estado de cada token depende del anterior.
 
-Validation y holdout se copiaron sin modificación desde el corpus base. El holdout contiene 1.931 ejemplos SIQA-es y 500 OpenBookQA-es. No se utiliza para entrenamiento.
+Plan:
 
-### Fuentes externas
+1. Perfilar por separado proyecciones, normalizaciones, operaciones `bmm`, gates y actualización recurrente.
+2. Reducir asignaciones temporales y conversiones redundantes dentro del bucle.
+3. Probar compilación de la región recurrente, midiendo compilación, ejecución y coste de backward.
+4. Evaluar variantes vectorizadas solo si preservan exactamente la dependencia temporal y se demuestra equivalencia numérica/funcional.
+5. Mantener una implementación de referencia para comparar salidas, estados y gradientes.
 
-| Fuente | Ejemplos en la mezcla |
-|---|---:|
-| `somosnlp/instruct-legal-refugiados-es` | 9.103 |
-| `OysterCoreAI/SFT-General-Spanish-50K` | 24.484 |
-| `gplsi/uji_parallel_va_es` | 19.569 |
-| `BSC-LT/ALIA-2606-SFT` | 16.949 |
-| Archivo histórico propio | 10.341 |
+No sustituir la recurrencia por una aproximación paralela solo para elevar pasos/s.
 
-La política de admisión externa permite Apache-2.0 y CC-BY-4.0; se excluyen fuentes NC, ND, CC-BY-SA, desconocidas o con componentes de licencia no verificables. El material histórico se identifica como contenido generado por el proyecto. Las cifras de esta tabla corresponden al manifiesto producido por la ejecución de mezcla, no a estimaciones.
+### 3. Homeostasis y Top-K
 
-### Estado del artefacto: generado, pero no publicado
+El órgano Homeostasis selecciona Top-K por token y calcula actividad efectiva por unidad. Actualmente mantiene estadísticas y puede materializar tensores densos o scatter operations.
 
-La ejecución [45008699964](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45008699964) completó la extracción y produjo los recuentos y hashes siguientes:
+Plan:
 
-- Train: `bea761b56684f6e93d030632e1c464752f45a1dc03067c43692632705a4cf515`
-- Validation: `2efacb8236c1041534199709791e63469ce36f64335aef1b60c8ff0c57a986b6`
-- Holdout: `e21ae7e292d603f1b8073d8114572c92fb0c6448bfaed9066413ddce09e5a359`
+- Medir Top-K, gather, ReLU, scatter y actualización de EMA por separado.
+- Comparar el camino de scatter fusionado con el camino de referencia.
+- Evitar transferencias a CPU y conversiones a escalares en cada paso.
+- Actualizar los resúmenes detallados en intervalos controlados, sin eliminar las señales necesarias para la homeostasis.
+- Comprobar equivalencia de salida, actividad efectiva, bias y gradientes.
 
-La subida del artefacto se omitió porque el paso de validación intentó leer la clave inexistente `legacy_rows_non_spanish`; el manifiesto sí contiene `legacy_rows_spanish` y `legacy_rows_seen`. Es un defecto en la comprobación del workflow posterior a la extracción, no un fallo del procesamiento del corpus. Hasta que la validación se corrija y el artefacto se publique, estos hashes documentan la salida observada en los logs, pero no sustituyen un artefacto descargable y verificable.
+**Restricción:** no cambiar `k_top`, `m_target`, `eta` ni la regla de actualización como optimización de velocidad sin un experimento funcional separado.
 
-Este conjunto es principalmente **SFT, QA e instrucciones**, junto con texto paralelo y hechos/matemática sintéticos históricos. No debe describirse como un corpus general de preentrenamiento web ni como una muestra representativa de todo el español.
+### 4. Pérdidas auxiliares
 
-## Lecciones de evaluación
+La pérdida de Lumen incluye cross-entropy, JEPA, diversidad, router y penalización de repetición. El Transformer de control debe tener su objetivo claramente declarado; comparar solo la cross-entropy del Transformer contra la suma de pérdidas de Lumen no permite atribuir diferencias de tiempo a la arquitectura.
 
-Las evaluaciones anteriores mostraron que una pérdida baja puede coexistir con respuestas incorrectas, repetición o incapacidad para terminar una respuesta. Por ello, ningún resultado se juzga solo por loss.
+Plan:
 
-Se deben registrar como mínimo:
+- Cronometrar cada pérdida y su backward individualmente.
+- Medir el coste de JEPA, diversidad, router y repetición.
+- Mantener una comparación de objetivo común (next-token cross-entropy) para aislar el coste arquitectónico.
+- Ejecutar después una ablación documentada de los auxiliares, midiendo calidad y velocidad.
+- No retirar una pérdida de la configuración principal sin registrar el cambio y su efecto en holdouts.
 
-- EOS y longitud de salida, incluidas respuestas vacías o truncadas.
-- Exactitud en aritmética y razonamiento, con conjuntos de prueba separados.
-- Exactitud factual y resistencia a premisas falsas.
-- Repetición de n-gramas, bucles y diversidad de respuestas.
-- Fugas de plantillas o memorización de formulaciones del entrenamiento.
-- Proporción de respuestas en español y fragmentos fuera de contexto.
-- Tiempo real, pasos/s, tokens/s y memoria máxima en CPU.
-- Hashes de corpus, tokenizer, checkpoint, configuración y código evaluador.
+### 5. Diagnósticos y comprobaciones numéricas
 
-Los holdouts deben permanecer congelados y fuera del entrenamiento. Toda comparación con Transformer debe usar los mismos datos, tokenizer, semilla, presupuesto de tokens y condiciones de evaluación, dejando explícitas las diferencias arquitectónicas.
+El trainer ejecuta comprobaciones exhaustivas de parámetros/estado del optimizador cada cierto número de pasos y recopila diagnósticos de órganos.
 
-## Ingeniería y rendimiento CPU
+Plan:
 
-El objetivo operativo es entrenar en runners CPU de GitHub Actions sin sacrificar las comprobaciones que permiten confiar en el resultado. Los benchmarks cortos sirven para seleccionar candidatos, no para prometer aceleraciones en entrenamientos completos.
+- Mantener checks de loss y gradientes no finitos en cada actualización.
+- Mantener escaneos completos de parámetros y estado del optimizador en un intervalo configurable y explícito.
+- Separar telemetría barata por paso de snapshots detallados.
+- No hacer `.item()`, `.cpu()` ni sincronizaciones innecesarias en el camino crítico.
+- Registrar cualquier reducción de frecuencia de diagnóstico y conservar una auditoría completa en los checkpoints.
 
-La configuración de hilos debe fijarse mediante mediciones reproducibles en el runner utilizado. No se debe asumir que más hilos, menos comprobaciones o menos pérdidas auxiliares equivalen a más rendimiento útil. Las optimizaciones que eliminen observabilidad o cambien el objetivo de aprendizaje requieren una comparación explícita y no se adoptan solo por aumentar pasos/s.
+Nunca desactivar silenciosamente las protecciones numéricas para mejorar el benchmark.
 
-Los workflows de benchmark y los de entrenamiento tienen propósitos distintos. Integrar documentación o preparar datos no debe iniciar accidentalmente un entrenamiento largo.
+### 6. AdamW y operaciones CPU
+
+Medir las opciones reales del runner antes de fijar el perfil:
+
+- Intra-op: comparar 1, 2 y 4 hilos.
+- Inter-op: comparar configuraciones pequeñas y estables.
+- MKLDNN: ON/OFF con la misma carga y versión de PyTorch.
+- AdamW: `foreach` y `fused` cuando estén soportados.
+- `zero_grad(set_to_none=True)` frente a reutilización de gradientes.
+- Afinidad CPU y variables OMP/MKL.
+- `torch.set_flush_denormal` como hipótesis secundaria.
+
+No asumir que más hilos o una opción llamada fused siempre acelera. El perfil ganador debe elegirse por throughput estable y no por una única repetición.
+
+### 7. torch.compile
+
+Evaluar `default` y `reduce-overhead` en la misma revisión de código:
+
+- Contabilizar tiempo de compilación y posibles recompilaciones.
+- Medir throughput después del warmup.
+- Verificar compatibilidad con estado recurrente, Top-K, backward y checkpoint/resume.
+- Rechazarlo si la compilación no amortiza su coste en el tamaño real de los bloques.
+
+### 8. Sueño y memoria
+
+La configuración actual registra consolidación cada 500 pasos y hasta 50 pasos de replay. Se conserva inicialmente: no se desactiva para maquillar el throughput ni se cambia su frecuencia antes de medirla.
+
+- Medir el coste del evento de sueño por separado y su coste amortizado.
+- Medir el optimizador/replay, copias de memoria y cualquier sincronización.
+- Comprobar que la memoria lenta recibe escrituras y que la consolidación realmente ocurre.
+- Verificar que el estado transitorio se reinicia en los límites definidos y que el replay no contamina la evaluación.
+
+### 9. Checkpoints y evaluación
+
+- Medir serialización y tamaño de checkpoint aparte del tiempo de actualización.
+- Mantener checkpoints recuperables con modelo, optimizador, scheduler, RNG, contador de tokens y hashes.
+- Evaluar con `model.eval()`, `no_grad()` y estado recurrente reiniciado por prompt.
+- No ejecutar replay, sueño ni escrituras de memoria durante evaluación.
+- Mantener exactamente el mismo tokenizer y contrato de EOS entre entrenamiento y evaluación.
+
+## Protocolo de comparación desde cero
+
+Lumen-Ronin y Transformer deben ejecutarse como tareas paralelas dentro de una misma campaña emparejada, sin que una use más datos o un presupuesto distinto.
+
+| Elemento | Condición inicial |
+|---|---|
+| Paso inicial | 0 para ambos |
+| Semilla | 42 |
+| Batch | 8 |
+| Longitud de secuencia | 128 |
+| Datos | Mismos ejemplos y mismo orden de muestreo reproducible |
+| Tokenizer | El mismo artefacto y SHA-256 |
+| Runner | Mismo tipo de runner CPU |
+| Presupuesto | Mismo número de pasos y tokens vistos |
+| Evaluación | Mismo holdout congelado, una evaluación emparejada al final de cada bloque |
+| Recuperación | Checkpoint independiente para cada modelo |
+
+El protocolo de bloques cortos sirve para comprobar que la velocidad y la calidad se sostienen. No se inicia una campaña larga hasta superar el smoke test, comprobar checkpoint/resume y revisar generaciones reales.
+
+### Métricas obligatorias
+
+- Pasos/s y tokens/s, con tiempos de warmup y compilación separados.
+- Tiempo por etapa y coste amortizado del sueño.
+- Loss de next-token y componentes auxiliares por separado.
+- EOS correcto, longitud de salida, respuestas vacías y truncamiento.
+- Exactitud factual, aritmética y razonamiento.
+- Repetición, bucles, diversidad y fugas de plantillas.
+- Porcentaje de respuestas en español y texto fuera de contexto.
+- Estado de memoria, tasa de escritura, actividad efectiva y valores no finitos.
+- Hashes de corpus, tokenizer, código, configuración y checkpoints.
+
+La comparación debe incluir tanto calidad por paso como calidad por unidad de tiempo. Un modelo que mejora la pérdida pero necesita 13 veces más tiempo no se considera ganador automáticamente.
+
+## Datos: estado y condición de uso
+
+Existe una preparación anterior de corpus español licenciado y una mezcla con material histórico propio documentada en PR #64 y PR #65. La ejecución de mezcla procesó 147.627 filas históricas y seleccionó 10.341 grupos canónicos; los logs registraron 80.446 filas de train, 1.413 de validation y 2.431 de holdout.
+
+Sin embargo, la ejecución [45008699964](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45008699964) falló en una aserción del manifiesto después de la extracción y no publicó el artefacto combinado. Por tanto, **ese conjunto no se considera todavía un artefacto de entrenamiento verificado**. Antes de usarlo hay que corregir la clave de validación, publicar el artefacto y verificar ficheros, manifiesto, hashes y separación de splits.
+
+El corpus resultante es principalmente SFT/QA/instrucciones, texto paralelo y material sintético propio; no debe presentarse como pretraining general de todo el español. El mismo conjunto y tokenizer exactos se usarán en los dos modelos. No se entrenará con validation ni holdout.
+
+## Estado de decisiones
+
+| Decisión | Estado |
+|---|---|
+| Abandonar WISE-RONIN como línea activa | Adoptado |
+| Lumen-Ronin frente a Transformer | Adoptado |
+| Ambos desde step 0 | Adoptado |
+| Preservar la semántica de los órganos durante optimización | Obligatorio |
+| Medir cada etapa antes de modificarla | Obligatorio |
+| Mantener sueño cada 500 pasos al inicio | Conservado provisionalmente |
+| Homeostasis sin cambios funcionales iniciales | Conservado |
+| Campaña larga antes de cerrar benchmark y corpus | No autorizada |
 
 ## Próximos hitos
 
-1. Corregir la aserción de validación del manifiesto y publicar el artefacto combinado, sin volver a descargar ni reconstruir las fuentes ya procesadas.
-2. Verificar los tres ficheros, sus hashes, el manifiesto, la separación train/validation/holdout y la procedencia.
-3. Auditar el contrato de secuencias: reservar espacio para EOS después de truncar, y mantener idéntico tokenizer/configuración entre entrenamiento y evaluación.
-4. Ejecutar primero una prueba corta y recuperable; inspeccionar generaciones y holdout antes de autorizar una campaña larga.
-5. Comparar cambios de arquitectura y rendimiento mediante ablaciones, sin mezclar varias hipótesis en un mismo experimento.
+1. Congelar el código y los inputs de referencia para tener una medición reproducible de ambos modelos.
+2. Ejecutar el perfil por etapas y localizar los mayores costes reales.
+3. Aplicar optimizaciones de ejecución de una en una, con pruebas de equivalencia y regresión.
+4. Elegir un perfil CPU común y repetir el benchmark varias veces.
+5. Verificar y publicar el corpus/tokenizer exactos que compartirán ambos modelos.
+6. Ejecutar smoke test desde step 0, incluyendo backward, checkpoint y reanudación.
+7. Lanzar bloques emparejados Lumen/Transformer desde step 0 y revisar calidad antes de ampliar duración.
 
-## Documentación y código
+## Código y workflows
 
-- [Índice de documentación](docs/README.md)
-- [Procedencia y preparación de datos](data/README.md)
-- [Contrato del corpus propio en español](data/owner/README_ES.md)
+- [Código de Lumen](model/lumen.py)
+- [Estado Delta](model/delta_state.py)
+- [Homeostasis](model/homeostasis.py)
+- [Pérdidas](train/loss.py)
+- [Entrenador](train/train.py)
 - [Workflow de entrenamiento](.github/workflows/train.yml)
-- [Workflow del piloto comparativo](.github/workflows/pilot.yml)
-- [Workflow de preparación de datos](.github/workflows/prepare-data.yml)
-- [Workflow de mezcla de corpus](.github/workflows/merge-spanish-corpora.yml)
+- [Workflow comparativo anterior](.github/workflows/pilot.yml)
 
-## Reproducir el smoke test
-
-Desde la raíz del repositorio:
-
-```bash
-python -m pip install -r requirements.txt
-python -m train.train --dummy-m1 --steps 10 --phase 1
-python -m train.train --dummy-m1 --resume checkpoints/step_10.pt --steps 10 --phase 1
-```
-
-El modo dummy solo comprueba forward, optimización, checkpoint y reanudación. No utiliza el corpus real y no demuestra calidad generativa.
+Los workflows históricos y sus checkpoints son referencias de auditoría; no constituyen el punto de partida del nuevo experimento. Cualquier nuevo workflow debe agrupar la preparación, las pruebas y la comparación necesarias sin crear matrices de workflows redundantes.
 
 ---
 
-*WISE-RONIN no se valida por el tamaño de sus pesos ni por una curva de pérdida atractiva. Se valida cuando mantiene respuestas coherentes, termina correctamente y resiste pruebas externas congeladas bajo condiciones reproducibles.*
+*Lumen-Ronin no tiene que demostrar que puede ejecutar más operaciones por segundo a cualquier precio. Tiene que demostrar que sus órganos conservan su función, que el modelo aprende y que la mejora compensa su coste computacional frente a un Transformer de control.*

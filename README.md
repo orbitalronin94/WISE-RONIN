@@ -16,6 +16,20 @@ En LUMEN, esa metáfora tiene correspondencias técnicas concretas: **glucosa** 
 
 La apuesta es que aprender no consiste únicamente en minimizar una loss ni en repetir con velocidad. También importa cómo se distribuyen los recursos, cómo se responde a los errores y cómo se refuerzan las mejoras. Por eso LUMEN no pretende ganar por ser el loro más rápido: pretende demostrar, mediante holdouts y comparaciones reproducibles, que sus órganos producen un aprendizaje más útil.
 
+## Emular principios biológicos con hardware ordinario
+
+> **No esperaremos al hardware del futuro para investigar la inteligencia del pasado.**
+
+No necesitamos una placa de neuronas vivas para estudiar la homeostasis. Ni un chip neuromórfico para experimentar con presupuestos energéticos. Ni un ordenador cuántico para implementar mecanismos de dolor, placer, replay o consolidación de memoria.
+
+Podemos construir aproximaciones de esos principios con CPU, código y modelos pequeños. La hipótesis es que algunas propiedades funcionales de los sistemas vivos —regular recursos, responder a errores, reforzar mejoras y conservar lo aprendido— pueden investigarse sin reproducir su sustrato biológico.
+
+Si la inteligencia depende, al menos en parte, de cómo un sistema administra sus recursos, responde a sus errores, refuerza sus aciertos y conserva lo aprendido, entonces no toda la investigación tiene que consistir en escalar parámetros y comprar más GPU.
+
+**La biología tardó millones de años en descubrir ciertos trucos. Nosotros podemos estudiarlos con Python. Y cualquiera puede intentarlo.**
+
+Esta es una tesis de ingeniería y democratización experimental, no una afirmación de equivalencia entre una simulación y un organismo vivo, ni una prueba de conciencia. LUMEN debe demostrar el valor de estos mecanismos mediante ablaciones, holdouts, medidas de eficiencia y resultados reproducibles.
+
 ## Decisión de proyecto
 
 - **Modelo principal:** Lumen-Ronin, arquitectura recurrente ronin_lumen_v3_2_parallel_delta.

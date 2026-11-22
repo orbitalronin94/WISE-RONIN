@@ -53,6 +53,7 @@ def main():
     p.add_argument("--lumen", required=True); p.add_argument("--transformer", required=True)
     p.add_argument("--out", required=True); p.add_argument("--limit", type=int, default=0)
     p.add_argument("--threads", type=int, default=4); p.add_argument("--max-len", type=int, default=128)
+    p.add_argument("--expected-step", type=int, default=1000)
     a=p.parse_args()
     torch.set_num_threads(a.threads); torch.set_num_interop_threads(2)
     tok=Tokenizer.from_file(a.tokenizer)
@@ -61,11 +62,11 @@ def main():
     models={}
     lm=RoninLumen().cpu()
     ls=torch.load(a.lumen,map_location="cpu",weights_only=False)
-    if int(ls.get("step",-1)) != 1000: raise ValueError("Lumen checkpoint is not step 1000")
+    if int(ls.get("step",-1)) != a.expected_step: raise ValueError(f"Lumen checkpoint is not step {a.expected_step}")
     lm.load_state_dict(ls["model"]); lm.eval(); models["lumen"]=(lm,True)
     tm=SmallTransformerLM(CONFIG.vocab_size,a.max_len).cpu()
     ts=torch.load(a.transformer,map_location="cpu",weights_only=False)
-    if int(ts.get("step",-1)) != 1000: raise ValueError("Transformer checkpoint is not step 1000")
+    if int(ts.get("step",-1)) != a.expected_step: raise ValueError(f"Transformer checkpoint is not step {a.expected_step}")
     tm.load_state_dict(ts["model"]); tm.eval(); models["transformer"]=(tm,False)
     results={k:{"correct":0,"total":0,"mean_answer_nll":0.0,"predictions":[]} for k in models}
     sums={k:0.0 for k in models}

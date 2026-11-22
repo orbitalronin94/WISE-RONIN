@@ -1,0 +1,37 @@
+import pytest
+from model.pain import Nociception
+from model.pleasure import Recompensa
+
+
+def test_initial_check_only_sets_reference():
+    assert Nociception().update(5.0)["pain"] == 0.0
+    assert Recompensa().update(5.0)["pleasure"] == 0.0
+
+
+def test_regression_and_improvement_are_independent():
+    pain, reward = Nociception(ema=0.0), Recompensa(ema=0.0)
+    pain.update(5.0); reward.update(5.0)
+    assert pain.update(6.0)["pain"] > 0
+    assert reward.update(6.0)["pleasure"] == 0
+    pain2, reward2 = Nociception(ema=0.0), Recompensa(ema=0.0)
+    pain2.update(6.0); reward2.update(6.0)
+    assert pain2.update(5.0)["pain"] == 0
+    assert reward2.update(5.0)["pleasure"] > 0
+
+
+def test_deadband_and_bounded_decay():
+    p = Nociception(ema=0.0, response=1.0, decay=0.5)
+    p.update(5.0)
+    assert p.update(5.01)["pain"] == 0
+    assert p.update(100.0)["pain"] == pytest.approx(1.0)
+    assert p.update(100.0)["pain"] == pytest.approx(0.5)
+
+
+def test_invalid_values_rejected_and_state_persists():
+    organ = Recompensa(ema=0.0)
+    with pytest.raises(ValueError): organ.update(float("nan"))
+    with pytest.raises(ValueError): organ.update(-1.0)
+    organ.update(5.0); organ.update(4.0)
+    restored = Recompensa(ema=0.0)
+    restored.load_state_dict(organ.state_dict())
+    assert restored.state() == organ.state()

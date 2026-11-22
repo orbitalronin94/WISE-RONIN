@@ -43,7 +43,7 @@ def main():
  with (out/"train.jsonl").open("w",encoding="utf-8") as dst:
   def put(row):
    nonlocal_dummy=None
-   line=json.dumps(row,ensure_ascii=False,sort_keys=True)+"\\n"
+   line=json.dumps(row,ensure_ascii=False,sort_keys=True)+"\n"
    dst.write(line); train_hash.update(line.encode())
   for row in read_rows(base/"train.jsonl"): put(row); base_n+=1
   for s in SOURCES:
@@ -53,7 +53,7 @@ def main():
    doc_count=chunk_count=short=dup=token_count=0; doc_seen=set()
    with path.open(encoding="utf-8",errors="replace") as f:
     for raw in f:
-     text=re.sub(r"\\s+"," ",raw).strip()
+     text=re.sub(r"\s+"," ",raw).strip()
      if len(text)<120: short+=1; continue
      doc_count+=1; dh=hashlib.sha256(norm(text).encode()).hexdigest()
      if dh in doc_seen: dup+=1; continue
@@ -77,7 +77,7 @@ def main():
  for name in ("validation.jsonl","holdout_multiple_choice.jsonl"):
   payload=(base/name).read_bytes(); (out/name).write_bytes(payload)
  manifest={"name":"WISE-RONIN Spanish shared corpus v2","version":"2.0.0","status":"FROZEN_BUILD_OUTPUT","language":"es","shared_by":["Lumen","Transformer"],"tokenizer_sha256":sha(a.tokenizer),"tokenizer_vocab_size":tok.get_vocab_size(),"max_sequence_length":128,"train_rows":base_n+new_n,"base_train_rows":base_n,"new_chunks":new_n,"validation_rows":sum(1 for _ in read_rows(out/"validation.jsonl")),"holdout_rows":sum(1 for _ in read_rows(out/"holdout_multiple_choice.jsonl")),"sources":stats,"excluded":{"CoWeSe":{"doi":"10.5281/zenodo.5513237","status":"QUARANTINED","reason":"Dataset authors state they do not own underlying crawled texts; rights in source documents are not established."}},"sha256":{"train.jsonl":train_hash.hexdigest(),"validation.jsonl":sha(out/"validation.jsonl"),"holdout_multiple_choice.jsonl":sha(out/"holdout_multiple_choice.jsonl")},"notes":["Validation and holdout copied byte-for-byte from v1.","CSIC and TDX verified against published MD5 before ingestion.","Raw documents split into <=126 BPE-token chunks for the 128-token context.","Chunks retain source, DOI, license, source-document hash and chunk index.","Identical artifact for Lumen and Transformer."]}
- (out/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\\n",encoding="utf-8")
+ (out/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
  (out/"tokenizer.json").write_bytes(Path(a.tokenizer).read_bytes())
  print(json.dumps(manifest,ensure_ascii=False,indent=2))
 if __name__=="__main__": main()

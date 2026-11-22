@@ -1,0 +1,180 @@
+# Crónica experimental de Lumen-Ronin
+>
+> Del primer encendido al linaje de 66.000 pasos.
+>
+> **Corte documental:** 22 de noviembre de 2026. El último checkpoint emparejado completado y evaluado es 61.000. La continuación 61.000 → 66.000 está en curso.
+
+## Cómo leer esta cronología
+
+Esta crónica separa tres cosas que no deben confundirse:
+
+- **Linaje principal:** checkpoints que alimentan la secuencia emparejada Lumen/Transformer.
+- **Pilotos y ramas exploratorias:** pruebas que sirvieron para descubrir fallos, medir rendimiento o ensayar arquitectura, pero que no son padres del checkpoint actual.
+- **Estado de ejecución:** un workflow puede fallar después de guardar un checkpoint válido; también puede terminar bien sin que eso convierta su resultado en una prueba de generalización.
+
+Los holdouts de esta tabla son evaluaciones congeladas de 2.431 preguntas españolas. Accuracy y NLL se muestran por separado: no miden lo mismo. Los resultados son descriptivos; una diferencia de accuracy no implica por sí sola significación estadística.
+
+## I. La primera chispa: pilotos y correcciones
+
+### Piloto de 500 pasos — 21 de noviembre
+
+[Run 44900623884](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44900623884) — piloto emparejado de tamaño comparable, Lumen y Transformer.
+
+- Corpus piloto de 19.000 filas; seed 42; batch 8.
+- Se alcanzó el checkpoint 500 en ambos modelos.
+- El log reveló un problema estructural de arranque: a partir de los pasos 200–500 varias capas Delta dejaron de escribir y la ruta Homeostasis podía anular la representación en lugar de modularla.
+- La telemetría mostraba que las capas superiores perdían actividad efectiva. El porcentaje de neuronas muertas no era suficiente para detectar el problema: el fallo estaba en la ruta de actualización y en la escritura, no simplemente en un contador de unidades.
+
+**Qué dejó:** el piloto no se promocionó como demostración de aprendizaje. Sirvió para localizar el fallo de arranque y motivó la ruta residual de V3.1 y la migración del estado homeostático. Es prehistoria técnica, no un checkpoint padre del linaje actual.
+
+### Arranque emparejado desde cero hasta 1.000
+
+[Entrenamiento 0 → 1.000, run 45012493289](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45012493289) · [Holdout de step 1.000, run 45013766761](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45013766761)
+
+La línea comparativa que se siguió después comenzó desde cero con ambos modelos, mismo corpus/tokenizer, seed 42, batch 8 y contexto 128. El primer holdout español dejó esta referencia:
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| Lumen | 759/2.431 | 31,22 % | **7,2570** |
+| Transformer | 764/2.431 | **31,43 %** | 14,6228 |
+
+El Transformer acertó cinco preguntas más, pero su NLL fue mucho peor. La primera lectura ya exigía separar capacidad de clasificación y calidad de las probabilidades.
+
+## II. El primer recorrido largo
+
+### 1.000 → 11.000 — primera continuación extensa
+
+[Run 45014470774](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45014470774) · ejecución completada.
+
+- Ambos modelos continuaron desde el par de checkpoints de 1.000.
+- Se mantuvieron el corpus español congelado, tokenizer y protocolo común.
+- Se alcanzó step 11.000 y se ejecutó el holdout emparejado.
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| Lumen | 741/2.431 | 30,48 % | **7,0225** |
+| Transformer | 745/2.431 | **30,65 %** | 7,0573 |
+
+La precisión quedó prácticamente empatada; Lumen pasó a tener una NLL ligeramente menor. La loss de entrenamiento descendía, pero el holdout no autorizaba a hablar de una ventaja clara.
+
+### 11.000 → 16.000 — incorporación de los órganos afectivos
+
+[Run 45021399600](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45021399600) · ejecución completada.
+
+Se introdujo en la continuación de Lumen la regulación separada de glucosa, dolor y placer. Las señales se actualizan en los controles de loss y modulan el presupuesto interno de energía. No se utilizaron las preguntas del holdout para alimentar esos órganos.
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| Lumen | 786/2.431 | **32,33 %** | 7,1953 |
+| Transformer | 761/2.431 | 31,30 % | **6,8550** |
+
+Lumen ganó 25 respuestas en accuracy; Transformer conservó mejor NLL. La nueva regulación era una hipótesis de entrenamiento que debía seguir contrastándose, no una causa demostrada de la mejora.
+
+### 16.000 → 21.000 — primera ventaja clara en clasificación
+
+[Run 45025897082](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45025897082) · ejecución completada.
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| Lumen | 837/2.431 | **34,43 %** | 7,1043 |
+| Transformer | 766/2.431 | 31,51 % | **6,7644** |
+
+Lumen aventajó al baseline por 71 respuestas (+2,92 puntos porcentuales). Transformer mantuvo menor NLL. Fue una señal prometedora en clasificación, no una victoria universal en todas las métricas.
+
+## III. La prueba de continuidad
+
+### 21.000 → 26.000
+
+[Run 45030262114](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45030262114) · ejecución completada.
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| Lumen | 823/2.431 | **33,85 %** | **6,6643** |
+| Transformer | 773/2.431 | 31,80 % | 6,7229 |
+
+Lumen conservó 50 aciertos de ventaja y, esta vez, también obtuvo una NLL ligeramente menor. El resultado fue favorable en las dos métricas, aunque el holdout seguía siendo una única muestra congelada.
+
+### 26.000 → 31.000
+
+[Run 45034338841](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45034338841) · ejecución completada.
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| Lumen | 797/2.431 | **32,78 %** | **6,5564** |
+| Transformer | 783/2.431 | 32,21 % | 6,6534 |
+
+La ventaja de Lumen se redujo a 14 respuestas, pero la NLL siguió siendo menor. Importa la trayectoria: no hubo una mejora monótona de accuracy en cada checkpoint, aunque la NLL de Lumen continuó descendiendo.
+
+### 31.000 → 41.000 — checkpoint recuperado tras fallo de workflow
+
+[Entrenamiento 45037602119](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45037602119) · [Holdout independiente a 41.000, run 45044070812](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45044070812).
+
+El workflow de continuación se marcó como fallido en la verificación final del scheduler. Sin embargo, ambos jobs habían guardado sus checkpoints de step 41.000. Se verificaron y evaluaron en una ejecución independiente. Por eso se conserva el checkpoint, pero no se presenta el workflow original como un éxito completo.
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| Lumen | 801/2.431 | 32,95 % | **6,4777** |
+| Transformer | 814/2.431 | **33,48 %** | 6,6670 |
+
+Aquí el Transformer pasó a liderar ligeramente en accuracy, mientras Lumen mantuvo mejor NLL. La diferencia de precisión no fue concluyente en el contraste emparejado.
+
+### 41.000 → 61.000 — continuación larga y nueva referencia
+
+[Run 45044892658](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45044892658) · ejecución completada.
+
+Ambos modelos continuaron desde 41.000 hasta 61.000 con el mismo corpus español congelado, tokenizer, batch 8, contexto 128 y seed 42.
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| Lumen | 795/2.431 | 32,70 % | **6,1771** |
+| Transformer | 824/2.431 | **33,90 %** | 6,4988 |
+
+El Transformer aventajó a Lumen por 29 respuestas. Lumen, sin embargo, conservó una NLL media 0,3217 menor. Frente a 41.000, ambos mejoraron NLL; la de Lumen descendió con más intensidad. No hay base para ocultar que el baseline gana en accuracy en este checkpoint.
+
+## IV. La frontera actual: 61.000 → 66.000
+
+[Run 45061486739](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45061486739) · **en curso al corte documental**.
+
+El entrenamiento parte de los artefactos verificados del run 45044892658:
+
+- Lumen: checkpoint 61.000, con órganos ×1,50 y Delta con dos refinamientos paralelos.
+- Transformer: checkpoint 61.000, arquitectura y configuración baseline sin cambios.
+- Mismo corpus/tokenizer congelados, batch 8, contexto 128 y seed 42.
+- Ambos recorren 5.000 pasos; el holdout emparejado de 2.431 preguntas se ejecuta cuando los dos terminen.
+
+Estado observado al actualizar esta crónica: quality gate correcto; job Transformer terminado; job Lumen en curso. El holdout final aún no se ha producido. Por tanto, **66.000 todavía no es un resultado**.
+
+### Un duplicado que no pertenece al linaje promovido
+
+El run [45054687034](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45054687034) aparece como otra continuación 41.000 → 61.000 en curso. No es el padre utilizado por el run 45061486739: este último declara y verifica explícitamente los artefactos 61.000 del run 45044892658. No deben mezclarse sus resultados ni sus checkpoints sin una auditoría de procedencia.
+
+## V. Las ramas que enseñaron a medir
+
+Los siguientes experimentos son parte de la historia de ingeniería, pero no son tramos adicionales del linaje 0 → 61.000:
+
+| Familia | Runs representativos | Qué investigaron |
+|---|---|---|
+| Continuaciones exploratorias 2k–9k | [44936542271](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44936542271), [44940676355](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44940676355), [44950089771](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44950089771) | Continuidad, estabilidad, compilación y primeros bloques largos. Algunos intentos fallaron o fueron sustituidos; no deben sumarse como una sola cadena de checkpoints. |
+| CPU y cuello de botella | [44941577031](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/44941577031), [45003557749](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45003557749), [45003881342](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45003881342) | Separación de forward/backward, eager frente a compile, hilos, fastpaths y coste real de la recurrencia. |
+| Sueño y replay | [45008983356](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45008983356), [45010378745](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45010378745) | Verificar si había registros consolidados y si el sueño podía ejecutarse con la memoria disponible. |
+| Corpus español | [45007651092](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45007651092), [45008636659](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45008636659), [45021399600](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45021399600) | Construcción, deduplicación, filtrado de componentes por licencia, manifiesto y congelación de los splits. |
+| Benchmark de órganos | [45053192228](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45053192228), [45054764955](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45054764955), [45062110496](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45062110496) | Hipótesis de dolor/placer y simplificación Delta. Son microbenchmarks de entrenamiento, no holdouts ni evidencia de generalización. |
+
+## VI. Qué ha enseñado el recorrido
+
+1. **La loss no basta.** En varios checkpoints la NLL y la accuracy cuentan historias diferentes.
+2. **La continuidad importa.** Los checkpoints conservan pesos, buffers, RNG y estado del optimizador; no son simples exportaciones de pesos.
+3. **La arquitectura debe sobrevivir al entrenamiento.** La ruta residual y la corrección del arranque surgieron de fallos observados, no de una analogía decorativa.
+4. **La velocidad debe medirse en el trainer real.** Un microbenchmark aislado no garantiza que una optimización acelere la ejecución completa.
+5. **Un fallo de workflow no invalida automáticamente un checkpoint, pero tampoco se debe ocultar.** Se verifica el archivo y se evalúa por separado.
+6. **La comparación sigue abierta.** Lumen ha mostrado ventajas de clasificación en ciertos puntos y menor NLL en otros; el Transformer ha recuperado la ventaja de accuracy a 41k y 61k.
+
+## Registro de procedencia
+
+- Corpus español v1: 70.105 train / 1.413 validation / 2.431 holdout.
+- Holdout fijo de evaluación: 1.931 preguntas SIQA-es y 500 OpenBookQA-es.
+- Seed: 42.
+- Batch: 8.
+- Contexto: 128 tokens.
+- La evaluación no actualiza pesos ni alimenta glucosa, dolor o placer.
+- Los runs fallidos, cancelados y duplicados se conservan como historia operativa, pero no se promocionan silenciosamente como progreso.

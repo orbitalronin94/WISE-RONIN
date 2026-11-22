@@ -192,6 +192,7 @@ def main():
     parser.add_argument("--log-every", type=int, default=100, help="Training metric log interval")
     parser.add_argument("--checkpoint-every", type=int, default=250, help="Named checkpoint interval")
     parser.add_argument("--recovery-checkpoint-every", type=int, default=0, help="Overwrite latest_good.pt every N successful updates; 0 disables")
+    parser.add_argument("--parameter-check-every", type=int, default=25, help="Full parameter and optimizer-state finite scan interval; loss and gradients are still checked every step")
     parser.add_argument("--threads", type=int, default=2,
                         help="PyTorch intra-op CPU threads; benchmark 1/2/4 on the target runner")
     parser.add_argument("--interop-threads", type=int, default=1)
@@ -233,8 +234,8 @@ def main():
 
     if args.steps < 1 or (args.steps > 500 and not args.dummy_m1):
         parser.error("--steps must be between 1 and 500")
-    if args.log_every < 1 or args.checkpoint_every < 1 or args.recovery_checkpoint_every < 0:
-        parser.error("log/checkpoint intervals must be positive; recovery interval may be zero")
+    if args.log_every < 1 or args.checkpoint_every < 1 or args.recovery_checkpoint_every < 0 or args.parameter_check_every < 1:
+        parser.error("log/checkpoint/parameter-check intervals must be positive; recovery interval may be zero")
     if args.threads < 1 or args.interop_threads < 1:
         parser.error("--threads and --interop-threads must be at least 1")
     if args.orpo:
@@ -497,12 +498,20 @@ def main():
                     LOG.error("NONFINITE_GRADIENT step=%d name=%s %s", step, name, _tensor_health(parameter.grad))
             raise
         optimizer.step()
-        invalid_parameters = any(
-            not torch.isfinite(parameter.detach()).all()
-            for parameter in model.parameters()
+        # Keep cheap numerical guards on every update (finite loss and
+        # error_if_nonfinite gradient clipping above); amortize the full model
+        # and Adam-state scans, which otherwise read every parameter each step.
+        full_health_check = (
+            step % args.parameter_check_every == 0
+            or step == start + args.steps
         )
+        invalid_parameters = False
         invalid_optimizer_state = False
-        if step % args.log_every == 0:
+        if full_health_check:
+            invalid_parameters = any(
+                not torch.isfinite(parameter.detach()).all()
+                for parameter in model.parameters()
+            )
             invalid_optimizer_state = any(
                 isinstance(value, torch.Tensor) and value.is_floating_point()
                 and value.numel() and not torch.isfinite(value).all()

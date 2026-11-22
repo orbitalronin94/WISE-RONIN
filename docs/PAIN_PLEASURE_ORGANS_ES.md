@@ -1,3 +1,5 @@
+> **Nota de alcance (22-11-2026):** este documento conserva el registro de diseño e integración histórica, especialmente el bloque 11k→16k. Para saber qué hace realmente el trainer actual, consulta [Arquitectura actual](ARQUITECTURA_ACTUAL_ES.md). En el código vigente, dolor y placer actualizan EMAs independientes y alimentan el multiplicador energético acotado `Presupuesto.affect_scale`; no se aplican directamente a los pesos, LR, momentos de AdamW ni a los gates de las capas.
+
 # Glucosa, dolor y placer: tres reguladores separados
 
 ## Glucosa

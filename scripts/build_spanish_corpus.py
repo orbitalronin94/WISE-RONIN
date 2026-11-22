@@ -145,12 +145,18 @@ def build_uji(limit):
                 return out
     return out
 
+def siqa_choice_label(value):
+    """SIQA_es encodes its three answer choices as string labels 1, 2 and 3."""
+    label = clean(value).upper()
+    return {"1": "A", "2": "B", "3": "C"}.get(label, label if label in {"A", "B", "C"} else None)
+
+
 def build_eval():
     out = []
     for item in stream("BSC-LT/SIQA_es", "validation", 3000):
         choices = [clean(item.get(k,"")) for k in ("answer_a","answer_b","answer_c")]
-        label = clean(item.get("label","")).upper()
-        if not all(choices) or label not in {"A","B","C"}: continue
+        label = siqa_choice_label(item.get("label",""))
+        if not all(choices) or label is None: continue
         prompt = (f"Contexto: {clean(item.get('context'))}\nPregunta: {clean(item.get('question'))}\n"
                   f"Opciones: A) {choices[0]} B) {choices[1]} C) {choices[2]}\nRespuesta:")
         out.append({"id":clean(item.get("index",len(out))),"source":"BSC-LT/SIQA_es",

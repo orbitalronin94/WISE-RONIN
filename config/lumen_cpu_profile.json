@@ -1,22 +1,21 @@
 {
-  "threads": 2,
+  "threads": 4,
   "interop_threads": 2,
   "mkldnn_enabled": true,
   "foreach": false,
   "cpu_affinity": true,
   "delta_pre_normalize": false,
   "homeostasis_fused_scatter": false,
+  "profile_id": "measured_cpu_winner_4x2_v1",
   "benchmark_metadata": {
-    "selected_profile": "hypothesis_mkldnn_toggle",
-    "steps_per_second": 0.8057851715440612,
-    "control_steps_per_second": 0.6956144337693082,
-    "speedup_vs_control": 1.158379027844166,
-    "mean_training_loss": 6.663454449176788,
-    "control_mean_training_loss": 6.6634544968605045,
-    "loss_delta": -4.7683716530855236e-08,
-    "max_loss_regression": 0.01,
-    "checkpoint_step": 3000,
-    "objective_unchanged": true,
-    "selection": "parallel 7-hypothesis matrix; same checkpoint, batch, seed, cache and original loss"
+    "source": "existing GitHub Actions CPU profiling and matched training logs",
+    "intraop_threads": 4,
+    "interop_threads": 2,
+    "mkldnn_enabled": true,
+    "foreach": false,
+    "cpu_affinity": true,
+    "delta_pre_normalize": false,
+    "homeostasis_fused_scatter": false,
+    "selection_note": "Restore measured four-thread profile; both experimental fastpaths were slower than control."
   }
 }

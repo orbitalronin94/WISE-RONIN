@@ -152,22 +152,35 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p checkpoints/lumen-v2-133500 logs
-          python -m train.train \
-            --steps 60000 --resume lumen-parent/checkpoints/lumen-v2/step_73500.pt \
-            --phase 1 --pilot-all-rows --no-sleep \
-            --data prepared/data/spanish-v2-train-sample.jsonl \
-            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
-            --token-cache prepared/data/spanish-v2-token-cache.pt \
-            --batch 8 --max-len 128 --seed 42 \
-            --runtime-profile config/lumen_organ_delta2_profile.json \
-            --lr 3e-5 --warmup 100 --total-steps 133500 \
-            --scheduler-transition --restart-scheduler-transition \
-            --transition-start 73500 --transition-end 133500 \
-            --warmup-transition 100 --transition-plateau-steps 48000 \
-            --transition-min-lr-ratio 0.5 \
-            --log-every 100 --checkpoint-every 500 --recovery-checkpoint-every 100 \
-            --parameter-check-every 100 --ckpt-dir checkpoints/lumen-v2-133500 \
-            2>&1 | tee logs/lumen-73500-133500-v2.log
+          parent="lumen-parent/checkpoints/lumen-v2/step_73500.pt"
+          for segment in 1 2 3 4 5 6; do
+            if [ "$segment" -eq 1 ]; then
+              scheduler_restart="--restart-scheduler-transition"
+            else
+              scheduler_restart=""
+              parent="checkpoints/lumen-v2-133500/step_${start}.pt"
+            fi
+            start=$((73500 + (segment - 1) * 10000))
+            end=$((start + 10000))
+            echo "=== LUMEN SEGMENT $segment/6: $start -> $end ==="
+            python -m train.train \
+              --steps 10000 --resume "$parent" \
+              --phase 1 --pilot-all-rows --no-sleep \
+              --data prepared/data/spanish-v2-train-sample.jsonl \
+              --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+              --token-cache prepared/data/spanish-v2-token-cache.pt \
+              --batch 8 --max-len 128 --seed 42 \
+              --runtime-profile config/lumen_organ_delta2_profile.json \
+              --lr 3e-5 --warmup 100 --total-steps 133500 \
+              --scheduler-transition $scheduler_restart \
+              --transition-start 73500 --transition-end 133500 \
+              --warmup-transition 100 --transition-plateau-steps 48000 \
+              --transition-min-lr-ratio 0.5 \
+              --log-every 100 --checkpoint-every 500 --recovery-checkpoint-every 100 \
+              --parameter-check-every 100 --ckpt-dir checkpoints/lumen-v2-133500 \
+              2>&1 | tee -a logs/lumen-73500-133500-v2.log
+            test -s "checkpoints/lumen-v2-133500/step_${end}.pt"
+          done
       - name: Verify final Lumen checkpoint
         run: |
           python - <<'PY'
@@ -235,19 +248,32 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p checkpoints/transformer-v2-133500 logs
-          python -m train.transformer_baseline \
-            --steps 60000 --resume transformer-parent/checkpoints/transformer-v2/step_73500.pt \
-            --data prepared/data/spanish-v2-train-sample.jsonl \
-            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
-            --token-cache prepared/data/spanish-v2-token-cache.pt \
-            --batch 8 --max-len 128 --seed 42 --threads 4 \
-            --lr 7.5e-5 --warmup 100 --total-steps 133500 \
-            --scheduler-transition --restart-scheduler-transition \
-            --transition-start 73500 --transition-end 133500 \
-            --warmup-transition 100 --transition-plateau-steps 48000 \
-            --transition-min-lr-ratio 0.5 \
-            --parameter-check-every 100 --ckpt-dir checkpoints/transformer-v2-133500 \
-            2>&1 | tee logs/transformer-73500-133500-v2.log
+          parent="transformer-parent/checkpoints/transformer-v2/step_73500.pt"
+          for segment in 1 2 3 4 5 6; do
+            if [ "$segment" -eq 1 ]; then
+              scheduler_restart="--restart-scheduler-transition"
+            else
+              scheduler_restart=""
+              parent="checkpoints/transformer-v2-133500/step_${start}.pt"
+            fi
+            start=$((73500 + (segment - 1) * 10000))
+            end=$((start + 10000))
+            echo "=== TRANSFORMER SEGMENT $segment/6: $start -> $end ==="
+            python -m train.transformer_baseline \
+              --steps 10000 --resume "$parent" \
+              --data prepared/data/spanish-v2-train-sample.jsonl \
+              --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+              --token-cache prepared/data/spanish-v2-token-cache.pt \
+              --batch 8 --max-len 128 --seed 42 --threads 4 \
+              --lr 7.5e-5 --warmup 100 --total-steps 133500 \
+              --scheduler-transition $scheduler_restart \
+              --transition-start 73500 --transition-end 133500 \
+              --warmup-transition 100 --transition-plateau-steps 48000 \
+              --transition-min-lr-ratio 0.5 \
+              --parameter-check-every 100 --ckpt-dir checkpoints/transformer-v2-133500 \
+              2>&1 | tee -a logs/transformer-73500-133500-v2.log
+            test -s "checkpoints/transformer-v2-133500/step_${end}.pt"
+          done
       - name: Verify final Transformer checkpoint
         run: |
           python - <<'PY'

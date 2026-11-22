@@ -1,0 +1,1 @@
+Launch the paired fresh-start 1000-step neuroplasticity pilot using the frozen Spanish corpus v1 prepared artifact from workflow run 45021399600. Both models must use the same train split, 4096-vocabulary tokenizer, and precomputed 128-token cache. Validation and holdout remain excluded from training.

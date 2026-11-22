@@ -1,0 +1,347 @@
+name: RONIN paired continuation 31000 to 51000 + Spanish holdout
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/continue-31000-51000-paired.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-paired-main-31000-to-51000
+  cancel-in-progress: false
+
+env:
+  PARENT_RUN_ID: "45034338841"
+  PREPARED_RUN_ID: "45021399600"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy pytest
+      - name: Test affect organs and continuous scheduler transitions
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: pytest -q tests/test_affect_organs.py tests/test_scheduler_transition.py
+
+  train-lumen:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download frozen Spanish corpus and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-45021399600
+          path: .
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact Lumen step-31000 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step31000-45034338841
+          path: parent-lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify Lumen parent, optimizer, organs and frozen data
+        run: |
+          set -euo pipefail
+          test -s artifacts/spanish-v1/train.jsonl
+          test -s artifacts/spanish-v1/holdout_multiple_choice.jsonl
+          test -s data/spanish/tokenizer/tokenizer.json
+          test -s data/spanish/train_tokens_128.pt
+          python - <<'PY'
+          import json, torch
+          from pathlib import Path
+          manifest=json.loads(Path("artifacts/spanish-v1/manifest.json").read_text(encoding="utf-8"))
+          assert manifest["language"] == "es", manifest
+          rows=[json.loads(x) for x in Path("artifacts/spanish-v1/holdout_multiple_choice.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(rows) == 2431, len(rows)
+          s=torch.load("parent-lumen/checkpoints/lumen/step_31000.pt",map_location="cpu",weights_only=False)
+          assert s["step"] == 31000 and s["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          assert s["pilot_all_rows"] is True
+          assert s["scheduler_transition"]["current_step"] == 31000
+          assert s["scheduler_transition"]["end_step"] == 31000
+          assert "pain.pain" in s["model"] and "pleasure.pleasure" in s["model"]
+          assert s["optimizer"] and s["rng"], "Lumen optimizer/RNG state missing"
+          assert s["data_sha256"] and s["tokenizer_sha256"]
+          print("Validated Lumen step 31000, organs, optimizer/RNG and",len(rows),"frozen holdout rows")
+          PY
+      - name: Continue Lumen from 31000 to 41000 (first 10k of 20k)
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/lumen logs
+          python -m train.train \
+            --steps 10000 --resume parent-lumen/checkpoints/lumen/step_31000.pt \
+            --phase 1 --pilot-all-rows --no-sleep \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/lumen_cpu_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 51000 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 31000 --transition-end 51000 \
+            --warmup-transition 100 --transition-plateau-steps 15900 \
+            --transition-min-lr-ratio 0.5 \
+            --log-every 100 --checkpoint-every 250 --recovery-checkpoint-every 100 \
+            --parameter-check-every 100 --ckpt-dir checkpoints/lumen \
+            2>&1 | tee logs/lumen-31000-41000.log
+      - name: Verify Lumen intermediate step 41000 and continuous scheduler
+        run: |
+          python - <<'PY'
+          import math, torch
+          s=torch.load("checkpoints/lumen/step_41000.pt",map_location="cpu",weights_only=False)
+          tr=s["scheduler_transition"]
+          assert s["step"] == 41000 and tr["current_step"] == 41000
+          assert tr["start_step"] == 31000 and tr["end_step"] == 51000
+          assert tr["warmup_steps"] == 100 and tr["plateau_steps"] == 15900
+          assert tr["min_lr_ratio"] == 0.5
+          assert math.isclose(s["optimizer"]["param_groups"][0]["lr"],3e-5,rel_tol=1e-5)
+          assert "pain.pain" in s["model"] and "pleasure.pleasure" in s["model"]
+          assert s["optimizer"] and s["rng"]
+          print("Lumen 41000 verified; scheduler remains on original 31000-51000 transition.")
+          PY
+      - name: Continue Lumen from 41000 to 51000 (second 10k; same scheduler)
+        run: |
+          set -euo pipefail
+          python -m train.train \
+            --steps 10000 --resume checkpoints/lumen/step_41000.pt \
+            --phase 1 --pilot-all-rows --no-sleep \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/lumen_cpu_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 51000 \
+            --scheduler-transition \
+            --transition-start 31000 --transition-end 51000 \
+            --warmup-transition 100 --transition-plateau-steps 15900 \
+            --transition-min-lr-ratio 0.5 \
+            --log-every 100 --checkpoint-every 250 --recovery-checkpoint-every 100 \
+            --parameter-check-every 100 --ckpt-dir checkpoints/lumen \
+            2>&1 | tee logs/lumen-41000-51000.log
+      - name: Verify final Lumen step 51000, organs and LR floor
+        run: |
+          python - <<'PY'
+          import math, torch
+          s=torch.load("checkpoints/lumen/step_51000.pt",map_location="cpu",weights_only=False)
+          tr=s["scheduler_transition"]
+          assert s["step"] == 51000 and tr["current_step"] == 51000
+          assert tr["start_step"] == 31000 and tr["end_step"] == 51000
+          assert tr["plateau_steps"] == 15900 and tr["min_lr_ratio"] == 0.5
+          assert math.isclose(s["optimizer"]["param_groups"][0]["lr"],1.5e-5,rel_tol=1e-5)
+          assert "pain.pain" in s["model"] and "pleasure.pleasure" in s["model"]
+          assert s["optimizer"] and s["rng"]
+          print("Lumen 51000 verified; organs, AdamW, RNG and LR floor intact.")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-lumen-step51000-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/
+            logs/lumen-31000-41000.log
+            logs/lumen-41000-51000.log
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+
+  train-transformer:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download same frozen Spanish corpus and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-45021399600
+          path: .
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact Transformer step-31000 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-transformer-step31000-45034338841
+          path: parent-transformer
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify Transformer parent and frozen data
+        run: |
+          set -euo pipefail
+          test -s artifacts/spanish-v1/train.jsonl
+          test -s data/spanish/tokenizer/tokenizer.json
+          test -s data/spanish/train_tokens_128.pt
+          python - <<'PY'
+          import torch
+          s=torch.load("parent-transformer/checkpoints/transformer/step_31000.pt",map_location="cpu",weights_only=False)
+          assert s["step"] == 31000
+          assert s["scheduler_transition"]["current_step"] == 31000
+          assert s["scheduler_transition"]["end_step"] == 31000
+          assert s["optimizer"] and s["rng"]
+          assert s["data_sha256"] and s["tokenizer_sha256"]
+          print("Validated Transformer step 31000, optimizer/RNG and frozen-data hashes")
+          PY
+      - name: Continue Transformer from 31000 to 41000 (first 10k of 20k)
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/transformer logs
+          python -m train.transformer_baseline \
+            --steps 10000 --resume parent-transformer/checkpoints/transformer/step_31000.pt \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 --threads 4 \
+            --lr 7.5e-5 --warmup 100 --total-steps 51000 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 31000 --transition-end 51000 \
+            --warmup-transition 100 --transition-plateau-steps 15900 \
+            --transition-min-lr-ratio 0.5 \
+            --parameter-check-every 100 --ckpt-dir checkpoints/transformer \
+            2>&1 | tee logs/transformer-31000-41000.log
+      - name: Verify Transformer intermediate step 41000 and continuous scheduler
+        run: |
+          python - <<'PY'
+          import math, torch
+          s=torch.load("checkpoints/transformer/step_41000.pt",map_location="cpu",weights_only=False)
+          tr=s["scheduler_transition"]
+          assert s["step"] == 41000 and tr["current_step"] == 41000
+          assert tr["start_step"] == 31000 and tr["end_step"] == 51000
+          assert tr["warmup_steps"] == 100 and tr["plateau_steps"] == 15900
+          assert tr["min_lr_ratio"] == 0.5
+          assert math.isclose(s["optimizer"]["param_groups"][0]["lr"],7.5e-5,rel_tol=1e-5)
+          assert s["optimizer"] and s["rng"]
+          print("Transformer 41000 verified; scheduler remains on original 31000-51000 transition.")
+          PY
+      - name: Continue Transformer from 41000 to 51000 (second 10k; same scheduler)
+        run: |
+          set -euo pipefail
+          python -m train.transformer_baseline \
+            --steps 10000 --resume checkpoints/transformer/step_41000.pt \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 --threads 4 \
+            --lr 7.5e-5 --warmup 100 --total-steps 51000 \
+            --scheduler-transition \
+            --transition-start 31000 --transition-end 51000 \
+            --warmup-transition 100 --transition-plateau-steps 15900 \
+            --transition-min-lr-ratio 0.5 \
+            --parameter-check-every 100 --ckpt-dir checkpoints/transformer \
+            2>&1 | tee logs/transformer-41000-51000.log
+      - name: Verify final Transformer step 51000 and LR floor
+        run: |
+          python - <<'PY'
+          import math, torch
+          s=torch.load("checkpoints/transformer/step_51000.pt",map_location="cpu",weights_only=False)
+          tr=s["scheduler_transition"]
+          assert s["step"] == 51000 and tr["current_step"] == 51000
+          assert tr["start_step"] == 31000 and tr["end_step"] == 51000
+          assert tr["plateau_steps"] == 15900 and tr["min_lr_ratio"] == 0.5
+          assert math.isclose(s["optimizer"]["param_groups"][0]["lr"],3.75e-5,rel_tol=1e-5)
+          assert s["optimizer"] and s["rng"]
+          print("Transformer 51000 verified; AdamW, RNG and LR floor intact.")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-transformer-step51000-${{ github.run_id }}
+          path: |
+            checkpoints/transformer/
+            logs/transformer-31000-41000.log
+            logs/transformer-41000-51000.log
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+
+  final-holdout:
+    needs: [train-lumen, train-transformer]
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU evaluation runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download untouched Spanish holdout and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-45021399600
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step51000-${{ github.run_id }}
+          path: lumen
+      - uses: actions/download-artifact@v4
+        with:
+          name: ronin-transformer-step51000-${{ github.run_id }}
+          path: transformer
+      - name: Evaluate both models on the same untouched Spanish holdout
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          test -s prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl
+          test -s prepared/data/spanish/tokenizer/tokenizer.json
+          test -s lumen/checkpoints/lumen/step_51000.pt
+          test -s transformer/checkpoints/transformer/step_51000.pt
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/evaluate_multiple_choice_holdout.py \
+            --holdout prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl \
+            --tokenizer prepared/data/spanish/tokenizer/tokenizer.json \
+            --lumen lumen/checkpoints/lumen/step_51000.pt \
+            --transformer transformer/checkpoints/transformer/step_51000.pt \
+            --expected-step 51000 --out results/step51000_paired_holdout.json \
+            --threads 4 --max-len 128
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-step51000-paired-spanish-holdout-${{ github.run_id }}
+          path: results/step51000_paired_holdout.json
+          if-no-files-found: warn
+          retention-days: 90

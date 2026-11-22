@@ -250,15 +250,17 @@ def main():
     runtime_profile = {}
     if args.runtime_profile and Path(args.runtime_profile).is_file():
         runtime_profile = json.loads(Path(args.runtime_profile).read_text(encoding="utf-8"))
-    elif args.runtime_profile:
-        LOG.warning("runtime profile not found; using explicit/default CLI CPU settings: %s", args.runtime_profile)
+        if not isinstance(runtime_profile, dict):
+            raise ValueError("CPU runtime profile must be a JSON object")
         args.threads = int(runtime_profile.get("threads", args.threads))
         args.interop_threads = int(runtime_profile.get("interop_threads", args.interop_threads))
         args.disable_mkldnn = not bool(runtime_profile.get("mkldnn_enabled", not args.disable_mkldnn))
         args.disable_foreach = not bool(runtime_profile.get("foreach", not args.disable_foreach))
         args.cpu_affinity = bool(runtime_profile.get("cpu_affinity", args.cpu_affinity))
-        args.runtime_profile_settings = dict(runtime_profile)
-        LOG.info("runtime_profile loaded: %s", args.runtime_profile)
+        LOG.info("runtime_profile loaded and applied: %s", args.runtime_profile)
+    elif args.runtime_profile:
+        LOG.warning("runtime profile not found; using explicit/default CLI CPU settings: %s", args.runtime_profile)
+    args.runtime_profile_settings = dict(runtime_profile)
 
     torch.set_num_threads(args.threads)
     torch.set_num_interop_threads(args.interop_threads)

@@ -11,6 +11,7 @@ from .heads import Heads
 from .ze import DualModelZe
 from .pain import Nociception
 from .pleasure import Recompensa
+from .chunking import AdaptiveChunking
 
 
 class RoninLumen(nn.Module):
@@ -33,6 +34,10 @@ class RoninLumen(nn.Module):
                         config.homeostasis_eta,
                         config.top_k_low if i < 2 else config.top_k_high)
             for i in range(config.delta_layers)
+        ])
+        # One bounded chunk controller per Delta/Homeostasis organ pair.
+        self.chunkers = nn.ModuleList([
+            AdaptiveChunking(config.model_dim) for _ in range(config.delta_layers)
         ])
         self.memoria = MemoriaElastica(config.model_dim)
         self.heads = Heads(config.model_dim)
@@ -60,12 +65,18 @@ class RoninLumen(nn.Module):
         """Public singular alias: clear only transient recurrent activity."""
         self.reset_states()
 
+    @torch.no_grad()
+    def set_learning_modulator(self, signal):
+        """Send delayed improvement/regression feedback to every Delta trace."""
+        for delta in self.delta_layers:
+            delta.set_eligibility_modulator(signal)
+
     def forward(self, token_ids, reset_state=True, collect_diagnostics=True):
         h = self.emb(token_ids)
         e_delta, e_mem, e_head, energy = self.presupuesto(h)
         surprises = []
         complexity_terms = []
-        for delta, homeo in zip(self.delta_layers, self.homeo):
+        for delta, homeo, chunker in zip(self.delta_layers, self.homeo, self.chunkers):
             # Delta returns an associative-memory update, not a replacement
             # representation. Preserve the information stream through a
             # residual path so a cold/low-norm memory read cannot zero the stack.
@@ -74,6 +85,7 @@ class RoninLumen(nn.Module):
                 compute_complexity=self.v32_ze,
                 collect_diagnostics=collect_diagnostics,
             )
+            h = chunker(h, surprise)
             h = homeo(h + delta_update, collect_diagnostics=collect_diagnostics)
             surprises.append(surprise)
             if self.v32_ze:
@@ -104,6 +116,8 @@ class RoninLumen(nn.Module):
             "surprise": surprise, "energy": energy, "hidden": hidden,
             "free_energy_complexity": free_energy_complexity,
             "ze": ze_metrics,
+            "chunk_sizes": tuple(chunker.last_chunk_size for chunker in self.chunkers),
+            "eligibility_norms": tuple(delta.last_eligibility_norm for delta in self.delta_layers),
         }
 
     def predict_latent(self, hidden):

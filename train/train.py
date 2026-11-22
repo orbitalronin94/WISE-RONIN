@@ -708,6 +708,12 @@ def main():
                 model.memoria.occupancy(), ze_conflict, ze_erase,
                 tokens_seen, scheduler.get_last_lr()[0],
             )
+            LOG.info(
+                "neuroplasticity step=%d chunk_size=%d eligibility_norms=%s modulator=%s",
+                step, output["chunk_size"],
+                [round(layer.last_eligibility_norm, 6) for layer in model.delta_layers],
+                [round(float(layer.eligibility_modulator.item()), 5) for layer in model.delta_layers],
+            )
             layer_records = []
             for i, (delta, homeo) in enumerate(zip(model.delta_layers, model.homeo)):
                 layer_records.append({

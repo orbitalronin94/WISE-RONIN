@@ -152,10 +152,10 @@ Los órganos afectivos no son parámetros narrativos ni emociones conscientes. S
 | Órgano | Señal que observa | Función |
 |---|---|---|
 | Glucosa | Mejora de loss de comprobación | Repone reserva energética interna |
-| Dolor | Regresión de loss frente a su EMA | Señal protectora; modula plasticidad y gate |
-| Placer | Mejora de loss frente a su EMA | Refuerzo moderado; modula plasticidad y gate |
+| Dolor | Regresión de loss frente a su EMA | Reduce de forma acotada el multiplicador energético interno |
+| Placer | Mejora de loss frente a su EMA | Eleva de forma acotada el multiplicador energético interno |
 
-Dolor y placer mantienen EMAs separadas. No se calculan a partir del holdout. En la línea 11k→16k se integraron como canales independientes y en los entrenamientos posteriores se conservaron como órganos activos.
+Dolor y placer mantienen EMAs separadas. No se calculan a partir del holdout. En el trainer actual, sus valores alimentan únicamente `Presupuesto.affect_scale`, acotado entre 0,85 y 1,05: el dolor reduce el multiplicador y el placer lo eleva moderadamente. Aunque los objetos de órgano exponen métricas de plasticidad/gate/consolidación, el bucle de entrenamiento de esta versión no aplica esas salidas a las capas. En la línea 11k→16k se integraron como canales independientes y en los entrenamientos posteriores se conservaron como órganos activos.
 
 ### Perfil seleccionado para el bloque 61k→66k
 
@@ -216,9 +216,9 @@ El corpus español v1 utilizado por los entrenamientos emparejados contiene:
 | Entrenamiento | 70.105 |
 | Validación | 1.413 |
 | Holdout congelado | 2.431 |
-| Total deduplicado | 73.949 |
+| Total train + validation deduplicado | 71.518 |
 
-Procede de cuatro fuentes de entrenamiento con filtrado por componentes y licencia. El holdout está separado: 1.931 preguntas SIQA-es y 500 OpenBookQA-es. La evaluación no actualiza parámetros ni alimenta glucosa, dolor o placer.
+Procede de cuatro fuentes de entrenamiento con filtrado por componentes y licencia. El holdout está separado: 1.931 preguntas SIQA-es y 500 OpenBookQA-es. Sumando ambos splits de entrenamiento/validación y el holdout de evaluación, el protocolo contiene 73.949 registros; el holdout procede de fuentes de evaluación separadas. La evaluación no actualiza parámetros ni alimenta glucosa, dolor o placer.
 
 Los hashes y procedencia se documentan en [data/README.md](../data/README.md); el historial de resultados está en [CRONICA_EXPERIMENTAL_ES.md](CRONICA_EXPERIMENTAL_ES.md).
 

@@ -1,4 +1,4 @@
-name: RONIN paired continuation 16000 to 21000 + Spanish holdout
+name: RONIN paired continuation 21000 to 26000 + Spanish holdout
 
 on:
   workflow_dispatch:
@@ -14,11 +14,12 @@ permissions:
   actions: read
 
 concurrency:
-  group: ronin-paired-main-16000-to-21000
+  group: ronin-paired-main-21000-to-26000
   cancel-in-progress: false
 
 env:
-  PARENT_RUN_ID: "45021399600"
+  PARENT_RUN_ID: "45025897082"
+  PREPARED_RUN_ID: "45021399600"
   OMP_NUM_THREADS: "4"
   MKL_NUM_THREADS: "4"
   OMP_DYNAMIC: "FALSE"
@@ -64,15 +65,15 @@ jobs:
           name: ronin-spanish-prepared-16000-45021399600
           path: .
           repository: ${{ github.repository }}
-          run-id: ${{ env.PARENT_RUN_ID }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download exact Lumen step-16000 checkpoint
         uses: actions/download-artifact@v4
         with:
-          name: ronin-lumen-step16000-45021399600
+          name: ronin-lumen-step21000-45025897082
           path: parent-lumen
           repository: ${{ github.repository }}
-          run-id: ${{ env.PARENT_RUN_ID }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify Lumen parent and frozen data
         run: |
@@ -88,54 +89,54 @@ jobs:
           assert manifest["language"] == "es", manifest
           rows=[json.loads(x) for x in Path("artifacts/spanish-v1/holdout_multiple_choice.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
           assert len(rows) == 2431, len(rows)
-          s=torch.load("parent-lumen/checkpoints/lumen/step_16000.pt",map_location="cpu",weights_only=False)
-          assert s["step"] == 16000 and s["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          s=torch.load("parent-lumen/checkpoints/lumen/step_26000.pt",map_location="cpu",weights_only=False)
+          assert s["step"] == 21000 and s["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
           assert s["pilot_all_rows"] is True and s["training_config"]["lr"] == 3e-5
-          assert s["scheduler_transition"]["current_step"] == 16000
+          assert s["scheduler_transition"]["current_step"] == 21000
           assert "pain.pain" in s["model"] and "pleasure.pleasure" in s["model"]
           assert s["optimizer"], "Lumen AdamW state missing"
-          print("Validated Lumen step 16000 and",len(rows),"frozen holdout rows")
+          print("Validated Lumen step 21000 and",len(rows),"frozen holdout rows")
           PY
-      - name: Continue Lumen from 16000 to 21000
+      - name: Continue Lumen from 21000 to 26000
         run: |
           set -euo pipefail
           mkdir -p checkpoints/lumen logs
           python -m train.train \
-            --steps 5000 --resume parent-lumen/checkpoints/lumen/step_16000.pt \
+            --steps 5000 --resume parent-lumen/checkpoints/lumen/step_26000.pt \
             --phase 1 --pilot-all-rows --no-sleep \
             --data artifacts/spanish-v1/train.jsonl \
             --tokenizer data/spanish/tokenizer/tokenizer.json \
             --token-cache data/spanish/train_tokens_128.pt \
             --batch 8 --max-len 128 --seed 42 \
             --runtime-profile config/lumen_cpu_profile.json \
-            --lr 3e-5 --warmup 100 --total-steps 21000 \
+            --lr 3e-5 --warmup 100 --total-steps 26000 \
             --scheduler-transition --restart-scheduler-transition \
-            --transition-start 16000 --transition-end 21000 \
+            --transition-start 21000 --transition-end 26000 \
             --warmup-transition 100 --transition-plateau-steps 3900 \
             --transition-min-lr-ratio 0.5 \
             --log-every 100 --checkpoint-every 250 --recovery-checkpoint-every 100 \
             --parameter-check-every 100 --ckpt-dir checkpoints/lumen \
-            2>&1 | tee logs/lumen-16000-21000.log
+            2>&1 | tee logs/lumen-21000-26000.log
       - name: Verify Lumen step 21000 and LR floor
         run: |
           python - <<'PY'
           import math, torch
-          s=torch.load("checkpoints/lumen/step_21000.pt",map_location="cpu",weights_only=False)
-          assert s["step"] == 21000 and s["scheduler_transition"]["current_step"] == 21000
+          s=torch.load("checkpoints/lumen/step_26000.pt",map_location="cpu",weights_only=False)
+          assert s["step"] == 26000 and s["scheduler_transition"]["current_step"] == 26000
           assert s["scheduler_transition"]["plateau_steps"] == 3900
           assert s["scheduler_transition"]["min_lr_ratio"] == 0.5
           assert math.isclose(s["optimizer"]["param_groups"][0]["lr"],1.5e-5,rel_tol=1e-5)
           assert "pain.pain" in s["model"] and "pleasure.pleasure" in s["model"]
           assert s["optimizer"], "Lumen AdamW state missing"
-          print("Lumen step 21000 verified; LR floor and AdamW state intact.")
+          print("Lumen step 26000 verified; LR floor and AdamW state intact.")
           PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ronin-lumen-step21000-${{ github.run_id }}
+          name: ronin-lumen-step26000-${{ github.run_id }}
           path: |
             checkpoints/lumen/
-            logs/lumen-16000-21000.log
+            logs/lumen-21000-26000.log
           if-no-files-found: warn
           retention-days: 90
           compression-level: 0
@@ -159,15 +160,15 @@ jobs:
           name: ronin-spanish-prepared-16000-45021399600
           path: .
           repository: ${{ github.repository }}
-          run-id: ${{ env.PARENT_RUN_ID }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download exact Transformer step-16000 checkpoint
         uses: actions/download-artifact@v4
         with:
-          name: ronin-transformer-step16000-45021399600
+          name: ronin-transformer-step21000-45025897082
           path: parent-transformer
           repository: ${{ github.repository }}
-          run-id: ${{ env.PARENT_RUN_ID }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify Transformer parent and frozen data
         run: |
@@ -177,49 +178,49 @@ jobs:
           test -s data/spanish/train_tokens_128.pt
           python - <<'PY'
           import torch
-          s=torch.load("parent-transformer/checkpoints/transformer/step_16000.pt",map_location="cpu",weights_only=False)
-          assert s["step"] == 16000
+          s=torch.load("parent-transformer/checkpoints/transformer/step_26000.pt",map_location="cpu",weights_only=False)
+          assert s["step"] == 21000
           assert s["training_config"]["lr"] == 7.5e-5
-          assert s["scheduler_transition"]["current_step"] == 16000
+          assert s["scheduler_transition"]["current_step"] == 21000
           assert s["optimizer"], "Transformer AdamW state missing"
-          print("Validated Transformer step 16000:",s["training_config"])
+          print("Validated Transformer step 21000:",s["training_config"])
           PY
-      - name: Continue Transformer from 16000 to 21000
+      - name: Continue Transformer from 21000 to 26000
         run: |
           set -euo pipefail
           mkdir -p checkpoints/transformer logs
           python -m train.transformer_baseline \
-            --steps 5000 --resume parent-transformer/checkpoints/transformer/step_16000.pt \
+            --steps 5000 --resume parent-transformer/checkpoints/transformer/step_26000.pt \
             --data artifacts/spanish-v1/train.jsonl \
             --tokenizer data/spanish/tokenizer/tokenizer.json \
             --token-cache data/spanish/train_tokens_128.pt \
             --batch 8 --max-len 128 --seed 42 --threads 4 \
-            --lr 7.5e-5 --warmup 100 --total-steps 21000 \
+            --lr 7.5e-5 --warmup 100 --total-steps 26000 \
             --scheduler-transition --restart-scheduler-transition \
-            --transition-start 16000 --transition-end 21000 \
+            --transition-start 21000 --transition-end 26000 \
             --warmup-transition 100 --transition-plateau-steps 3900 \
             --transition-min-lr-ratio 0.5 \
             --parameter-check-every 100 --ckpt-dir checkpoints/transformer \
-            2>&1 | tee logs/transformer-16000-21000.log
+            2>&1 | tee logs/transformer-21000-26000.log
       - name: Verify Transformer step 21000 and LR floor
         run: |
           python - <<'PY'
           import math, torch
-          s=torch.load("checkpoints/transformer/step_21000.pt",map_location="cpu",weights_only=False)
-          assert s["step"] == 21000 and s["scheduler_transition"]["current_step"] == 21000
+          s=torch.load("checkpoints/transformer/step_26000.pt",map_location="cpu",weights_only=False)
+          assert s["step"] == 26000 and s["scheduler_transition"]["current_step"] == 26000
           assert s["scheduler_transition"]["plateau_steps"] == 3900
           assert s["scheduler_transition"]["min_lr_ratio"] == 0.5
           assert math.isclose(s["optimizer"]["param_groups"][0]["lr"],3.75e-5,rel_tol=1e-5)
           assert s["optimizer"], "Transformer AdamW state missing"
-          print("Transformer step 21000 verified; LR floor and AdamW state intact.")
+          print("Transformer step 26000 verified; LR floor and AdamW state intact.")
           PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ronin-transformer-step21000-${{ github.run_id }}
+          name: ronin-transformer-step26000-${{ github.run_id }}
           path: |
             checkpoints/transformer/
-            logs/transformer-16000-21000.log
+            logs/transformer-21000-26000.log
           if-no-files-found: warn
           retention-days: 90
           compression-level: 0
@@ -243,15 +244,15 @@ jobs:
           name: ronin-spanish-prepared-16000-45021399600
           path: prepared
           repository: ${{ github.repository }}
-          run-id: ${{ env.PARENT_RUN_ID }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v4
         with:
-          name: ronin-lumen-step21000-${{ github.run_id }}
+          name: ronin-lumen-step26000-${{ github.run_id }}
           path: lumen
       - uses: actions/download-artifact@v4
         with:
-          name: ronin-transformer-step21000-${{ github.run_id }}
+          name: ronin-transformer-step26000-${{ github.run_id }}
           path: transformer
       - name: Evaluate both models on the same untouched Spanish holdout
         env:
@@ -260,19 +261,19 @@ jobs:
           set -euo pipefail
           test -s prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl
           test -s prepared/data/spanish/tokenizer/tokenizer.json
-          test -s lumen/checkpoints/lumen/step_21000.pt
-          test -s transformer/checkpoints/transformer/step_21000.pt
+          test -s lumen/checkpoints/lumen/step_26000.pt
+          test -s transformer/checkpoints/transformer/step_26000.pt
           OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/evaluate_multiple_choice_holdout.py \
             --holdout prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl \
             --tokenizer prepared/data/spanish/tokenizer/tokenizer.json \
-            --lumen lumen/checkpoints/lumen/step_21000.pt \
-            --transformer transformer/checkpoints/transformer/step_21000.pt \
-            --expected-step 21000 --out results/step21000_paired_holdout.json \
+            --lumen lumen/checkpoints/lumen/step_26000.pt \
+            --transformer transformer/checkpoints/transformer/step_26000.pt \
+            --expected-step 26000 --out results/step26000_paired_holdout.json \
             --threads 4 --max-len 128
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ronin-step21000-paired-spanish-holdout-${{ github.run_id }}
-          path: results/step21000_paired_holdout.json
+          name: ronin-step26000-paired-spanish-holdout-${{ github.run_id }}
+          path: results/step26000_paired_holdout.json
           if-no-files-found: warn
           retention-days: 90

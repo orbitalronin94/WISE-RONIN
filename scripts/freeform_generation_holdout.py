@@ -34,10 +34,11 @@ def freeform_prompt(raw: str) -> str:
 
 
 def generate(model, tokenizer, prompt: str, *, is_lumen: bool,
-             max_len: int, max_new_tokens: int, eos_id: int, pad_id: int):
+             max_len: int, max_new_tokens: int, bos_id: int, eos_id: int, pad_id: int):
     prefix_ids = tokenizer.encode(prompt, add_special_tokens=False).ids
     if not prefix_ids:
         return "", [], "empty_prompt"
+    prefix_ids = [bos_id] + prefix_ids
     generated: list[int] = []
     stop_reason = "max_new_tokens"
 
@@ -88,10 +89,11 @@ def main():
 
     tokenizer = Tokenizer.from_file(args.tokenizer)
     vocab = tokenizer.get_vocab()
+    bos_id = tokenizer.token_to_id("[BOS]")
     eos_id = tokenizer.token_to_id("[EOS]")
     pad_id = tokenizer.token_to_id("[PAD]")
-    if eos_id is None or pad_id is None:
-        raise ValueError("Tokenizer must define [EOS] and [PAD]")
+    if bos_id is None or eos_id is None or pad_id is None:
+        raise ValueError("Tokenizer must define [BOS], [EOS] and [PAD]")
 
     rows = load_rows(args.holdout)
     eligible = [
@@ -123,12 +125,12 @@ def main():
             lumen_text, lumen_ids, lumen_stop = generate(
                 lumen, tokenizer, prompt, is_lumen=True,
                 max_len=args.max_len, max_new_tokens=args.max_new_tokens,
-                eos_id=eos_id, pad_id=pad_id,
+                bos_id=bos_id, eos_id=eos_id, pad_id=pad_id,
             )
             transformer_text, transformer_ids, transformer_stop = generate(
                 transformer, tokenizer, prompt, is_lumen=False,
                 max_len=args.max_len, max_new_tokens=args.max_new_tokens,
-                eos_id=eos_id, pad_id=pad_id,
+                bos_id=bos_id, eos_id=eos_id, pad_id=pad_id,
             )
             results.append({
                 "sample_index": index,

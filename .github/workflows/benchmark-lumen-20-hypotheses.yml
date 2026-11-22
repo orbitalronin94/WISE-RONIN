@@ -1,104 +1,206 @@
-name: RONIN-LUMEN 20 CPU throughput hypotheses (100 steps each)
+name: RONIN-LUMEN 20 real-training CPU throughput hypotheses (100 steps each)
 
 on:
   push:
     branches: [main]
     paths:
-      - "scripts/benchmark_lumen_20_hypotheses.py"
       - ".github/workflows/benchmark-lumen-20-hypotheses.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: lumen-20-cpu-hypotheses-${{ github.sha }}
+  group: lumen-20-real-cpu-hypotheses-${{ github.run_id }}
   cancel-in-progress: false
+
+env:
+  PARENT_RUN_ID: "45037602119"
+  PREPARED_RUN_ID: "45021399600"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
 
 jobs:
   benchmark:
-    name: "${{ matrix.profile }} — matched 100-step CPU test"
+    name: "${{ matrix.profile }} — 100 real Lumen training steps"
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 20
       matrix:
-        profile:
-          - threads_1
-          - threads_4
-          - interop_2
-          - mkldnn_off
-          - foreach_off
-          - affinity_2
-          - fused_adamw
-          - cpu_bfloat16
-          - flush_denormal
-          - zero_grad_reuse
-          - compile_default
-          - compile_reduce_overhead
-          - matmul_high
-          - threads_1_mkldnn_off
-          - threads_4_mkldnn_on
-          - threads_2_interop_2_affinity
-          - fused_adamw_bf16
-          - compile_default_bf16
-          - compile_reduce_overhead_threads_1
-          - threads_2_mkldnn_off_foreach_off
-    env:
-      OMP_NUM_THREADS: "2"
-      MKL_NUM_THREADS: "2"
-      OMP_DYNAMIC: "FALSE"
-      OMP_PROC_BIND: "close"
-      OMP_PLACES: "cores"
-      KMP_AFFINITY: "granularity=fine,compact,1,0"
+        include:
+          - { profile: threads_1, threads: 1, interop: 1, mkldnn: true, foreach: true, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: threads_2, threads: 2, interop: 1, mkldnn: true, foreach: true, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: threads_4, threads: 4, interop: 1, mkldnn: true, foreach: true, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: threads_8, threads: 8, interop: 1, mkldnn: true, foreach: true, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: interop_2, threads: 4, interop: 2, mkldnn: true, foreach: true, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: interop_4, threads: 4, interop: 4, mkldnn: true, foreach: true, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: mkldnn_off, threads: 4, interop: 1, mkldnn: false, foreach: true, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: foreach_off, threads: 4, interop: 1, mkldnn: true, foreach: false, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: affinity_on, threads: 4, interop: 1, mkldnn: true, foreach: true, affinity: true, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: threads2_interop2, threads: 2, interop: 2, mkldnn: true, foreach: true, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: threads4_interop2, threads: 4, interop: 2, mkldnn: true, foreach: true, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: threads4_mkldnn_off, threads: 4, interop: 1, mkldnn: false, foreach: true, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: threads4_foreach_off, threads: 4, interop: 1, mkldnn: true, foreach: false, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: threads4_affinity, threads: 4, interop: 1, mkldnn: true, foreach: true, affinity: true, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: threads2_mkldnn_off, threads: 2, interop: 1, mkldnn: false, foreach: true, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: threads2_foreach_off, threads: 2, interop: 1, mkldnn: true, foreach: false, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: threads8_mkldnn_off, threads: 8, interop: 1, mkldnn: false, foreach: true, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: compile_default, threads: 4, interop: 1, mkldnn: true, foreach: true, affinity: false, compile: default, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: compile_reduce_overhead, threads: 4, interop: 1, mkldnn: true, foreach: true, affinity: false, compile: reduce-overhead, delta_pre_normalize: false, homeostasis_fused_scatter: false }
+          - { profile: fused_homeostasis_scatter, threads: 4, interop: 1, mkldnn: true, foreach: true, affinity: false, compile: none, delta_pre_normalize: false, homeostasis_fused_scatter: true }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install CPU PyTorch
+      - name: Install exact Lumen CPU training dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-      - name: Run matched control on this runner
+          python -m pip install tokenizers numpy tqdm
+      - name: Download frozen Spanish training corpus and token cache
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-45021399600
+          path: .
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact promoted Lumen step-41000 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step51000-45037602119
+          path: parent-lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify identical benchmark inputs
         run: |
-          python scripts/benchmark_lumen_20_hypotheses.py \
-            --profile control --steps 100 --warmup 10 --seed 41000 \
-            --batch 8 --seq-len 128 --output artifacts/control.json
-      - name: Run candidate profile (100 measured steps)
+          set -euo pipefail
+          test -s artifacts/spanish-v1/train.jsonl
+          test -s data/spanish/tokenizer/tokenizer.json
+          test -s data/spanish/train_tokens_128.pt
+          python - <<'PY'
+          import json, torch
+          from pathlib import Path
+          manifest=json.loads(Path("artifacts/spanish-v1/manifest.json").read_text())
+          assert manifest["language"] == "es"
+          s=torch.load("parent-lumen/checkpoints/lumen/step_41000.pt",map_location="cpu",weights_only=False)
+          tr=s["scheduler_transition"]
+          assert s["step"] == 41000 and s["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          assert s["pilot_all_rows"] is True and tr["current_step"] in (41000,41001)
+          assert tr["end_step"] == 51000
+          assert s["optimizer"] and s["rng"] and s["scheduler"]
+          print("Exact Lumen parent:",s["step"],"tokens_seen:",s["tokens_seen"],"scheduler:",tr)
+          PY
+      - name: Write matched control runtime profile
         run: |
-          python scripts/benchmark_lumen_20_hypotheses.py \
-            --profile "${{ matrix.profile }}" --steps 100 --warmup 10 --seed 41000 \
-            --batch 8 --seq-len 128 --output "artifacts/${{ matrix.profile }}.json"
-      - name: Compare candidate against same-runner control
+          mkdir -p config artifacts
+          cat > config/benchmark_runtime.json <<'JSON'
+          {"threads":4,"interop_threads":1,"mkldnn_enabled":true,"foreach":true,"cpu_affinity":false,"delta_pre_normalize":false,"homeostasis_fused_scatter":false}
+          JSON
+      - name: Run 100-step real-training control from identical checkpoint
+        run: |
+          set -euo pipefail
+          python -m train.train \
+            --steps 100 --resume parent-lumen/checkpoints/lumen/step_41000.pt \
+            --phase 1 --pilot-all-rows --no-sleep \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/benchmark_runtime.json \
+            --lr 3e-5 --warmup 100 --total-steps 61000 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 41000 --transition-end 61000 \
+            --warmup-transition 100 --transition-plateau-steps 15900 \
+            --transition-min-lr-ratio 0.5 \
+            --log-every 100 --checkpoint-every 100000 --recovery-checkpoint-every 0 \
+            --parameter-check-every 100 --ckpt-dir /tmp/lumen-control-checkpoints \
+            2>&1 | tee artifacts/control.log
+      - name: Write candidate runtime profile
+        env:
+          THREADS: ${{ matrix.threads }}
+          INTEROP: ${{ matrix.interop }}
+          MKLDNN: ${{ matrix.mkldnn }}
+          FOREACH: ${{ matrix.foreach }}
+          AFFINITY: ${{ matrix.affinity }}
+          DELTA_PRE_NORMALIZE: ${{ matrix.delta_pre_normalize }}
+          HOMEOSTASIS_FUSED_SCATTER: ${{ matrix.homeostasis_fused_scatter }}
+        run: |
+          python - <<'PY'
+          import json, os
+          cfg={
+            "threads":int(os.environ["THREADS"]),
+            "interop_threads":int(os.environ["INTEROP"]),
+            "mkldnn_enabled":os.environ["MKLDNN"].lower()=="true",
+            "foreach":os.environ["FOREACH"].lower()=="true",
+            "cpu_affinity":os.environ["AFFINITY"].lower()=="true",
+            "delta_pre_normalize":os.environ["DELTA_PRE_NORMALIZE"].lower()=="true",
+            "homeostasis_fused_scatter":os.environ["HOMEOSTASIS_FUSED_SCATTER"].lower()=="true",
+          }
+          open("config/benchmark_runtime.json","w").write(json.dumps(cfg)+"\n")
+          print(cfg)
+          PY
+      - name: Run 100-step real-training candidate from identical checkpoint
+        env:
+          COMPILE_MODE: ${{ matrix.compile }}
+        run: |
+          set -euo pipefail
+          COMPILE_ARGS=()
+          if [[ "$COMPILE_MODE" != "none" ]]; then COMPILE_ARGS=(--compile-mode "$COMPILE_MODE"); fi
+          python -m train.train \
+            --steps 100 --resume parent-lumen/checkpoints/lumen/step_41000.pt \
+            --phase 1 --pilot-all-rows --no-sleep \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/benchmark_runtime.json "${COMPILE_ARGS[@]}" \
+            --lr 3e-5 --warmup 100 --total-steps 61000 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 41000 --transition-end 61000 \
+            --warmup-transition 100 --transition-plateau-steps 15900 \
+            --transition-min-lr-ratio 0.5 \
+            --log-every 100 --checkpoint-every 100000 --recovery-checkpoint-every 0 \
+            --parameter-check-every 100 --ckpt-dir /tmp/lumen-candidate-checkpoints \
+            2>&1 | tee "artifacts/${{ matrix.profile }}.log"
+      - name: Extract throughput and loss comparison
         if: always()
         run: |
           python - <<'PY'
-          import json, pathlib
-          base = json.loads(pathlib.Path("artifacts/control.json").read_text())
-          candidate_path = pathlib.Path("artifacts/${{ matrix.profile }}.json")
-          candidate = json.loads(candidate_path.read_text()) if candidate_path.exists() else {"status":"missing"}
-          report = {
-              "profile": candidate.get("profile", "${{ matrix.profile }}"),
-              "control": base,
-              "candidate": candidate,
-              "speedup_vs_control": (
-                  round(candidate["steps_per_second"] / base["steps_per_second"], 4)
-                  if base.get("status") == "ok" and candidate.get("status") == "ok" else None
-              ),
-          }
-          pathlib.Path("artifacts/comparison.json").write_text(json.dumps(report, indent=2) + "\n")
-          print(json.dumps({"profile": report["profile"], "control_steps_s": base.get("steps_per_second"),
-                            "candidate_steps_s": candidate.get("steps_per_second"),
-                            "speedup": report["speedup_vs_control"], "status": candidate.get("status")}, indent=2))
+          import json, pathlib, re
+          def read(path):
+              p=pathlib.Path(path)
+              if not p.exists(): return {"status":"missing"}
+              s=p.read_text(errors="replace")
+              m=re.findall(r"profile_100:.*?total=([0-9.]+)s",s)
+              losses=re.findall(r"step=41100 loss=([0-9.eE+-]+)",s)
+              wall=re.findall(r"wall_clock_accumulated: model=LUMEN, seconds=([0-9.]+)",s)
+              if not m: return {"status":"failed","tail":s[-2500:]}
+              total=float(m[-1])
+              return {"status":"ok","measured_steps":100,"profile_wall_seconds":total,
+                      "steps_per_second":100/total,"step_41100_loss":float(losses[-1]) if losses else None,
+                      "block_wall_seconds":float(wall[-1]) if wall else None}
+          control=read("artifacts/control.log")
+          candidate=read("artifacts/${{ matrix.profile }}.log")
+          report={"profile":"${{ matrix.profile }}","control":control,"candidate":candidate,
+                  "speedup_vs_control":round(candidate["steps_per_second"]/control["steps_per_second"],4)
+                    if control.get("status")=="ok" and candidate.get("status")=="ok" else None}
+          pathlib.Path("artifacts/comparison.json").write_text(json.dumps(report,indent=2)+"\n")
+          print(json.dumps(report,indent=2))
           PY
-      - name: Upload benchmark artifacts
+      - name: Upload real-training benchmark evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lumen-20cpu-${{ matrix.profile }}
+          name: lumen-real-20cpu-${{ matrix.profile }}-${{ github.run_id }}
           path: artifacts/
           if-no-files-found: warn
           retention-days: 30
-
-# Benchmark uses repository-root imports; fixed in the benchmark script.

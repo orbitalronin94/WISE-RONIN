@@ -50,7 +50,7 @@ def score_candidate(model, tokenizer, prompt, choice, max_len, lumen):
 def main():
     p=argparse.ArgumentParser()
     p.add_argument("--holdout", required=True); p.add_argument("--tokenizer", required=True)
-    p.add_argument("--lumen", required=True); p.add_argument("--transformer", required=True)
+    p.add_argument("--lumen", required=True); p.add_argument("--transformer")
     p.add_argument("--out", required=True); p.add_argument("--limit", type=int, default=0)
     p.add_argument("--threads", type=int, default=4); p.add_argument("--max-len", type=int, default=128)
     p.add_argument("--expected-step", type=int, default=1000)
@@ -64,10 +64,11 @@ def main():
     ls=torch.load(a.lumen,map_location="cpu",weights_only=False)
     if int(ls.get("step",-1)) != a.expected_step: raise ValueError(f"Lumen checkpoint is not step {a.expected_step}")
     lm.load_state_dict(ls["model"]); lm.eval(); models["lumen"]=(lm,True)
-    tm=SmallTransformerLM(CONFIG.vocab_size,a.max_len).cpu()
-    ts=torch.load(a.transformer,map_location="cpu",weights_only=False)
-    if int(ts.get("step",-1)) != a.expected_step: raise ValueError(f"Transformer checkpoint is not step {a.expected_step}")
-    tm.load_state_dict(ts["model"]); tm.eval(); models["transformer"]=(tm,False)
+    if a.transformer:
+        tm=SmallTransformerLM(CONFIG.vocab_size,a.max_len).cpu()
+        ts=torch.load(a.transformer,map_location="cpu",weights_only=False)
+        if int(ts.get("step",-1)) != a.expected_step: raise ValueError(f"Transformer checkpoint is not step {a.expected_step}")
+        tm.load_state_dict(ts["model"]); tm.eval(); models["transformer"]=(tm,False)
     results={k:{"correct":0,"total":0,"mean_answer_nll":0.0,"predictions":[]} for k in models}
     sums={k:0.0 for k in models}
     with torch.inference_mode():

@@ -154,14 +154,14 @@ jobs:
           mkdir -p checkpoints/lumen-v2-133500 logs
           parent="lumen-parent/checkpoints/lumen-v2/step_73500.pt"
           for segment in 1 2 3 4 5 6; do
+            start=$((73500 + (segment - 1) * 10000))
+            end=$((start + 10000))
             if [ "$segment" -eq 1 ]; then
               scheduler_restart="--restart-scheduler-transition"
             else
               scheduler_restart=""
               parent="checkpoints/lumen-v2-133500/step_${start}.pt"
             fi
-            start=$((73500 + (segment - 1) * 10000))
-            end=$((start + 10000))
             echo "=== LUMEN SEGMENT $segment/6: $start -> $end ==="
             python -m train.train \
               --steps 10000 --resume "$parent" \
@@ -250,14 +250,14 @@ jobs:
           mkdir -p checkpoints/transformer-v2-133500 logs
           parent="transformer-parent/checkpoints/transformer-v2/step_73500.pt"
           for segment in 1 2 3 4 5 6; do
+            start=$((73500 + (segment - 1) * 10000))
+            end=$((start + 10000))
             if [ "$segment" -eq 1 ]; then
               scheduler_restart="--restart-scheduler-transition"
             else
               scheduler_restart=""
               parent="checkpoints/transformer-v2-133500/step_${start}.pt"
             fi
-            start=$((73500 + (segment - 1) * 10000))
-            end=$((start + 10000))
             echo "=== TRANSFORMER SEGMENT $segment/6: $start -> $end ==="
             python -m train.transformer_baseline \
               --steps 10000 --resume "$parent" \

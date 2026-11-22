@@ -118,19 +118,6 @@ def build_general(limit):
                 return out
     return out
 
-def build_alpaca(limit):
-    out = []
-    for item in stream("bertin-project/alpaca-spanish", buffer=10000):
-        instruction, extra, answer = map(clean, (item.get("instruction"),item.get("input"),item.get("output")))
-        prompt = "Instrucción: " + instruction
-        if extra: prompt += "\nEntrada: " + extra
-        row = make(prompt + "\nRespuesta:", answer, "bertin-project/alpaca-spanish",
-                   "CC-BY-4.0", "instruction", item.get("id",len(out)))
-        if row:
-            out.append(row)
-            if len(out) >= limit: return out
-    return out
-
 def build_legal(limit):
     out = []
     for item in stream("somosnlp/instruct-legal-refugiados-es", buffer=5000):

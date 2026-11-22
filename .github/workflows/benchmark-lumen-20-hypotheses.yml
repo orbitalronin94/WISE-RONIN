@@ -137,7 +137,7 @@ jobs:
           }
           with open("config/benchmark_runtime.json","w") as f:
               json.dump(cfg,f)
-              f.write("\\n")
+              f.write("\n")
           print("Candidate profile:",json.dumps(cfg,sort_keys=True))
           PY
 
@@ -177,7 +177,7 @@ jobs:
                   return {"status":"missing"}
               raw=p.read_text(errors="replace")
               intervals=[float(x) for x in re.findall(r"profile_100:.*?total=([0-9.]+)s",raw)]
-              final_steps=re.findall(r"completed step=(\\d+)",raw)
+              final_steps=re.findall(r"completed step=(\d+)",raw)
               final_step=int(final_steps[-1]) if final_steps else 41500
               losses=re.findall(rf"step={final_step} loss=([0-9.eE+-]+)",raw)
               if len(intervals) != 5:
@@ -206,7 +206,7 @@ jobs:
               "parent_checkpoint_step":41000,
               "candidate_final_step":41500,
           }
-          pathlib.Path("artifacts/comparison.json").write_text(json.dumps(report,indent=2)+"\\n")
+          pathlib.Path("artifacts/comparison.json").write_text(json.dumps(report,indent=2)+"\n")
           print(json.dumps(report,indent=2))
           if not valid:
               raise SystemExit("Incomplete benchmark: expected five complete 100-step windows in both logs")

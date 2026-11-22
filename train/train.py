@@ -146,6 +146,8 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "scheduler_transition": scheduler.state_dict() if args.scheduler_transition else None,
         "layer_diagnostics_history": list(layer_diagnostics_history),
         "sleep_events": list(sleep_events),
+        "parent_data_sha256": getattr(args, "parent_data_sha256", None),
+        "corpus_transition": bool(getattr(args, "allow_corpus_transition", False)),
     }, path)
     LOG.info("checkpoint=%s step=%d", path, step)
 
@@ -258,6 +260,8 @@ def main():
                         help="Compile only non-diagnostic forward passes; checkpoints remain eager-model state")
     parser.add_argument("--phase", type=int, choices=(1, 2, 3), required=True)
     parser.add_argument("--resume")
+    parser.add_argument("--allow-corpus-transition", action="store_true",
+                        help="Allow a new training JSONL hash on resume only when tokenizer is unchanged")
     parser.add_argument("--data", default="data/train_25k.jsonl")
     parser.add_argument("--tokenizer", default="data/tokenizer/tokenizer.json")
     parser.add_argument("--token-cache", help="Validated pre-tokenized corpus cache")
@@ -393,6 +397,7 @@ def main():
         allowed_parent_arches = {
             "ronin_lumen_v3_1_residual_homeostasis",
             "ronin_lumen_v3_2_parallel_delta",
+            "ronin_lumen_v3_3_neuroplasticity",
             "ronin_lumen_v3_pilot",
             "legacy_preversioned",
         }
@@ -446,8 +451,25 @@ def main():
             raise ValueError("Checkpoint training hyperparameters mismatch")
         if state.get("seed", args.seed) != args.seed:
             raise ValueError("Checkpoint seed mismatch")
-        if state["config"] != CONFIG.to_dict() or state["data_sha256"] != data_hash:
-            raise ValueError("Checkpoint config or training corpus hash mismatch")
+        if state["config"] != CONFIG.to_dict():
+            raise ValueError("Checkpoint model config mismatch")
+        parent_data_hash = state.get("data_sha256")
+        if parent_data_hash != data_hash:
+            if not args.allow_corpus_transition:
+                raise ValueError("Checkpoint training corpus hash mismatch; use --allow-corpus-transition only for an intentional corpus change")
+            if parent_arch != "ronin_lumen_v3_3_neuroplasticity" or int(state.get("step", -1)) != 1000:
+                raise ValueError("Corpus transition is restricted to the verified neuroplasticity step-1000 parent")
+            if state.get("tokenizer_sha256") != tokenizer_hash:
+                raise ValueError("Corpus transition requires the exact same tokenizer hash")
+            if not args.pilot_all_rows:
+                raise ValueError("Corpus transition requires --pilot-all-rows")
+            args.parent_data_sha256 = parent_data_hash
+            LOG.warning(
+                "CORPUS_TRANSITION accepted: parent_sha256=%s new_sha256=%s tokenizer_sha256=%s",
+                parent_data_hash, data_hash, tokenizer_hash,
+            )
+        else:
+            args.parent_data_sha256 = parent_data_hash
         if state["phase"] != args.phase:
             raise ValueError("Cannot change curriculum phase when resuming a checkpoint")
         if args.pilot_all_rows and (

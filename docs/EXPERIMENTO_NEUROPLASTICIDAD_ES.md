@@ -2,7 +2,7 @@
 
 ## Propósito
 
-Evaluar una versión experimental de Lumen inspirada en seis familias de mecanismos del libro *Cerebro a código*, sin alterar `main`, desactivar órganos ni reutilizar checkpoints históricos. La comparación emparejada enfrenta esta variante de Lumen con el Transformer de control, ambos inicializados desde el paso 0.
+Evaluar una versión experimental de Lumen inspirada en seis familias de mecanismos del libro *Cerebro a código*, manteniendo su carácter experimental, sin desactivar órganos ni reutilizar checkpoints históricos. La comparación emparejada enfrenta esta variante de Lumen con el Transformer de control, ambos inicializados desde el paso 0.
 
 ## Qué se reutiliza y qué se añade
 
@@ -47,6 +47,6 @@ El corpus v1 ya está congelado: 70.105 registros de entrenamiento, 1.413 de val
 
 ## Interpretación
 
-Este es un paquete combinado: si gana o pierde, el resultado no identifica qué mecanismo causó la diferencia. Una victoria solo justificaría benchmarks de ablación posteriores (trazas, chunking y replay por separado). No se promociona nada a `main` sin tests, revisión de checkpoints y evaluación común.
+Este es un paquete combinado: si gana o pierde, el resultado no identifica qué mecanismo causó la diferencia. Una victoria solo justificaría benchmarks de ablación posteriores (trazas, chunking y replay por separado). Aunque el código experimental ya está integrado en `main`, no se considera arquitectura ganadora ni se promociona como configuración estable sin tests, revisión de checkpoints y evaluación común.
 
 La ejecución de 1.000 pasos es un piloto de aprendizaje y rendimiento, no evidencia suficiente de generalización. El holdout se mantiene separado y debe evaluarse después de que ambos modelos terminen.

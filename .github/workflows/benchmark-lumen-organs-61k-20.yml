@@ -248,12 +248,12 @@ jobs:
           import json, os, pathlib, re, statistics
           def read(path):
               raw=pathlib.Path(path).read_text(errors="replace")
-              windows=[float(x) for x in re.findall(r"glucose_check step=\\d+ mean_loss=([0-9.eE+-]+)",raw)]
+              windows=[float(x) for x in re.findall(r"glucose_check step=\d+ mean_loss=([0-9.eE+-]+)",raw)]
               intervals=[float(x) for x in re.findall(r"profile_20:.*?total=([0-9.]+)s",raw)]
-              pain=[float(x) for x in re.findall(r"affect_check step=\\d+ pain=([0-9.eE+-]+)",raw)]
-              pleasure=[float(x) for x in re.findall(r"affect_check step=\\d+ pain=[0-9.eE+-]+ regression=[0-9.eE+-]+ pleasure=([0-9.eE+-]+)",raw)]
-              glucose=[float(x) for x in re.findall(r"glucose_check step=\\d+ mean_loss=[0-9.eE+-]+ improved=(?:True|False|None) signal=[a-z_]+ reserve=([0-9.eE+-]+)",raw)]
-              final_losses=re.findall(r"step=(\\d+) loss=([0-9.eE+-]+) token=",raw)
+              pain=[float(x) for x in re.findall(r"affect_check step=\d+ pain=([0-9.eE+-]+)",raw)]
+              pleasure=[float(x) for x in re.findall(r"affect_check step=\d+ pain=[0-9.eE+-]+ regression=[0-9.eE+-]+ pleasure=([0-9.eE+-]+)",raw)]
+              glucose=[float(x) for x in re.findall(r"glucose_check step=\d+ mean_loss=[0-9.eE+-]+ improved=(?:True|False|None) signal=[a-z_]+ reserve=([0-9.eE+-]+)",raw)]
+              final_losses=re.findall(r"step=(\d+) loss=([0-9.eE+-]+) token=",raw)
               if len(windows)!=5 or len(intervals)!=5 or len(pain)!=5 or len(pleasure)!=5 or len(glucose)!=5:
                   raise SystemExit(f"Incomplete 100-step evidence in {path}: loss={len(windows)}, intervals={len(intervals)}, pain={len(pain)}, pleasure={len(pleasure)}, glucose={len(glucose)}")
               total=sum(intervals)

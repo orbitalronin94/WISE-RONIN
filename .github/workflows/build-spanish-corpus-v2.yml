@@ -1,0 +1,90 @@
+name: Build and freeze shared Spanish corpus v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/build_spanish_corpus_v2.py
+      - .github/workflows/build-spanish-corpus-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: wise-ronin-spanish-corpus-v2
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install tokenizer
+        run: python -m pip install tokenizers
+      - name: Download frozen v1 base corpus
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-spanish-corpus-v1-45007651092
+          path: artifacts/base
+          repository: \${{ github.repository }}
+          run-id: 45007651092
+          github-token: \${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact shared tokenizer used by both models
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-45021399600
+          path: prepared
+          repository: \${{ github.repository }}
+          run-id: 45021399600
+          github-token: \${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve frozen tokenizer
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKENIZER="$(find prepared -name tokenizer.json -type f | head -n 1)"
+          test -s "$TOKENIZER"
+          echo "TOKENIZER_PATH=$TOKENIZER" >> "$GITHUB_ENV"
+      - name: Build corpus v2 from verified CSIC and TDX sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="$(find artifacts/base -name manifest.json -type f -printf '%h\n' | head -n 1)"
+          test -n "$BASE"
+          python scripts/build_spanish_corpus_v2.py \
+            --base-dir "$BASE" \
+            --tokenizer "$TOKENIZER_PATH" \
+            --source-dir artifacts/source-downloads \
+            --output-dir artifacts/spanish-v2
+      - name: Validate frozen artifact and protected evaluation splits
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path("artifacts/spanish-v2")
+          m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          assert m["status"] == "FROZEN_BUILD_OUTPUT"
+          assert m["shared_by"] == ["Lumen","Transformer"]
+          assert m["train_rows"] > m["base_train_rows"]
+          assert m["validation_rows"] == 1413, m["validation_rows"]
+          assert m["holdout_rows"] == 2431, m["holdout_rows"]
+          assert m["excluded"]["CoWeSe"]["status"] == "QUARANTINED"
+          for name, expected in m["sha256"].items():
+              actual=hashlib.sha256((root/name).read_bytes()).hexdigest()
+              assert actual == expected, (name,actual,expected)
+          assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest() == m["tokenizer_sha256"]
+          print(json.dumps(m,ensure_ascii=False,indent=2))
+          PY
+      - name: Upload frozen shared corpus v2
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-spanish-corpus-v2-\${{ github.run_id }}
+          path: artifacts/spanish-v2/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1

@@ -1,1 +1,2 @@
 Authorized continuation: exact Lumen step-1000 neuroplasticity checkpoint, corpus v2 stratified pilot sample, global steps 1001-2000.\n
+Retry after fixing the corpus-v2 artifact extraction directory; same parent checkpoint and training plan.

@@ -2,6 +2,15 @@
 """Numerical forward/loss/gradient parity gate for LUMEN CPU fast paths."""
 from __future__ import annotations
 import argparse
+import sys
+from pathlib import Path
+
+# Direct script execution places scripts/ on sys.path, not the repository root.
+# Add the root so model/ and train/ resolve on clean CI runners.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 import torch
 from model.config import CONFIG
 from model.lumen import RoninLumen

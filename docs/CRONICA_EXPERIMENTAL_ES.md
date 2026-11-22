@@ -109,7 +109,7 @@ La ventaja de Lumen se redujo a 14 respuestas, pero la NLL siguió siendo menor.
 
 [Entrenamiento 45037602119](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45037602119) · [Holdout independiente a 41.000, run 45044070812](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45044070812).
 
-El workflow de continuación se marcó como fallido en la verificación final del scheduler. Sin embargo, ambos jobs habían guardado sus checkpoints de step 41.000. Se verificaron y evaluaron en una ejecución independiente. Por eso se conserva el checkpoint, pero no se presenta el workflow original como un éxito completo.
+El workflow, cuyo nombre declaraba una continuación 31.000 → 51.000, se marcó como fallido en la verificación final del scheduler. Sin embargo, ambos jobs habían guardado sus checkpoints de step 41.000. Se verificaron y evaluaron en una ejecución independiente. Por eso se conserva el checkpoint, pero no se presenta el workflow original como un éxito completo.
 
 | Modelo | Aciertos | Accuracy | NLL media |
 |---|---:|---:|---:|

@@ -1,21 +1,31 @@
 # Lumen-Ronin
 
-**Experimento CPU-first: arquitectura Lumen recurrente frente a un Transformer de control, entrenados desde cero y evaluados bajo condiciones emparejadas.**
+**Lumen-Ronin es el modelo principal de este repositorio:** una arquitectura recurrente CPU-first con memoria Delta, Homeostasis, presupuesto energético, glucosa y órganos de regulación afectiva. El Transformer se conserva como baseline de control e instrumento de comparación, no como modelo principal.
 
-La línea experimental activa deja de ser WISE-RONIN. El objetivo ahora es determinar si los órganos de Lumen-Ronin aportan una mejora medible frente a un Transformer comparable, sin aceptar una penalización de velocidad que haga inviable entrenar y experimentar.
+El repositorio mantiene el nombre técnico WISE-RONIN, pero el proyecto activo, la documentación y la línea de entrenamiento corresponden a **Lumen-Ronin**. La arquitectura que se promueve es ronin_lumen_v3_2_parallel_delta; no se eliminan sus órganos para perseguir velocidad. Las optimizaciones deben preservar sus funciones y demostrar equivalencia o mejora con pruebas y mediciones.
 
-El repositorio conserva su nombre técnico actual (`WISE-RONIN`), pero la identidad y el plan de trabajo documentados aquí corresponden a **Lumen-Ronin**. No se reutilizarán checkpoints anteriores: ambos modelos comenzarán en **step 0**, con inicialización nueva.
-
-> **Estado a 22 de noviembre de 2026:** Delta de bajo rango, reserva de glucosa y una reformulación paralela de la recurrencia Delta están integrados en `main`. El piloto emparejado confirmó que el Transformer completó 1.000 pasos en 141,8 s; Lumen llegó a 100 pasos en 179,7 s antes de cancelarse. La nueva ruta Delta debe superar pruebas de equivalencia y un benchmark real antes de considerarse ganadora.
+> **Estado experimental — 22 de noviembre de 2026, checkpoint 16.000:** Lumen obtuvo **786/2.431 (32,332%)** en el holdout español congelado; el Transformer obtuvo **761/2.431 (31,304%)**. Lumen aventajó al baseline por 25 respuestas (+1,028 puntos porcentuales). La comparación emparejada aún no es estadísticamente concluyente (McNemar exacto bilateral p=0,329); tampoco se rechaza el azar ponderado del conjunto (31,619%; p=0,231). Se trata de una señal favorable, no de una victoria demostrada.
 
 ## Decisión de proyecto
 
-- **WISE-RONIN:** línea abandonada; no es el objetivo de los próximos entrenamientos.
-- **Lumen-Ronin:** arquitectura experimental principal.
-- **Transformer:** baseline de control entrenado en paralelo desde cero.
-- **Punto de partida:** step 0 para ambos. No importar pesos, momentos de AdamW, scheduler ni estado recurrente de checkpoints previos.
-- **Prioridad inmediata:** mejorar pasos/s sin eliminar ni alterar silenciosamente las funciones de los órganos.
-- **Entrenamiento largo:** bloqueado hasta cerrar la auditoría de rendimiento y la validación del conjunto de datos.
+- **Modelo principal:** Lumen-Ronin, arquitectura recurrente ronin_lumen_v3_2_parallel_delta.
+- **Baseline:** Transformer pequeño, conservado para controles y comparaciones cuando sean informativas.
+- **Checkpoint de trabajo:** Lumen step 16.000, con pesos, buffers de los órganos y estado de AdamW preservados.
+- **Siguiente bloque:** 5.000 pasos adicionales, step 16.000 → 21.000, solo Lumen.
+- **Scheduler:** warmup de 100 pasos desde el LR agotado, meseta a 3e-5 hasta step 20.000 y decaimiento coseno suave hasta 1,5e-5 en step 21.000. El LR no vuelve a cero en este bloque.
+- **Reguladores:** glucosa, dolor y placer siguen siendo señales independientes y acotadas; los órganos afectivos modulan el presupuesto interno, no el LR ni los momentos del optimizador.
+- **Criterio de avance:** holdout congelado, precisión y NLL informadas por separado, integridad de checkpoint y throughput. La loss de entrenamiento por sí sola no acredita generalización.
+
+## Holdout español de step 16.000
+
+La evaluación usa 2.431 preguntas congeladas (1.931 de tres opciones y 500 de cuatro), el mismo tokenizer y contexto para ambos modelos, y puntuación por NLL condicional media de cada respuesta. No hubo actualizaciones durante la evaluación.
+
+| Modelo | Aciertos | Accuracy | NLL medio |
+|---|---:|---:|---:|
+| **Lumen-Ronin** | **786/2.431** | **32,332%** | 7,1953 |
+| Transformer baseline | 761/2.431 | 31,304% | **6,8550** |
+
+Lumen gana en clasificación (+25 aciertos), mientras que el Transformer conserva menor NLL medio. Son señales distintas: la NLL no debe utilizarse como sustituto de la precisión. La diferencia de precisión no alcanza significación en el contraste emparejado (McNemar exacto bilateral p=0,329), y Lumen tampoco supera de forma significativa el azar ponderado (p=0,231). El resultado justifica continuar el experimento de Lumen, no proclamar superioridad estadística.
 
 ## Referencia de rendimiento y problema
 

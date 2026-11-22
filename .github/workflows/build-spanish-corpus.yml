@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: \${{ github.sha }}
+          ref: ${{ github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -62,7 +62,7 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: wise-ronin-spanish-corpus-v1-\${{ github.run_id }}
+          name: wise-ronin-spanish-corpus-v1-${{ github.run_id }}
           path: artifacts/spanish-v1/
           if-no-files-found: error
           retention-days: 30

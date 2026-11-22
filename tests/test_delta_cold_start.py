@@ -64,3 +64,29 @@ def test_delta_state_bounds_recurrent_writes_under_extreme_input_magnitude():
         parameter.grad is None or torch.isfinite(parameter.grad).all()
         for parameter in layer.parameters()
     )
+
+
+
+def test_delta_low_rank_state_reduces_memory_and_keeps_finite_gradients():
+    torch.manual_seed(11)
+    layer = EstadoDelta(dim=64, tau=0.001, rank=16)
+    x = torch.randn(2, 12, 64)
+    energy = torch.ones(2, 12, 1)
+    output, surprise = layer(x, energy, reset_state=True)
+    (output.square().mean() + surprise.mean()).backward()
+    assert layer.state.shape == (2, 16, 64)
+    assert layer.state.numel() == 2 * 16 * 64
+    assert torch.isfinite(output).all()
+    assert torch.isfinite(surprise).all()
+    assert torch.isfinite(layer.memory_projection).all()
+    assert all(p.grad is None or torch.isfinite(p.grad).all() for p in layer.parameters())
+
+
+def test_full_rank_projection_is_orthonormal():
+    torch.manual_seed(12)
+    layer = EstadoDelta(dim=16, rank=16)
+    identity = torch.eye(16)
+    assert torch.allclose(
+        layer.memory_projection.T @ layer.memory_projection,
+        identity, atol=1e-5, rtol=1e-5,
+    )

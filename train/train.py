@@ -232,8 +232,8 @@ def main():
                         help="Explicit synthetic smoke test only; never a training dataset")
     args = parser.parse_args()
 
-    if args.steps < 1 or (args.steps > 500 and not args.dummy_m1):
-        parser.error("--steps must be between 1 and 500")
+    if args.steps < 1 or (args.steps > 1000 and not args.dummy_m1):
+        parser.error("--steps must be between 1 and 1000")
     if args.log_every < 1 or args.checkpoint_every < 1 or args.recovery_checkpoint_every < 0 or args.parameter_check_every < 1:
         parser.error("log/checkpoint/parameter-check intervals must be positive; recovery interval may be zero")
     if args.threads < 1 or args.interop_threads < 1:

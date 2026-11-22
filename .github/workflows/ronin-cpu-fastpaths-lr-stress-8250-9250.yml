@@ -34,8 +34,8 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: torch-cpu-py311-${e} runner.os }}
-          restore-keys: torch-cpu-py311-${e} runner.os }}-
+          key: torch-cpu-py311-${{ runner.os }}
+          restore-keys: torch-cpu-py311-${{ runner.os }}-
       - name: Reuse runner PyTorch or install cached CPU wheel
         run: |
           set -euo pipefail
@@ -47,27 +47,27 @@ jobs:
       - name: Download frozen corpus and holdouts
         uses: actions/download-artifact@v4
         with:
-          name: ronin-longrun-8000-prepared-${e} inputs.source_run_id }}
+          name: ronin-longrun-8000-prepared-${{ inputs.source_run_id }}
           path: artifacts/frozen
-          repository: ${e} github.repository }}
-          run-id: ${e} inputs.source_run_id }}
-          github-token: ${e} secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download LUMEN checkpoint artifact
         uses: actions/download-artifact@v4
         with:
-          name: ronin-longrun-lumen-9000-${e} inputs.source_run_id }}
+          name: ronin-longrun-lumen-9000-${{ inputs.source_run_id }}
           path: artifacts/lumen-source
-          repository: ${e} github.repository }}
-          run-id: ${e} inputs.source_run_id }}
-          github-token: ${e} secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download Transformer checkpoint artifact
         uses: actions/download-artifact@v4
         with:
-          name: ronin-longrun-transformer-9000-${e} inputs.source_run_id }}
+          name: ronin-longrun-transformer-9000-${{ inputs.source_run_id }}
           path: artifacts/transformer-source
-          repository: ${e} github.repository }}
-          run-id: ${e} inputs.source_run_id }}
-          github-token: ${e} secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Assemble common step-8250 parents and frozen inputs
         run: |
           set -euo pipefail
@@ -92,7 +92,7 @@ jobs:
             --output-dir checkpoints/continuation
       - uses: actions/upload-artifact@v4
         with:
-          name: ronin-cpu-8250-prepared-${e} github.run_id }}
+          name: ronin-cpu-8250-prepared-${{ github.run_id }}
           path: |
             checkpoints/parents/
             checkpoints/continuation/
@@ -114,8 +114,8 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: torch-cpu-py311-${e} runner.os }}
-          restore-keys: torch-cpu-py311-${e} runner.os }}-
+          key: torch-cpu-py311-${{ runner.os }}
+          restore-keys: torch-cpu-py311-${{ runner.os }}-
       - name: Reuse runner PyTorch or install cached CPU wheel
         run: |
           if ! python -c "import torch; assert torch.version.cuda is None"; then
@@ -124,7 +124,7 @@ jobs:
           python -m pip install tokenizers numpy tqdm
       - uses: actions/download-artifact@v4
         with:
-          name: ronin-cpu-8250-prepared-${e} github.run_id }}
+          name: ronin-cpu-8250-prepared-${{ github.run_id }}
           path: .
       - name: LUMEN optimized 1000-step continuation
         shell: bash
@@ -149,7 +149,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ronin-cpu-lumen-9250-${e} github.run_id }}
+          name: ronin-cpu-lumen-9250-${{ github.run_id }}
           path: |
             checkpoints/lumen/
             artifacts/timing/lumen.json
@@ -169,8 +169,8 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: torch-cpu-py311-${e} runner.os }}
-          restore-keys: torch-cpu-py311-${e} runner.os }}-
+          key: torch-cpu-py311-${{ runner.os }}
+          restore-keys: torch-cpu-py311-${{ runner.os }}-
       - name: Reuse runner PyTorch or install cached CPU wheel
         run: |
           if ! python -c "import torch; assert torch.version.cuda is None"; then
@@ -179,7 +179,7 @@ jobs:
           python -m pip install tokenizers numpy tqdm
       - uses: actions/download-artifact@v4
         with:
-          name: ronin-cpu-8250-prepared-${e} github.run_id }}
+          name: ronin-cpu-8250-prepared-${{ github.run_id }}
           path: .
       - name: Transformer matched 1000-step continuation
         shell: bash
@@ -201,7 +201,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ronin-cpu-transformer-9250-${e} github.run_id }}
+          name: ronin-cpu-transformer-9250-${{ github.run_id }}
           path: |
             checkpoints/transformer/
             artifacts/timing/transformer.json
@@ -229,8 +229,8 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: torch-cpu-py311-${e} runner.os }}
-          restore-keys: torch-cpu-py311-${e} runner.os }}-
+          key: torch-cpu-py311-${{ runner.os }}
+          restore-keys: torch-cpu-py311-${{ runner.os }}-
       - name: Reuse runner PyTorch or install cached CPU wheel
         run: |
           if ! python -c "import torch; assert torch.version.cuda is None"; then
@@ -239,41 +239,41 @@ jobs:
           python -m pip install tokenizers numpy tqdm
       - uses: actions/download-artifact@v4
         with:
-          name: ronin-cpu-8250-prepared-${e} github.run_id }}
+          name: ronin-cpu-8250-prepared-${{ github.run_id }}
           path: .
       - name: Run isolated 100-step LR stress probe
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p checkpoints/stress artifacts/timing
-          if [ "${e} matrix.model }}" = "lumen" ]; then
+          if [ "${{ matrix.model }}" = "lumen" ]; then
             python -m train.train \
               --steps 100 --phase 1 --pilot-all-rows \
               --data data/pilot_train_19k.jsonl --tokenizer data/pilot_tokenizer/tokenizer.json \
               --token-cache data/pilot_tokenized_128.pt --batch 8 --max-len 128 --seed 42 \
               --runtime-profile config/lumen_cpu_profile_fast.json --threads 4 --interop-threads 1 \
-              --lr ${e} matrix.lr }} --warmup 100 --total-steps 8350 \
+              --lr ${{ matrix.lr }} --warmup 100 --total-steps 8350 \
               --scheduler-transition --transition-start 8250 --transition-end 8350 \
               --warmup-transition 10 --grad-clip 0.5 --log-every 10 --checkpoint-every 100 \
               --recovery-checkpoint-every 0 --parameter-check-every 10 \
               --wall-clock-file artifacts/timing/lumen.json \
-              --ckpt-dir checkpoints/stress/lumen-${e} matrix.multiplier }}x \
-              --resume checkpoints/continuation/stress/${e} matrix.checkpoint }}
+              --ckpt-dir checkpoints/stress/lumen-${{ matrix.multiplier }}x \
+              --resume checkpoints/continuation/stress/${{ matrix.checkpoint }}
           else
             python -m train.transformer_baseline \
               --steps 100 --data data/pilot_train_19k.jsonl --tokenizer data/pilot_tokenizer/tokenizer.json \
               --token-cache data/pilot_tokenized_128.pt --batch 8 --max-len 128 --seed 42 --threads 4 \
-              --lr ${e} matrix.lr }} --warmup 100 --total-steps 8350 \
+              --lr ${{ matrix.lr }} --warmup 100 --total-steps 8350 \
               --scheduler-transition --transition-start 8250 --transition-end 8350 \
               --warmup-transition 10 --grad-clip 1.0 \
               --wall-clock-file artifacts/timing/transformer.json \
-              --ckpt-dir checkpoints/stress/transformer-${e} matrix.multiplier }}x \
-              --resume checkpoints/continuation/stress/${e} matrix.checkpoint }}
+              --ckpt-dir checkpoints/stress/transformer-${{ matrix.multiplier }}x \
+              --resume checkpoints/continuation/stress/${{ matrix.checkpoint }}
           fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ronin-lr-stress-${e} matrix.model }}-${e} matrix.multiplier }}x-${e} github.run_id }}
+          name: ronin-lr-stress-${{ matrix.model }}-${{ matrix.multiplier }}x-${{ github.run_id }}
           path: |
             checkpoints/stress/
             artifacts/timing/
@@ -293,8 +293,8 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: torch-cpu-py311-${e} runner.os }}
-          restore-keys: torch-cpu-py311-${e} runner.os }}-
+          key: torch-cpu-py311-${{ runner.os }}
+          restore-keys: torch-cpu-py311-${{ runner.os }}-
       - name: Reuse runner PyTorch or install cached CPU wheel
         run: |
           if ! python -c "import torch; assert torch.version.cuda is None"; then
@@ -303,15 +303,15 @@ jobs:
           python -m pip install tokenizers numpy tqdm
       - uses: actions/download-artifact@v4
         with:
-          name: ronin-cpu-8250-prepared-${e} github.run_id }}
+          name: ronin-cpu-8250-prepared-${{ github.run_id }}
           path: .
       - uses: actions/download-artifact@v4
         with:
-          name: ronin-cpu-lumen-9250-${e} github.run_id }}
+          name: ronin-cpu-lumen-9250-${{ github.run_id }}
           path: artifacts/lumen-result
       - uses: actions/download-artifact@v4
         with:
-          name: ronin-cpu-transformer-9250-${e} github.run_id }}
+          name: ronin-cpu-transformer-9250-${{ github.run_id }}
           path: artifacts/transformer-result
       - name: Assemble checkpoints and run identical holdout
         run: |
@@ -335,7 +335,7 @@ jobs:
             --output artifacts/manifests/step_9250.json
       - uses: actions/upload-artifact@v4
         with:
-          name: ronin-cpu-matched-9250-${e} github.run_id }}
+          name: ronin-cpu-matched-9250-${{ github.run_id }}
           path: |
             checkpoints/lumen/step_9250.pt
             checkpoints/transformer/step_9250.pt

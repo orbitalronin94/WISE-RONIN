@@ -1,1 +1,2 @@
 Launch sentinel for the paired Lumen/Transformer continuation from the exact step-66000 checkpoints to step 73500 on the frozen Spanish corpus v2. Both models train in parallel; the shared untouched v2 multiple-choice holdout runs only after both final checkpoints verify.
+Retry after correcting test collection scope.

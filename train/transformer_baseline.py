@@ -145,6 +145,7 @@ def main():
     p.add_argument("--parameter-check-every", type=int, default=25,
                    help="Full parameter and AdamW-state finite scan interval")
     p.add_argument("--scheduler-transition", action="store_true")
+    p.add_argument("--restart-scheduler-transition", action="store_true")
     p.add_argument("--transition-start", type=int, default=1000)
     p.add_argument("--transition-end", type=int, default=2000)
     p.add_argument("--warmup-transition", type=int, default=20)
@@ -157,6 +158,8 @@ def main():
         p.error("--threads and --parameter-check-every must be at least 1")
     if getattr(args, 'scheduler_transition', False) and not args.resume:
         p.error("--scheduler-transition requires an exact resumable parent checkpoint")
+    if args.restart_scheduler_transition and not args.scheduler_transition:
+        p.error("--restart-scheduler-transition requires --scheduler-transition")
 
     torch.set_num_threads(args.threads)
     LOG.info("cpu_runtime: intraop_threads=%d", args.threads)
@@ -214,6 +217,14 @@ def main():
             if int(parent_config.get("total_steps", -1)) < args.transition_start:
                 raise ValueError("Parent scheduler horizon ends before the transition step")
             expected_resume_config = parent_config
+        if args.restart_scheduler_transition:
+            parent_config = state.get("training_config") or {}
+            stable_keys = ("batch", "max_len", "lr", "warmup", "weight_decay", "grad_clip")
+            mismatches = [key for key in stable_keys
+                          if parent_config.get(key) != expected_config.get(key)]
+            saved_transition = state.get("scheduler_transition")
+            if mismatches or not saved_transition or int(saved_transition.get("current_step", -1)) != int(state.get("step", -2)):
+                raise ValueError(f"Cannot restart scheduler from this checkpoint; mismatches={mismatches}")
         checks = {
             "architecture_id": (state.get("architecture_id"), ARCHITECTURE_ID),
             "seed": (state.get("seed"), args.seed),
@@ -234,7 +245,16 @@ def main():
         start = int(state["step"])
         if getattr(args, 'scheduler_transition', False):
             saved_transition = state.get("scheduler_transition")
-            if saved_transition:
+            if args.restart_scheduler_transition:
+                old_lr = float(optimizer.param_groups[0]["lr"])
+                scheduler = CosineTransitionScheduler(
+                    optimizer, start_step=start, end_step=args.transition_end,
+                    old_lr=old_lr, new_lr=args.lr, warmup_steps=args.warmup_transition,
+                )
+                scheduler.step()
+                LOG.info("lr_transition_restart: step=%d from=%.8g to=%.8g optimizer_moments_preserved=True",
+                         start, old_lr, args.lr)
+            elif saved_transition:
                 scheduler = CosineTransitionScheduler(
                     optimizer, start_step=saved_transition["start_step"],
                     end_step=saved_transition["end_step"], old_lr=saved_transition["old_lr"],

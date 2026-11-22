@@ -8,16 +8,6 @@ on:
         required: true
         default: "45007651092"
         type: string
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/paired-step0-1000.yml"
-      - "model/delta_state.py"
-      - "model/config.py"
-      - "model/lumen.py"
-      - "model/homeostasis.py"
-      - "train/train.py"
-      - "tests/test_delta_cold_start.py"
 
 permissions:
   contents: read

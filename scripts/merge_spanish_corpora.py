@@ -148,8 +148,8 @@ def merge(base_dir: Path, legacy_path: Path, output_dir: Path):
     output_dir.mkdir(parents=True, exist_ok=True)
     total_train = train + added
     train_count, train_hash = write_jsonl(output_dir / "train.jsonl", total_train)
-    val_count, val_hash = write_jsonl(output_dir / "validation.jsonl", validation)
-    holdout_count, holdout_hash = write_jsonl(output_dir / "holdout_multiple_choice.jsonl", holdout)
+    val_count, val_hash = copy_jsonl(base_validation, output_dir / "validation.jsonl")
+    holdout_count, holdout_hash = copy_jsonl(base_holdout, output_dir / "holdout_multiple_choice.jsonl")
 
     source_counts = Counter(row.get("source", "unknown") for row in total_train)
     task_counts = Counter(row.get("task", "unknown") for row in total_train)

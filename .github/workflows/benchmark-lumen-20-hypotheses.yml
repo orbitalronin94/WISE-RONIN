@@ -1,10 +1,6 @@
 name: RONIN-LUMEN 20 real-training CPU throughput hypotheses (500 steps each)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/benchmark-lumen-20-hypotheses.yml"
   workflow_dispatch:
 
 permissions:
@@ -181,7 +177,9 @@ jobs:
                   return {"status":"missing"}
               raw=p.read_text(errors="replace")
               intervals=[float(x) for x in re.findall(r"profile_100:.*?total=([0-9.]+)s",raw)]
-              losses=re.findall(r"step=41600 loss=([0-9.eE+-]+)",raw)
+              final_steps=re.findall(r"completed step=(\\d+)",raw)
+              final_step=int(final_steps[-1]) if final_steps else 41500
+              losses=re.findall(rf"step={final_step} loss=([0-9.eE+-]+)",raw)
               if len(intervals) != 5:
                   return {"status":"incomplete","windows_found":len(intervals),
                           "windows_seconds":intervals,"tail":raw[-3000:]}

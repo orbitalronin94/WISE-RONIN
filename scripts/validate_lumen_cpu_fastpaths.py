@@ -26,19 +26,27 @@ def run(model, tokens):
 
 def main():
     p=argparse.ArgumentParser()
-    p.add_argument("--checkpoint",required=True)
+    p.add_argument("--checkpoint")
+    p.add_argument("--random-init",action="store_true",help="Validate the frozen fast paths from deterministic step-0 weights")
     p.add_argument("--rtol",type=float,default=2e-4)
     p.add_argument("--atol",type=float,default=2e-5)
     a=p.parse_args()
     torch.set_num_threads(4)
-    state=torch.load(a.checkpoint,map_location="cpu",weights_only=False)
-    if state.get("architecture_id")!="ronin_lumen_v3_1_residual_homeostasis":
-        raise ValueError("Fast-path parity gate requires the frozen LUMEN V3.1 parent")
+    if not a.checkpoint and not a.random_init:
+        p.error("provide --checkpoint or --random-init")
+    if a.checkpoint and a.random_init:
+        p.error("choose either --checkpoint or --random-init")
+    state = None
+    if a.checkpoint:
+        state=torch.load(a.checkpoint,map_location="cpu",weights_only=False)
+        if state.get("architecture_id")!="ronin_lumen_v3_1_residual_homeostasis":
+            raise ValueError("Fast-path parity gate requires the frozen LUMEN V3.1 parent")
     torch.manual_seed(20261122)
     reference=RoninLumen(v32_ze=False).cpu()
     optimized=RoninLumen(v32_ze=False).cpu()
-    reference.load_state_dict(state["model"])
-    optimized.load_state_dict(state["model"])
+    if state is not None:
+        reference.load_state_dict(state["model"])
+        optimized.load_state_dict(state["model"])
     reference.eval(); optimized.eval()
     for layer in reference.delta_layers: layer.pre_normalize_sequence=False
     for organ in reference.homeo: organ.fused_scatter_add=False

@@ -1,0 +1,154 @@
+name: LUMEN continuation 61000 to 66000 — organs x1.50 + Delta2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/lumen-61000-66000-organs-x150-delta2.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-61000-to-66000-organs-x150-delta2
+  cancel-in-progress: false
+
+env:
+  PARENT_RUN_ID: "45044892658"
+  PREPARED_RUN_ID: "45021399600"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+
+jobs:
+  train-lumen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm pytest
+      - name: Test scheduler and organ profiles
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pytest -q tests/test_affect_organs.py tests/test_scheduler_transition.py
+      - name: Download frozen Spanish corpus and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-45021399600
+          path: .
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download promoted Lumen step-61000 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step61000-45044892658
+          path: parent-lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify parent checkpoint and frozen data; write selected runtime profile
+        run: |
+          set -euo pipefail
+          test -s artifacts/spanish-v1/train.jsonl
+          test -s artifacts/spanish-v1/holdout_multiple_choice.jsonl
+          test -s data/spanish/tokenizer/tokenizer.json
+          test -s data/spanish/train_tokens_128.pt
+          test -s parent-lumen/checkpoints/lumen/step_61000.pt
+          python - <<'PY'
+          import json, torch
+          from pathlib import Path
+          manifest=json.loads(Path("artifacts/spanish-v1/manifest.json").read_text(encoding="utf-8"))
+          assert manifest["language"] == "es", manifest
+          rows=[x for x in Path("artifacts/spanish-v1/holdout_multiple_choice.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(rows) == 2431, len(rows)
+          s=torch.load("parent-lumen/checkpoints/lumen/step_61000.pt",map_location="cpu",weights_only=False)
+          tr=s["scheduler_transition"]
+          assert s["step"] == 61000 and s["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          assert s["pilot_all_rows"] is True
+          assert tr and tr["current_step"] in (61000,61001) and tr["end_step"] == 61000, tr
+          assert s["training_config"]["batch"] == 8 and s["training_config"]["max_len"] == 128
+          assert s["training_config"]["lr"] == 3e-5 and s["training_config"]["warmup"] == 100
+          assert s["optimizer"] and s["rng"] and s["data_sha256"] and s["tokenizer_sha256"]
+          profile = {
+            "threads": 4,
+            "interop_threads": 2,
+            "mkldnn_enabled": True,
+            "foreach": False,
+            "cpu_affinity": True,
+            "delta_pre_normalize": False,
+            "homeostasis_fused_scatter": False,
+            "delta_parallel_refinements": 2,
+            "organs": {
+              "pain": {"response": 0.30, "decay": 0.55},
+              "pleasure": {"response": 0.75},
+              "pain_budget_gain": 0.10,
+              "pleasure_budget_gain": 0.1125
+            }
+          }
+          Path("config/lumen_organ_delta2_profile.json").write_text(json.dumps(profile,indent=2)+"\n",encoding="utf-8")
+          print("Parent Lumen step 61000 verified; scheduler:",tr)
+          print("Runtime profile:",json.dumps(profile,sort_keys=True))
+          PY
+      - name: Continue Lumen 61000 to 66000 (5k steps)
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/lumen logs
+          python -m train.train \
+            --steps 5000 --resume parent-lumen/checkpoints/lumen/step_61000.pt \
+            --phase 1 --pilot-all-rows --no-sleep \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/lumen_organ_delta2_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 66000 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 61000 --transition-end 66000 \
+            --warmup-transition 100 --transition-plateau-steps 3900 \
+            --transition-min-lr-ratio 0.5 \
+            --log-every 100 --checkpoint-every 250 --recovery-checkpoint-every 100 \
+            --parameter-check-every 100 --ckpt-dir checkpoints/lumen \
+            2>&1 | tee logs/lumen-61000-66000-organs-x150-delta2.log
+      - name: Verify final Lumen step 66000, organs, Delta2 and LR floor
+        run: |
+          python - <<'PY'
+          import json, math, torch
+          s=torch.load("checkpoints/lumen/step_66000.pt",map_location="cpu",weights_only=False)
+          tr=s["scheduler_transition"]
+          p=s["runtime_profile"]
+          assert s["step"] == 66000 and tr["current_step"] == 66000, tr
+          assert tr["start_step"] == 61000 and tr["end_step"] == 66000
+          assert tr["warmup_steps"] == 100 and tr["plateau_steps"] == 3900
+          assert tr["min_lr_ratio"] == 0.5
+          assert math.isclose(s["optimizer"]["param_groups"][0]["lr"],1.5e-5,rel_tol=1e-5)
+          assert p["delta_parallel_refinements"] == 2
+          assert p["organs"]["pain"]["response"] == 0.30
+          assert p["organs"]["pain"]["decay"] == 0.55
+          assert p["organs"]["pleasure"]["response"] == 0.75
+          assert p["organs"]["pleasure_budget_gain"] == 0.1125
+          assert s["optimizer"] and s["rng"]
+          print("Lumen 66000 verified; all organs retained, Delta refinements=2, LR floor intact.")
+          print("Final scheduler:",json.dumps(tr,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-lumen-step66000-organs-x150-delta2-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/
+            logs/lumen-61000-66000-organs-x150-delta2.log
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0

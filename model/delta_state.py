@@ -1,14 +1,16 @@
-"""Surprise-gated recurrent Delta memory with per-token state-complexity diagnostics."""
+"""Low-rank surprise-gated recurrent Delta memory."""
 import torch
 from torch import nn
 from torch.nn import functional as F
 
 
 class EstadoDelta(nn.Module):
-    def __init__(self, dim=256, tau=0.15):
+    def __init__(self, dim=256, tau=0.15, rank=64):
         super().__init__()
         self.dim = dim
-        # Optional sequence-batched normalization; mathematically equivalent to per-token normalization.
+        self.rank = min(int(rank), dim)
+        if self.rank < 1:
+            raise ValueError("Delta memory rank must be >= 1")
         self.pre_normalize_sequence = False
         self.proj_k = nn.Linear(dim, dim, bias=False)
         self.proj_v = nn.Linear(dim, dim, bias=False)
@@ -16,6 +18,12 @@ class EstadoDelta(nn.Module):
         self.a = nn.Parameter(torch.tensor(-1.0))
         self.b = nn.Parameter(torch.tensor(2.0))
         self.tau = nn.Parameter(torch.tensor(float(tau)))
+        # A fixed orthonormal sketch compresses the associative key space.
+        # With rank=dim this is an exact change of coordinates; lower ranks
+        # approximate the full key/query inner products in a smaller space.
+        sketch = torch.randn(dim, self.rank)
+        projection, _ = torch.linalg.qr(sketch, mode="reduced")
+        self.register_buffer("memory_projection", projection, persistent=True)
         self.register_buffer("state", torch.empty(0), persistent=True)
         self.last_complexity = None
         self.last_write_rate = 0.0
@@ -23,7 +31,7 @@ class EstadoDelta(nn.Module):
         self.last_output_norm = 0.0
 
     def reset(self, batch, device, dtype):
-        self.state = torch.zeros(batch, self.dim, self.dim, device=device, dtype=dtype)
+        self.state = torch.zeros(batch, self.rank, self.dim, device=device, dtype=dtype)
 
     def forward(self, x, e_delta, reset_state=False, compute_complexity=False, collect_diagnostics=True):
         batch, steps, _ = x.shape
@@ -31,7 +39,6 @@ class EstadoDelta(nn.Module):
                 or self.state.shape[0] != batch or self.state.device != x.device):
             self.reset(batch, x.device, x.dtype)
         S = self.state.to(dtype=x.dtype)
-        # K/V/Q projections are token-independent; fuse them into one sequence-wide GEMM.
         projected = F.linear(x, torch.cat(
             (self.proj_k.weight, self.proj_v.weight, self.proj_q.weight), dim=0
         ))
@@ -39,37 +46,35 @@ class EstadoDelta(nn.Module):
         if self.pre_normalize_sequence:
             k_all = F.normalize(k_all, dim=-1, eps=1e-6)
             q_all = F.normalize(q_all, dim=-1, eps=1e-6)
+        P = self.memory_projection.to(dtype=x.dtype)
         outs, surprises = [], []
         complexities, write_rates = [], []
         for t in range(steps):
             if compute_complexity:
                 previous_log_prob = torch.log_softmax(S.float(), dim=-1)
             k, v, q = k_all[:, t], v_all[:, t], q_all[:, t]
-            # Unit-norm keys prevent recurrent reads scaling with upstream magnitude.
             k_unit = k if self.pre_normalize_sequence else F.normalize(k, dim=-1, eps=1e-6)
-            pred = torch.bmm(k_unit.unsqueeze(1), S).squeeze(1)
+            q_unit = q if self.pre_normalize_sequence else F.normalize(q, dim=-1, eps=1e-6)
+            k_sketch = F.normalize(k_unit @ P, dim=-1, eps=1e-6)
+            q_sketch = F.normalize(q_unit @ P, dim=-1, eps=1e-6)
+            pred = torch.bmm(k_sketch.unsqueeze(1), S).squeeze(1)
             err = v - pred
             surprise = err.norm(dim=-1, keepdim=True) / (self.dim ** 0.5)
             decay = torch.sigmoid(self.a * surprise + self.b).clamp(0.90, 0.9999)
-            # A normalized rank-one write has Frobenius norm <= 1. tanh and
-            # bounded energy keep each write finite; decay >= .90 bounds the
-            # recurrent state by a geometric series instead of raw activation scale.
             err_unit = F.normalize(err, dim=-1, eps=1e-6)
             write_lr = torch.tanh(surprise) * e_delta[:, t].clamp(0.0, 1.0)
             gate = (surprise >= self.tau.clamp_min(0.0)).to(x.dtype)
             if collect_diagnostics:
                 write_rates.append(gate.mean().detach())
             S = S * decay.unsqueeze(-1)
-            update = torch.bmm(k_unit.unsqueeze(2), err_unit.unsqueeze(1))
+            update = torch.bmm(k_sketch.unsqueeze(2), err_unit.unsqueeze(1))
             S = S + update * (write_lr * gate).unsqueeze(-1)
             if compute_complexity:
                 current_log_prob = torch.log_softmax(S.float(), dim=-1)
                 current_prob = current_log_prob.exp()
                 kl = (current_prob * (current_log_prob - previous_log_prob)).sum(dim=-1).mean()
                 complexities.append(kl.to(x.dtype))
-            q_unit = q if self.pre_normalize_sequence else F.normalize(q, dim=-1, eps=1e-6)
-            delta_out = torch.bmm(q_unit.unsqueeze(1), S).squeeze(1)
-            # Keep associative retrieval subordinate to the information stream.
+            delta_out = torch.bmm(q_sketch.unsqueeze(1), S).squeeze(1)
             max_out_norm = 0.5 * x[:, t].norm(dim=-1, keepdim=True)
             out_norm = delta_out.norm(dim=-1, keepdim=True).clamp_min(1e-6)
             delta_out = delta_out * (max_out_norm / out_norm).clamp(max=1.0)

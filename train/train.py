@@ -439,6 +439,7 @@ def main():
         compiled_model = torch.compile(model, mode=args.compile_mode)
         LOG.info("torch_compile enabled: mode=%s; diagnostic forwards remain eager", args.compile_mode)
     activity_windows = [deque(maxlen=100) for _ in model.homeo]
+    glucose_loss_window = deque(maxlen=args.log_every)
     profile = {"forward": 0.0, "backward": 0.0, "sleep": 0.0, "wall": 0.0}
     block_started = time.perf_counter()
     elapsed_offset = 0.0
@@ -479,6 +480,7 @@ def main():
             beta=0.01,
             pad_id=0,
         )
+        glucose_loss_window.append(float(loss.detach().item()))
         if not torch.isfinite(loss.detach()).all():
             log_nonfinite_diagnostics(model, output, metrics, loss, optimizer, step, "non-finite loss; optimizer update skipped")
             raise FloatingPointError(
@@ -541,6 +543,18 @@ def main():
             quant_enabled = True
 
         if step % args.log_every == 0 or step == start + 1:
+            glucose_signal = "not_checked"
+            if step % args.log_every == 0 and glucose_loss_window:
+                check_loss = sum(glucose_loss_window) / len(glucose_loss_window)
+                improved, glucose_level = model.presupuesto.check_loss(check_loss)
+                glucose_signal = (
+                    "baseline" if improved is None else
+                    "fed" if improved else "metabolized"
+                )
+                LOG.info(
+                    "glucose_check step=%d mean_loss=%.6f improved=%s signal=%s reserve=%.3f",
+                    step, check_loss, improved, glucose_signal, glucose_level,
+                )
             dead_by_layer = [organ.neuronas_muertas() for organ in model.homeo]
             dead = max(dead_by_layer, default=1.0)
             entropy = float(model.presupuesto.entropy(output["energy"]).detach())

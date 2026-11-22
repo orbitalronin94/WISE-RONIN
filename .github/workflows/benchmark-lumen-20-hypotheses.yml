@@ -43,6 +43,7 @@ jobs:
           - fused_adamw_bf16
           - compile_default_bf16
           - compile_reduce_overhead_threads_1
+          - threads_2_mkldnn_off_foreach_off
     env:
       OMP_NUM_THREADS: "2"
       MKL_NUM_THREADS: "2"

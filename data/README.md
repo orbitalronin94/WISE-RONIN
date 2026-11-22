@@ -76,3 +76,43 @@ Las etiquetas de licencia son las declaradas por las tarjetas y los componentes 
 - Continuación activa: [61.000 → 66.000, run 45061486739](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45061486739).
 
 **Regla:** no se cambia el corpus, tokenizer ni holdout a mitad de una comparación emparejada. Cualquier nueva versión debe tener manifiesto, hashes y una evaluación que permita distinguir el efecto del modelo del efecto de los datos.
+
+
+---
+
+## Ampliación v2: corpus común para Lumen y Transformer
+
+**Estado: PREPARACIÓN PENDIENTE — entrenamientos congelados.**
+
+Se ha decidido ampliar el corpus de texto español con tres recursos preprocesados, manteniendo un único conjunto de entrenamiento para las dos arquitecturas. La ampliación no se considera terminada ni se atribuyen todavía recuentos nuevos: los tamaños publicados por los proveedores no equivalen a tokens efectivamente ingeridos por nuestra canalización.
+
+| Fuente | Contenido | Licencia declarada | Tratamiento |
+|---|---|---|---|
+| [CSIC Spanish Corpus](https://zenodo.org/records/7313126) | Artículos y revistas científicas en español; 30.929 documentos y ~146,8 M tokens declarados | CC BY 4.0 | Candidato de inclusión; conservar atribución y metadatos |
+| [TDX Spanish Thesis Corpus](https://zenodo.org/records/7313149) | Tesis académicas en español; 9.790 documentos y ~248,7 M tokens declarados | CC BY 4.0 | Candidato de inclusión; conservar atribución y metadatos |
+| [CoWeSe — Spanish Biomedical Crawled Corpus](https://doi.org/10.5281/zenodo.5513237) | Corpus biomédico español preprocesado, procedente de un rastreo de más de 3.000 URL | CC BY 4.0 en el registro del recurso | Revisión de derechos de los textos subyacentes antes de incorporarlo |
+
+**Advertencia de licencia sobre CoWeSe:** el registro Zenodo declara CC BY 4.0 para el recurso, pero la descripción de sus autores aclara que no son titulares de los textos recolectados. Por ello, no se tratará la licencia del paquete como prueba automática de que cada documento subyacente puede redistribuirse o utilizarse sin restricciones. CoWeSe permanecerá separado hasta completar una revisión de procedencia/derechos; no se mezclará silenciosamente.
+
+### Contrato de integración
+
+1. Descargar cada fuente desde su registro oficial y fijar versión, URL, fecha, tamaño y SHA-256.
+2. Mantener el texto continuo como texto de preentrenamiento; no convertirlo artificialmente en pares de instrucciones y respuestas.
+3. Normalizar, filtrar documentos vacíos/no españoles, eliminar duplicados exactos y detectar solapamientos con el train v1.
+4. Preservar por documento la fuente, identificador disponible, licencia, URL/DOI y estadísticas de limpieza.
+5. Construir secuencias compatibles con el contexto 128 y el tokenizador compartido actual. No cambiar el vocabulario BPE de 4.096 IDs sin un plan explícito de migración de embeddings/checkpoints.
+6. Mantener la validación (1.413 registros) y el holdout (2.431 preguntas) byte por byte; no introducirlos en entrenamiento ni utilizarlos como material de deduplicación que altere la evaluación.
+7. Publicar un manifiesto v2 con recuentos reales, tokens medidos por nuestro tokenizador, exclusiones, hashes y auditoría de solapamiento.
+8. Hacer que Lumen y Transformer descarguen exactamente el mismo artefacto v2, tokenizer y token cache. No habrá corpus específico por modelo.
+
+### Regla de pausa
+
+No iniciar nuevos entrenamientos, benchmarks de entrenamiento ni continuaciones de checkpoints hasta que:
+
+- la ingestión y limpieza estén completadas;
+- el manifiesto y los hashes sean reproducibles;
+- las secuencias y la caché hayan pasado validaciones de integridad;
+- se confirme que validación y holdout permanecen intactos;
+- ambos workflows de entrenamiento apunten al mismo artefacto versionado.
+
+El corpus v1 y sus hashes anteriores se conservan como referencia histórica. La versión v2 será una nueva versión de datos, no una reescritura retrospectiva de los resultados 0→66k.

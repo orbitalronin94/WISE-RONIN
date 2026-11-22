@@ -153,7 +153,8 @@ def siqa_choice_label(value):
 
 def build_eval():
     out = []
-    for item in stream("BSC-LT/SIQA_es", "validation", 3000):
+    # The Hub exposes the card-described 1,931-row validation set as its only "train" split.
+    for item in stream("BSC-LT/SIQA_es", "train", 3000):
         choices = [clean(item.get(k,"")) for k in ("answer_a","answer_b","answer_c")]
         label = siqa_choice_label(item.get("label",""))
         if not all(choices) or label is None: continue

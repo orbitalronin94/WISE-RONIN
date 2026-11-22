@@ -1,0 +1,190 @@
+name: Lumen continuation 1000 to 2000 on Spanish corpus v2
+
+on:
+  push:
+    branches: [experiment/lumen-step1000-v2-continue]
+    paths:
+      - "docs/LAUNCH_LUMEN_V2_CONTINUATION.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-lumen-step1000-v2-continuation
+  cancel-in-progress: false
+
+env:
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  V2_RUN_ID: "45065384110"
+  PARENT_RUN_ID: "45068173591"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "datasets>=3,<4" "huggingface_hub>=0.25,<1.0" langid tokenizers numpy tqdm pytest
+      - name: Compile and run complete test suite
+        run: |
+          python -m compileall -q model train data scripts
+          PYTHONPATH=. pytest -q tests
+
+  prepare:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU and tokenizer tools
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers
+      - name: Download frozen corpus v2
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-spanish-corpus-v2-45065384110
+          path: .
+          repository: ${{ github.repository }}
+          run-id: ${{ env.V2_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify and sample frozen v2
+        run: |
+          set -euo pipefail
+          python scripts/sample_spanish_v2.py \
+            --manifest artifacts/spanish-v2/manifest.json \
+            --input artifacts/spanish-v2/train.jsonl \
+            --output data/spanish-v2-train-sample.jsonl \
+            --seed 42
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          from tokenizers import Tokenizer
+          root=Path("artifacts/spanish-v2")
+          m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          tok=Tokenizer.from_file(str(root/"tokenizer.json"))
+          assert tok.get_vocab_size()==4096
+          assert tok.token_to_id("[PAD]")==0
+          assert tok.token_to_id("[EOS]") is not None
+          assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest()==m["tokenizer_sha256"]
+          assert m["validation_rows"]==1413 and m["holdout_rows"]==2431
+          print("v2 manifest and unchanged 4096-token tokenizer verified")
+          PY
+      - name: Build exact token cache for the stratified v2 sample
+        run: |
+          python scripts/prepare_token_cache.py \
+            --data data/spanish-v2-train-sample.jsonl \
+            --tokenizer artifacts/spanish-v2/tokenizer.json \
+            --max-len 128 \
+            --output data/spanish-v2-token-cache.pt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ronin-lumen-v2-sample-prepared-${{ github.run_id }}
+          path: |
+            data/spanish-v2-train-sample.jsonl
+            data/spanish-v2-token-cache.pt
+            artifacts/spanish-v2/manifest.json
+            artifacts/spanish-v2/validation.jsonl
+            artifacts/spanish-v2/holdout_multiple_choice.jsonl
+            artifacts/spanish-v2/tokenizer.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+  train-lumen:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download exact Lumen step-1000 parent checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-neuroplasticity-lumen-step1000-45068173591
+          path: .
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download verified v2 sample and token cache
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-v2-sample-prepared-${{ github.run_id }}
+          path: .
+      - name: Verify exact parent checkpoint and data lineage
+        run: |
+          python - <<'PY'
+          import hashlib, json, torch
+          from pathlib import Path
+          ckpt=Path("checkpoints/lumen/step_1000.pt")
+          state=torch.load(ckpt,map_location="cpu",weights_only=False)
+          assert state["step"]==1000
+          assert state["architecture_id"]=="ronin_lumen_v3_3_neuroplasticity"
+          assert state["data_sha256"]=="d0dc9e12dc1b72b01eeafd42e204c59543e2196fc516ff1d67b1be9f78632b3f"
+          tok=Path("artifacts/spanish-v2/tokenizer.json")
+          assert hashlib.sha256(tok.read_bytes()).hexdigest()==state["tokenizer_sha256"]
+          manifest=json.loads(Path("artifacts/spanish-v2/manifest.json").read_text())
+          assert manifest["train_rows"]==9357876
+          print("parent_step=1000; optimizer, scheduler, RNG and eligibility traces present")
+          print("parent_corpus=v1; target_corpus=v2; tokenizer unchanged")
+          PY
+      - name: Continue Lumen from step 1000 to 2000 on corpus v2
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/lumen-v2 logs
+          python -m train.train \
+            --steps 1000 --resume checkpoints/lumen/step_1000.pt \
+            --allow-corpus-transition --phase 1 --pilot-all-rows \
+            --data data/spanish-v2-train-sample.jsonl \
+            --tokenizer artifacts/spanish-v2/tokenizer.json \
+            --token-cache data/spanish-v2-token-cache.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/lumen_cpu_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 2000 \
+            --scheduler-transition --transition-start 1000 --transition-end 2000 \
+            --warmup-transition 20 --log-every 100 --checkpoint-every 250 \
+            --recovery-checkpoint-every 100 --parameter-check-every 100 \
+            --ckpt-dir checkpoints/lumen-v2 2>&1 | tee logs/lumen-v2.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-lumen-corpus-v2-step2000-${{ github.run_id }}
+          path: |
+            checkpoints/lumen-v2/
+            logs/lumen-v2.log
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+
+  summary:
+    needs: [train-lumen]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report continuation result
+        env:
+          TRAIN_RESULT: ${{ needs.train-lumen.result }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          echo "Lumen v1->v2 continuation run: $RUN_ID"
+          echo "Training: $TRAIN_RESULT"
+          test "$TRAIN_RESULT" = success

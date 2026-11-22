@@ -1,0 +1,11 @@
+{
+  "threads": 4,
+  "interop_threads": 1,
+  "mkldnn_enabled": true,
+  "foreach": true,
+  "cpu_affinity": false,
+  "delta_pre_normalize": true,
+  "homeostasis_fused_scatter": true,
+  "profile_id": "organ_preserving_cpu_fastpaths_v2",
+  "note": "Enable only exact-structure CPU fast paths; recurrent Delta time order, all model organs and all loss terms remain intact."
+}

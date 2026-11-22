@@ -142,6 +142,8 @@ def main():
     p.add_argument("--warmup", type=int, default=100)
     p.add_argument("--total-steps", type=int, default=10000)
     p.add_argument("--grad-clip", type=float, default=1.0)
+    p.add_argument("--parameter-check-every", type=int, default=25,
+                   help="Full parameter and AdamW-state finite scan interval")
     p.add_argument("--scheduler-transition", action="store_true")
     p.add_argument("--transition-start", type=int, default=1000)
     p.add_argument("--transition-end", type=int, default=2000)
@@ -151,8 +153,8 @@ def main():
     args = p.parse_args()
     if not 1 <= args.steps <= 500:
         p.error("--steps must be between 1 and 500")
-    if args.threads < 1:
-        p.error("--threads must be at least 1")
+    if args.threads < 1 or args.parameter_check_every < 1:
+        p.error("--threads and --parameter-check-every must be at least 1")
     if getattr(args, 'scheduler_transition', False) and not args.resume:
         p.error("--scheduler-transition requires an exact resumable parent checkpoint")
 
@@ -291,12 +293,35 @@ def main():
             tokens[:, 1:].reshape(-1),
             ignore_index=0,
         )
+        if not torch.isfinite(loss.detach()).all():
+            raise FloatingPointError(f"non-finite Transformer loss at global step {step}")
         optimizer.zero_grad(set_to_none=True)
         backward_started = time.perf_counter()
         loss.backward()
         profile["backward"] += time.perf_counter() - backward_started
-        torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip, foreach=True)
+        torch.nn.utils.clip_grad_norm_(
+            model.parameters(), args.grad_clip, foreach=True, error_if_nonfinite=True
+        )
         optimizer.step()
+        full_health_check = (
+            step % args.parameter_check_every == 0
+            or step == start + args.steps
+        )
+        if full_health_check:
+            invalid_parameters = any(
+                not torch.isfinite(parameter.detach()).all()
+                for parameter in model.parameters()
+            )
+            invalid_optimizer_state = any(
+                isinstance(value, torch.Tensor) and value.is_floating_point()
+                and value.numel() and not torch.isfinite(value).all()
+                for state_values in optimizer.state.values()
+                for value in state_values.values()
+            )
+            if invalid_parameters or invalid_optimizer_state:
+                raise FloatingPointError(
+                    f"non-finite Transformer parameters/AdamW state at global step {step}"
+                )
         scheduler.step()
         for target in (7.0, 6.0, 5.8):
             if target not in reached_targets and loss.item() <= target:

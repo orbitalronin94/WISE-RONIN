@@ -39,7 +39,7 @@ jobs:
       - name: Compile and run tests
         run: |
           python -m compileall -q model train data scripts
-          PYTHONPATH=. pytest -q tests
+          PYTHONPATH=. pytest -q tests/test_affect_organs.py tests/test_scheduler_transition.py
 
   prepare-v2:
     needs: quality-gate

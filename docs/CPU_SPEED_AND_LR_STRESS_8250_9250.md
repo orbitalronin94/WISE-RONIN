@@ -7,7 +7,7 @@ The preceding matched continuation run 45001865876 was cancelled while LUMEN was
 - Four resumable 250-step blocks per model: 8250 -> 9250.
 - Same corpus, tokenizer, token cache, seed, batch, context, and matched parent token counter.
 - LUMEN keeps Delta recurrence, Homeostasis, memory, JEPA, KAN/MLP head, router, sleep and all losses.
-- CPU paths: 4 intra-op / 1 inter-op, MKLDNN on, foreach AdamW/clipping, Delta sequence pre-normalization, Homeostasis fused scatter, affinity off.
+- CPU paths: 4 intra-op / 1 inter-op, MKLDNN on, foreach AdamW/clipping, Delta sequence pre-normalization, Homeostasis fused scatter, affinity off. A preflight compares forward outputs, the complete LUMEN loss and parameter gradients between reference and fast paths; training is blocked if parity fails.
 - The runtime-profile parser is corrected so a present JSON profile is actually applied.
 - Full parameter/optimizer finite scans every 100 updates; loss and gradient checks remain every update.
 - Named checkpoint every 250 updates. No extra 100-step recovery serialization on the hot path.

@@ -1,0 +1,248 @@
+name: LUMEN — 20 organ mix × Delta simplification hypotheses
+
+on:
+  push:
+    paths:
+      - ".github/workflows/benchmark-lumen-delta-organs-20.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-delta-organ-matrix-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  PARENT_RUN_ID: "45037602119"
+  PREPARED_RUN_ID: "45021399600"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+
+jobs:
+  benchmark:
+    name: "${{ matrix.profile }} — 100 steps"
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        profile:
+          - organs_075_delta_r2
+          - organs_075_delta_r3
+          - organs_075_delta_r4
+          - organs_075_delta_r5
+          - organs_075_delta_r6
+          - organs_100_delta_r2
+          - organs_100_delta_r3
+          - organs_100_delta_r4
+          - organs_100_delta_r5
+          - organs_100_delta_r6
+          - organs_125_delta_r2
+          - organs_125_delta_r3
+          - organs_125_delta_r4
+          - organs_125_delta_r5
+          - organs_125_delta_r6
+          - organs_150_delta_r2
+          - organs_150_delta_r3
+          - organs_150_delta_r4
+          - organs_150_delta_r5
+          - organs_150_delta_r6
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Lumen CPU training dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+
+      - name: Download frozen Spanish training corpus and token cache
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-45021399600
+          path: .
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download exact promoted Lumen step-41000 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step51000-45037602119
+          path: parent-lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify identical data and parent checkpoint
+        run: |
+          set -euo pipefail
+          test -s artifacts/spanish-v1/train.jsonl
+          test -s data/spanish/tokenizer/tokenizer.json
+          test -s data/spanish/train_tokens_128.pt
+          python - <<'PY'
+          import json, torch
+          from pathlib import Path
+          manifest=json.loads(Path("artifacts/spanish-v1/manifest.json").read_text())
+          assert manifest["language"] == "es"
+          state=torch.load("parent-lumen/checkpoints/lumen/step_41000.pt",map_location="cpu",weights_only=False)
+          transition=state["scheduler_transition"]
+          assert state["step"] == 41000
+          assert state["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          assert state["pilot_all_rows"] is True
+          assert transition["current_step"] in (41000,41001)
+          assert transition["end_step"] == 51000
+          assert state["optimizer"] and state["rng"] and state["scheduler"]
+          print("Verified parent step 41000; tokens_seen:",state["tokens_seen"])
+          PY
+
+      - name: Write matched baseline profile
+        run: |
+          mkdir -p config artifacts
+          python - <<'PY'
+          import json
+          cfg={"threads":4,"interop_threads":2,"mkldnn_enabled":True,
+               "foreach":False,"cpu_affinity":True,"organs":{},
+               "delta_parallel_refinements":6}
+          with open("config/baseline_profile.json","w") as f:
+              json.dump(cfg,f,sort_keys=True)
+              f.write("\n")
+          PY
+
+      - name: Run matched 100-step baseline
+        run: |
+          set -euo pipefail
+          python -m train.train \
+            --steps 100 --resume parent-lumen/checkpoints/lumen/step_41000.pt \
+            --phase 1 --pilot-all-rows \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/baseline_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 61000 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 41000 --transition-end 61000 \
+            --warmup-transition 100 --transition-plateau-steps 15900 \
+            --transition-min-lr-ratio 0.5 \
+            --log-every 20 --checkpoint-every 100000 --recovery-checkpoint-every 0 \
+            --parameter-check-every 100 --ckpt-dir /tmp/lumen-delta-baseline \
+            2>&1 | tee artifacts/baseline.log
+
+      - name: Build organ mixture and Delta hypothesis
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, re
+          name=os.environ["PROFILE"]
+          match=re.fullmatch(r"organs_(075|100|125|150)_delta_r([2-6])",name)
+          assert match, name
+          scale=int(match.group(1))/100
+          refinements=int(match.group(2))
+          # Four winning organ settings are active together. Scale explores
+          # conservative-to-stronger coupling around the observed winners.
+          organs={
+            "pain":{"response":0.20*scale,"decay":1.0-(1.0-0.70)*scale},
+            "pleasure":{"response":0.50*scale},
+            "pleasure_budget_gain":0.075*scale,
+          }
+          cfg={"threads":4,"interop_threads":2,"mkldnn_enabled":True,
+               "foreach":False,"cpu_affinity":True,"organs":organs,
+               "delta_parallel_refinements":refinements}
+          with open("config/candidate_profile.json","w") as f:
+              json.dump(cfg,f,sort_keys=True)
+              f.write("\n")
+          hypothesis={
+            "name":name,"organ_scale":scale,"delta_parallel_refinements":refinements,
+            "organs":organs,"all_organs_enabled":True,
+            "delta_rank":64,"delta_layers":4,"parallel_scan":True,
+          }
+          with open("artifacts/hypothesis.json","w") as f:
+              json.dump(hypothesis,f,indent=2,sort_keys=True)
+              f.write("\n")
+          print(json.dumps(hypothesis,indent=2))
+          PY
+          python -m json.tool config/candidate_profile.json >/dev/null
+          python -m json.tool artifacts/hypothesis.json >/dev/null
+
+      - name: Run 100-step organ plus Delta hypothesis
+        run: |
+          set -euo pipefail
+          python -m train.train \
+            --steps 100 --resume parent-lumen/checkpoints/lumen/step_41000.pt \
+            --phase 1 --pilot-all-rows \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/candidate_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 61000 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 41000 --transition-end 61000 \
+            --warmup-transition 100 --transition-plateau-steps 15900 \
+            --transition-min-lr-ratio 0.5 \
+            --log-every 20 --checkpoint-every 100000 --recovery-checkpoint-every 0 \
+            --parameter-check-every 100 --ckpt-dir /tmp/lumen-delta-candidate \
+            2>&1 | tee artifacts/candidate.log
+
+      - name: Compare loss, throughput and organ traces
+        if: always()
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, re, statistics
+          def read(path):
+              raw=pathlib.Path(path).read_text(errors="replace")
+              windows=[float(x) for x in re.findall(r"glucose_check step=\\d+ mean_loss=([0-9.eE+-]+)",raw)]
+              intervals=[float(x) for x in re.findall(r"profile_20:.*?total=([0-9.]+)s",raw)]
+              pain=[float(x) for x in re.findall(r"affect_check step=\\d+ pain=([0-9.eE+-]+)",raw)]
+              pleasure=[float(x) for x in re.findall(r"affect_check step=\\d+ pain=[0-9.eE+-]+ regression=[0-9.eE+-]+ pleasure=([0-9.eE+-]+)",raw)]
+              glucose=[float(x) for x in re.findall(r"glucose_check step=\\d+ mean_loss=[0-9.eE+-]+ improved=(?:True|False|None) signal=[a-z_]+ reserve=([0-9.eE+-]+)",raw)]
+              final_losses=re.findall(r"step=(\\d+) loss=([0-9.eE+-]+) token=",raw)
+              if len(windows)!=5 or len(intervals)!=5 or len(pain)!=5 or len(pleasure)!=5 or len(glucose)!=5:
+                  raise SystemExit(f"Incomplete 100-step evidence in {path}: loss={len(windows)}, intervals={len(intervals)}, pain={len(pain)}, pleasure={len(pleasure)}, glucose={len(glucose)}")
+              total=sum(intervals)
+              return {
+                "loss_windows_20_steps":windows,
+                "mean_loss_100_steps":round(statistics.mean(windows),6),
+                "loss_std_between_windows":round(statistics.pstdev(windows),6),
+                "first_window_loss":windows[0],"last_window_loss":windows[-1],
+                "loss_change_first_to_last":round(windows[-1]-windows[0],6),
+                "final_logged_step_loss":float(final_losses[-1][1]) if final_losses else None,
+                "pain_trace":pain,"pleasure_trace":pleasure,"glucose_reserve_trace":glucose,
+                "profile_20_seconds":intervals,"steps_per_second":round(100/total,5),
+              }
+          control=read("artifacts/baseline.log")
+          candidate=read("artifacts/candidate.log")
+          report={
+            "hypothesis":os.environ["PROFILE"],"control":control,"candidate":candidate,
+            "candidate_minus_control_mean_loss":round(candidate["mean_loss_100_steps"]-control["mean_loss_100_steps"],6),
+            "candidate_loss_change_percent":round(100*(candidate["mean_loss_100_steps"]/control["mean_loss_100_steps"]-1),4),
+            "candidate_vs_control_throughput_ratio":round(candidate["steps_per_second"]/control["steps_per_second"],5),
+            "measurement":"five non-overlapping 20-step training-loss windows; not a holdout",
+            "steps_per_run":100,"parent_checkpoint_step":41000,"final_step":41100,
+            "all_organs_enabled":True,
+          }
+          pathlib.Path("artifacts/comparison.json").write_text(json.dumps(report,indent=2)+"\\n")
+          print(json.dumps(report,indent=2))
+          PY
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-delta-organs-20-${{ matrix.profile }}-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,0 +1,89 @@
+name: Merge Spanish corpora v1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/merge_spanish_corpora.py
+      - tests/test_merge_spanish_corpora.py
+      - .github/workflows/merge-spanish-corpora.yml
+      - archive/v2/data/expanded/wise_ronin_expanded.jsonl
+  push:
+    branches: [main]
+    paths:
+      - scripts/merge_spanish_corpora.py
+      - tests/test_merge_spanish_corpora.py
+      - .github/workflows/merge-spanish-corpora.yml
+      - archive/v2/data/expanded/wise_ronin_expanded.jsonl
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: wise-ronin-spanish-merge-v1
+  cancel-in-progress: true
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install lightweight language detector
+        run: python -m pip install langid pytest
+      - name: Compile and test
+        run: |
+          python -m py_compile scripts/merge_spanish_corpora.py
+          PYTHONPATH=. pytest -q tests/test_merge_spanish_corpora.py
+      - name: Download the already-built Spanish corpus
+        if: github.event_name != 'pull_request'
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-spanish-corpus-v1-45007651092
+          path: artifacts/base
+          repository: ${{ github.repository }}
+          run-id: 45007651092
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract Spanish legacy facts and merge
+        if: github.event_name != 'pull_request'
+        run: |
+          python scripts/merge_spanish_corpora.py \
+            --base-dir artifacts/base \
+            --legacy archive/v2/data/expanded/wise_ronin_expanded.jsonl \
+            --output-dir artifacts/wise-ronin-spanish-merged-v1
+      - name: Validate merged splits and provenance
+        if: github.event_name != 'pull_request'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("artifacts/wise-ronin-spanish-merged-v1")
+          manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+          assert manifest["train_rows"] > 70000
+          assert manifest["validation_rows"] > 0
+          assert manifest["holdout_rows"] > 0
+          audit = manifest["legacy_extraction"]
+          assert audit["legacy_examples_added"] > 1000, audit
+          assert audit["legacy_rows_non_spanish"] >= 0
+          print(json.dumps({
+              "train": manifest["train_rows"],
+              "validation": manifest["validation_rows"],
+              "holdout": manifest["holdout_rows"],
+              "legacy": audit,
+              "sources": manifest["source_counts"],
+              "tasks": manifest["task_counts"],
+          }, ensure_ascii=False, indent=2))
+          PY
+      - name: Upload merged corpus
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-spanish-merged-v1-${{ github.run_id }}
+          path: artifacts/wise-ronin-spanish-merged-v1/
+          if-no-files-found: error
+          retention-days: 30

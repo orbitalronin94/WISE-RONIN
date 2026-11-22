@@ -8,6 +8,7 @@ on:
       - "train/**"
       - "tests/**"
       - ".github/workflows/neuroplasticity-ci.yml"
+      - ".github/workflows/experimental-neuroplasticity-step0-1000.yml"
   pull_request:
     branches: [main]
     paths:
@@ -33,5 +34,24 @@ jobs:
           python -m pip install "datasets>=3,<4" "huggingface_hub>=0.25,<1.0" langid tokenizers numpy tqdm pytest
       - name: Compile
         run: python -m compileall -q model train data scripts
+      - name: Validate experimental training workflow YAML and embedded Bash
+        run: |
+          python - <<'PY'
+          import pathlib, subprocess, yaml
+          path = pathlib.Path(".github/workflows/experimental-neuroplasticity-step0-1000.yml")
+          workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+          assert isinstance(workflow, dict) and isinstance(workflow.get("jobs"), dict)
+          for job_name, job in workflow["jobs"].items():
+              for index, step in enumerate(job.get("steps", [])):
+                  script = step.get("run")
+                  if script:
+                      result = subprocess.run(
+                          ["bash", "-n"], input=script, text=True, capture_output=True
+                      )
+                      assert result.returncode == 0, (
+                          f"{job_name} step {index}: {result.stderr}"
+                      )
+          print("Workflow YAML and embedded Bash syntax validated")
+          PY
       - name: Run complete test suite
         run: PYTHONPATH=. pytest -q tests

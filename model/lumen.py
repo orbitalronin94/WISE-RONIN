@@ -9,6 +9,8 @@ from .homeostasis import Homeostasis
 from .memory import MemoriaElastica
 from .heads import Heads
 from .ze import DualModelZe
+from .pain import Nociception
+from .pleasure import Recompensa
 
 
 class RoninLumen(nn.Module):
@@ -19,6 +21,8 @@ class RoninLumen(nn.Module):
         self.ze = DualModelZe(config.model_dim) if self.v32_ze else None
         self.emb = VivoEmbedding(config.vocab_size, config.model_dim)
         self.presupuesto = Presupuesto(config.model_dim)
+        self.pain = Nociception()
+        self.pleasure = Recompensa()
         self.delta_layers = nn.ModuleList([
             EstadoDelta(config.model_dim, config.surprise_threshold, config.delta_rank,
                         config.delta_parallel_refinements)

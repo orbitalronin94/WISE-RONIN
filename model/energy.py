@@ -19,6 +19,8 @@ class Presupuesto(nn.Module):
         # Buffers are checkpointed with the model but are not optimizer parameters.
         self.register_buffer("glucose", torch.tensor(0.0))
         self.register_buffer("last_check_loss", torch.tensor(float("nan")))
+        # Affect organs modulate only the internal energy budget; LR/optimizer stay untouched.
+        self.affect_scale = 1.0
 
     @torch.no_grad()
     def check_loss(self, mean_loss):
@@ -47,7 +49,7 @@ class Presupuesto(nn.Module):
         allocation = torch.softmax(self.proj(x), dim=-1)
         # Glucose scales the total available energy; the learned allocator keeps
         # deciding how that energy is divided among Delta, memory and the heads.
-        energy = allocation * (1.0 + self.glucose.clamp(0.0, self.GLUCOSE_CAP))
+        energy = allocation * (1.0 + self.glucose.clamp(0.0, self.GLUCOSE_CAP)) * float(self.affect_scale)
         return energy[..., 0:1], energy[..., 1:2], energy[..., 2:3], energy
 
     @staticmethod

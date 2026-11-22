@@ -13,7 +13,20 @@ class BPETokenizer:
         self.tokenizer = Tokenizer.from_file(str(path))
 
     def encode(self, text, max_len):
-        return self.tokenizer.encode(text).ids[:max_len]
+        """Encode with a guaranteed terminal EOS, even when truncating."""
+        if max_len < 2:
+            raise ValueError("max_len must leave room for BOS and EOS")
+        ids = list(self.tokenizer.encode(text).ids)
+        eos_id = self.tokenizer.token_to_id("[EOS]")
+        if eos_id is None:
+            raise ValueError("Tokenizer must define [EOS]")
+        if len(ids) > max_len:
+            ids = ids[:max_len - 1]
+            ids.append(eos_id)
+        elif not ids or ids[-1] != eos_id:
+            ids = ids[:max_len - 1]
+            ids.append(eos_id)
+        return ids
 
 def load_jsonl(path):
     path = Path(path)

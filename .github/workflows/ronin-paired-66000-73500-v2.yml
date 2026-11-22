@@ -1,0 +1,378 @@
+name: RONIN paired continuation 66000 to 73500 — Lumen vs Transformer on Spanish corpus v2
+
+on:
+  push:
+    branches: [experiment/lumen-transformer-66000-73500-v2-legacyarch]
+    paths:
+      - docs/LAUNCH_LUMEN_TRANSFORMER_66000_73500_V2.txt
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-paired-66000-73500-v2
+  cancel-in-progress: false
+
+env:
+  V2_RUN_ID: "45065384110"
+  PARENT_RUN_ID: "45061486739"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy pytest tokenizers
+      - name: Compile and run tests
+        run: |
+          python -m compileall -q model train data scripts
+          PYTHONPATH=. pytest -q tests
+
+  prepare-v2:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install corpus preparation dependencies
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers
+      - name: Download frozen Spanish corpus v2
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-spanish-corpus-v2-45065384110
+          path: artifacts/spanish-v2
+          repository: ${{ github.repository }}
+          run-id: ${{ env.V2_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify full corpus, stratify sample and prepare token cache
+        run: |
+          set -euo pipefail
+          test -s artifacts/spanish-v2/manifest.json
+          test -s artifacts/spanish-v2/train.jsonl
+          test -s artifacts/spanish-v2/tokenizer.json
+          python scripts/sample_spanish_v2.py \
+            --manifest artifacts/spanish-v2/manifest.json \
+            --input artifacts/spanish-v2/train.jsonl \
+            --output data/spanish-v2-train-sample.jsonl --seed 42
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          from tokenizers import Tokenizer
+          root=Path("artifacts/spanish-v2")
+          manifest=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          tok=Tokenizer.from_file(str(root/"tokenizer.json"))
+          assert manifest["train_rows"] == 9357876, manifest["train_rows"]
+          assert manifest["validation_rows"] == 1413
+          assert manifest["holdout_rows"] == 2431
+          assert tok.get_vocab_size() == 4096
+          assert tok.token_to_id("[PAD]") == 0
+          assert tok.token_to_id("[EOS]") is not None
+          assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest() == manifest["tokenizer_sha256"]
+          assert manifest["tokenizer_sha256"] == "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          print("Full v2 manifest and unchanged tokenizer verified.")
+          PY
+          python scripts/prepare_token_cache.py \
+            --data data/spanish-v2-train-sample.jsonl \
+            --tokenizer artifacts/spanish-v2/tokenizer.json \
+            --max-len 128 --output data/spanish-v2-token-cache.pt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ronin-paired-v2-prepared-${{ github.run_id }}
+          path: |
+            data/spanish-v2-train-sample.jsonl
+            data/spanish-v2-token-cache.pt
+            artifacts/spanish-v2/manifest.json
+            artifacts/spanish-v2/validation.jsonl
+            artifacts/spanish-v2/holdout_multiple_choice.jsonl
+            artifacts/spanish-v2/tokenizer.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+  train-lumen:
+    needs: prepare-v2
+    runs-on: ubuntu-latest
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download exact paired Lumen step-66000 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step66000-organs-x150-delta2-45061486739
+          path: parent-lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download prepared v2 sample and token cache
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-paired-v2-prepared-${{ github.run_id }}
+          path: prepared
+      - name: Verify Lumen parent architecture, profile and exact continuity
+        run: |
+          set -euo pipefail
+          test -s parent-lumen/checkpoints/lumen/step_66000.pt
+          test -s prepared/data/spanish-v2-train-sample.jsonl
+          test -s prepared/data/spanish-v2-token-cache.pt
+          python - <<'PY'
+          import json, torch
+          from pathlib import Path
+          s=torch.load("parent-lumen/checkpoints/lumen/step_66000.pt",map_location="cpu",weights_only=False)
+          assert s["step"] == 66000
+          assert s["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          assert s["pilot_all_rows"] is True
+          assert s["phase"] == 1
+          assert s["training_config"]["batch"] == 8
+          assert s["training_config"]["max_len"] == 128
+          assert s["training_config"]["lr"] == 3e-5
+          assert s["training_config"]["warmup"] == 100
+          assert s["optimizer"] and s["scheduler"] and s["rng"]
+          assert s["scheduler_transition"]["current_step"] in (66000,66001)
+          assert s["scheduler_transition"]["end_step"] == 66000
+          assert s["tokenizer_sha256"] == "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          profile = {
+            "threads": 4,
+            "interop_threads": 2,
+            "mkldnn_enabled": True,
+            "foreach": False,
+            "cpu_affinity": True,
+            "delta_pre_normalize": False,
+            "homeostasis_fused_scatter": False,
+            "delta_parallel_refinements": 2,
+            "organs": {
+              "pain": {"response": 0.30, "decay": 0.55},
+              "pleasure": {"response": 0.75},
+              "pain_budget_gain": 0.10,
+              "pleasure_budget_gain": 0.1125
+            }
+          }
+          Path("config/lumen_organ_delta2_profile.json").write_text(json.dumps(profile,indent=2)+"\n",encoding="utf-8")
+          print("Verified exact Lumen step-66000 parent; organs retained, Delta refinements=2.")
+          PY
+      - name: Continue Lumen from 66000 to 73500 on corpus v2
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/lumen-v2 logs
+          python -m train.train \
+            --steps 7500 --resume parent-lumen/checkpoints/lumen/step_66000.pt \
+            --allow-corpus-transition --phase 1 --pilot-all-rows --no-sleep \
+            --data prepared/data/spanish-v2-train-sample.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --token-cache prepared/data/spanish-v2-token-cache.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/lumen_organ_delta2_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 73500 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 66000 --transition-end 73500 \
+            --warmup-transition 100 --transition-plateau-steps 6000 \
+            --transition-min-lr-ratio 0.5 \
+            --log-every 100 --checkpoint-every 500 --recovery-checkpoint-every 100 \
+            --parameter-check-every 100 --ckpt-dir checkpoints/lumen-v2 \
+            2>&1 | tee logs/lumen-66000-73500-v2.log
+      - name: Verify final Lumen checkpoint
+        run: |
+          python - <<'PY'
+          import torch
+          s=torch.load("checkpoints/lumen-v2/step_73500.pt",map_location="cpu",weights_only=False)
+          assert s["step"] == 73500
+          assert s["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          assert s["corpus_transition"] is True
+          assert s["parent_data_sha256"] is not None
+          assert s["tokenizer_sha256"] == "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          assert s["optimizer"] and s["rng"] and s["scheduler"]
+          print("Lumen 73500 checkpoint verified.")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-lumen-step73500-v2-${{ github.run_id }}
+          path: |
+            checkpoints/lumen-v2/
+            logs/lumen-66000-73500-v2.log
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+
+  train-transformer:
+    needs: prepare-v2
+    runs-on: ubuntu-latest
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download exact paired Transformer step-66000 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-transformer-step66000-45061486739
+          path: parent-transformer
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download prepared v2 sample and token cache
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-paired-v2-prepared-${{ github.run_id }}
+          path: prepared
+      - name: Verify Transformer parent and exact continuity
+        run: |
+          set -euo pipefail
+          test -s parent-transformer/checkpoints/transformer/step_66000.pt
+          test -s prepared/data/spanish-v2-train-sample.jsonl
+          test -s prepared/data/spanish-v2-token-cache.pt
+          python - <<'PY'
+          import torch
+          s=torch.load("parent-transformer/checkpoints/transformer/step_66000.pt",map_location="cpu",weights_only=False)
+          assert s["step"] == 66000
+          assert s["architecture_id"] == "decoder_transformer_4l_d192_h4_ff576_tied_v1"
+          assert s["training_config"]["batch"] == 8
+          assert s["training_config"]["max_len"] == 128
+          assert s["training_config"]["lr"] == 7.5e-5
+          assert s["training_config"]["warmup"] == 100
+          assert s["optimizer"] and s["scheduler"] and s["rng"]
+          assert s["scheduler_transition"]["current_step"] in (66000,66001)
+          assert s["scheduler_transition"]["end_step"] == 66000
+          assert s["tokenizer_sha256"] == "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          print("Verified exact Transformer step-66000 parent.")
+          PY
+      - name: Continue Transformer from 66000 to 73500 on same corpus v2 sample
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/transformer-v2 logs
+          python -m train.transformer_baseline \
+            --steps 7500 --resume parent-transformer/checkpoints/transformer/step_66000.pt \
+            --allow-corpus-transition \
+            --data prepared/data/spanish-v2-train-sample.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --token-cache prepared/data/spanish-v2-token-cache.pt \
+            --batch 8 --max-len 128 --seed 42 --threads 4 \
+            --lr 7.5e-5 --warmup 100 --total-steps 73500 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 66000 --transition-end 73500 \
+            --warmup-transition 100 --transition-plateau-steps 6000 \
+            --transition-min-lr-ratio 0.5 \
+            --parameter-check-every 100 --ckpt-dir checkpoints/transformer-v2 \
+            2>&1 | tee logs/transformer-66000-73500-v2.log
+      - name: Verify final Transformer checkpoint
+        run: |
+          python - <<'PY'
+          import torch
+          s=torch.load("checkpoints/transformer-v2/step_73500.pt",map_location="cpu",weights_only=False)
+          assert s["step"] == 73500
+          assert s["architecture_id"] == "decoder_transformer_4l_d192_h4_ff576_tied_v1"
+          assert s["corpus_transition"] is True
+          assert s["parent_data_sha256"] is not None
+          assert s["tokenizer_sha256"] == "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          assert s["optimizer"] and s["rng"] and s["scheduler"]
+          print("Transformer 73500 checkpoint verified.")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-transformer-step73500-v2-${{ github.run_id }}
+          path: |
+            checkpoints/transformer-v2/
+            logs/transformer-66000-73500-v2.log
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+
+  final-holdout:
+    needs: [train-lumen, train-transformer]
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU evaluation runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download frozen corpus v2 evaluation files
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-paired-v2-prepared-${{ github.run_id }}
+          path: prepared
+      - uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step73500-v2-${{ github.run_id }}
+          path: lumen
+      - uses: actions/download-artifact@v4
+        with:
+          name: ronin-transformer-step73500-v2-${{ github.run_id }}
+          path: transformer
+      - name: Run the single final paired holdout at step 73500
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          test -s prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl
+          test -s prepared/artifacts/spanish-v2/tokenizer.json
+          test -s lumen/checkpoints/lumen-v2/step_73500.pt
+          test -s transformer/checkpoints/transformer-v2/step_73500.pt
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/evaluate_multiple_choice_holdout.py \
+            --holdout prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --lumen lumen/checkpoints/lumen-v2/step_73500.pt \
+            --transformer transformer/checkpoints/transformer-v2/step_73500.pt \
+            --expected-step 73500 --out results/step73500_paired_v2_holdout.json \
+            --threads 4 --max-len 128
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-step73500-paired-v2-final-holdout-${{ github.run_id }}
+          path: results/step73500_paired_v2_holdout.json
+          if-no-files-found: warn
+          retention-days: 90
+
+  summary:
+    needs: [train-lumen, train-transformer, final-holdout]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report paired experiment status
+        env:
+          LUMEN: ${{ needs.train-lumen.result }}
+          TRANSFORMER: ${{ needs.train-transformer.result }}
+          HOLDOUT: ${{ needs.final-holdout.result }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          echo "Paired 66000 -> 73500 on Spanish corpus v2: run ${RUN_ID}"
+          echo "Lumen: ${LUMEN}"
+          echo "Transformer: ${TRANSFORMER}"
+          echo "Final holdout: ${HOLDOUT}"
+          test "${LUMEN}" = success
+          test "${TRANSFORMER}" = success
+          test "${HOLDOUT}" = success

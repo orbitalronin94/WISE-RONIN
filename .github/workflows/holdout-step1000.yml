@@ -61,6 +61,8 @@ jobs:
           print("Frozen Spanish holdout validated:",len(rows))
           PY
       - name: Score both frozen models on identical holdout
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/evaluate_multiple_choice_holdout.py \
             --holdout prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl \

@@ -8,6 +8,12 @@ on:
       - scripts/build_spanish_corpus.py
       - tests/test_build_spanish_corpus.py
       - .github/workflows/build-spanish-corpus.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/build_spanish_corpus.py
+      - tests/test_build_spanish_corpus.py
+      - .github/workflows/build-spanish-corpus.yml
   workflow_dispatch:
 
 permissions:

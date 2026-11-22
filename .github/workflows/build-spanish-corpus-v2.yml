@@ -32,17 +32,17 @@ jobs:
         with:
           name: wise-ronin-spanish-corpus-v1-45007651092
           path: artifacts/base
-          repository: \${{ github.repository }}
+          repository: ${{ github.repository }}
           run-id: 45007651092
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download exact shared tokenizer used by both models
         uses: actions/download-artifact@v4
         with:
           name: ronin-spanish-prepared-16000-45021399600
           path: prepared
-          repository: \${{ github.repository }}
+          repository: ${{ github.repository }}
           run-id: 45021399600
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Resolve frozen tokenizer
         shell: bash
         run: |
@@ -83,7 +83,7 @@ jobs:
       - name: Upload frozen shared corpus v2
         uses: actions/upload-artifact@v4
         with:
-          name: wise-ronin-spanish-corpus-v2-\${{ github.run_id }}
+          name: wise-ronin-spanish-corpus-v2-${{ github.run_id }}
           path: artifacts/spanish-v2/
           if-no-files-found: error
           retention-days: 90

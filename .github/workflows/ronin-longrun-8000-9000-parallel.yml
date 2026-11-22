@@ -236,8 +236,6 @@ jobs:
           mkdir -p checkpoints/lumen checkpoints/transformer artifacts/evaluations/final_9000 artifacts/manifests
           cp artifacts/lumen-result/checkpoints/lumen/step_9000.pt checkpoints/lumen/step_9000.pt
           cp artifacts/transformer-result/checkpoints/transformer/step_9000.pt checkpoints/transformer/step_9000.pt
-          cp checkpoints/parents/lumen_step_8000.pt checkpoints/parents/lumen_step_8000.pt
-          cp checkpoints/parents/transformer_step_8000.pt checkpoints/parents/transformer_step_8000.pt
           test -s checkpoints/lumen/step_9000.pt
           test -s checkpoints/transformer/step_9000.pt
       - name: Run one matched final holdout for both models

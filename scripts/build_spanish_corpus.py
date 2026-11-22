@@ -29,7 +29,6 @@ EXCLUDED_ALIA = ["coqcat-train","databricks-dolly-15k","dolly-ca","flores-dev",
 SOURCES = {
     "BSC-LT/ALIA-2606-SFT": "CC-BY-4.0; component allowlist enforced",
     "OysterCoreAI/SFT-General-Spanish-50K": "CC-BY-4.0",
-    "bertin-project/alpaca-spanish": "CC-BY-4.0",
     "somosnlp/instruct-legal-refugiados-es": "Apache-2.0",
 }
 
@@ -182,10 +181,9 @@ def main():
     p.add_argument("--output-dir",default="artifacts/spanish-v1")
     p.add_argument("--max-alia",type=int,default=40000)
     p.add_argument("--max-general",type=int,default=25000)
-    p.add_argument("--max-alpaca",type=int,default=25000)
     p.add_argument("--max-legal",type=int,default=10000)
     a=p.parse_args(); root=Path(a.output_dir); root.mkdir(parents=True,exist_ok=True)
-    raw=build_alia(a.max_alia)+build_general(a.max_general)+build_alpaca(a.max_alpaca)+build_legal(a.max_legal)
+    raw=build_alia(a.max_alia)+build_general(a.max_general)+build_legal(a.max_legal)
     unique={}
     for row in raw: unique.setdefault(key(row["prompt"],row["completion"]),row)
     rows=list(unique.values())

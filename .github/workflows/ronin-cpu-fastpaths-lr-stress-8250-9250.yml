@@ -265,7 +265,7 @@ jobs:
               --token-cache data/pilot_tokenized_128.pt --batch 8 --max-len 128 --seed 42 --threads 4 \
               --lr ${{ matrix.lr }} --warmup 100 --total-steps 8350 \
               --scheduler-transition --transition-start 8250 --transition-end 8350 \
-              --warmup-transition 10 --grad-clip 1.0 \
+              --warmup-transition 10 --grad-clip 1.0 --parameter-check-every 10 \
               --wall-clock-file artifacts/timing/transformer.json \
               --ckpt-dir checkpoints/stress/transformer-${{ matrix.multiplier }}x \
               --resume checkpoints/continuation/stress/${{ matrix.checkpoint }}

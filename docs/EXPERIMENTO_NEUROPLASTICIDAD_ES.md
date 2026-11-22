@@ -15,14 +15,14 @@ No se vuelven a implementar mecanismos que ya existen en el repositorio:
 | Homeostasis | Se mantienen los cuatro órganos homeostáticos y sus Top-K. |
 | Neuromodulación | Dolor y placer siguen regulando el presupuesto; además modulan las trazas persistentes. |
 | Replay/consolidación | Se habilita el sueño/replay existente a los pasos 500 y 1000 si hay registros en memoria. |
-| Chunking adaptativo | Nuevo controlador compartido: sorpresa alta reduce el tamaño de chunk; sorpresa baja permite chunks mayores. El resumen se añade como residual acotado. |
+| Chunking adaptativo | Nuevo controlador compartido y sin parámetros entrenables: sorpresa alta reduce el tamaño de chunk; sorpresa baja permite chunks mayores. El resumen se añade como residual acotado para conservar el emparejamiento de tamaño con Transformer. |
 | Trazas de elegibilidad | Nuevo estado persistente por capa Delta, formado por coincidencias clave/escritura y conservado entre minibatches. La señal retardada es placer menos dolor, acotada y de ganancia pequeña. |
 
 ## Guardarraíles
 
 - Ningún órgano se desactiva.
 - El chunking no sustituye la secuencia token a token: añade un resumen residual limitado al 2,5 % de la norma de entrada.
-- Las trazas se almacenan como buffers, se actualizan sin gradiente y se limitan antes de acumularse. Esta es una aproximación asociativa del principio de elegibilidad: **no** implementa todavía una regla local de tres factores que actualice directamente cada parámetro sináptico.
+- Las trazas se almacenan como buffers, se actualizan sin gradiente y se limitan antes de acumularse. Esta es una aproximación asociativa del principio de elegibilidad: **no** implementa todavía una regla local de tres factores que actualice directamente cada parámetro sináptico. Esta es una aproximación asociativa del principio de elegibilidad: **no** implementa todavía una regla local de tres factores que actualice directamente cada parámetro sináptico.
 - Los estados recurrentes transitorios se reinician en cada minibatch; las trazas de elegibilidad sí persisten y forman parte del checkpoint.
 - El modulador de elegibilidad está acotado a ±0,25.
 - El Transformer no recibe chunking, trazas ni órganos de Lumen: permanece como baseline independiente.

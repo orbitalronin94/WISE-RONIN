@@ -49,7 +49,7 @@ jobs:
         run: |
           python scripts/build_spanish_corpus.py \
             --output-dir artifacts/spanish-v1 \
-            --max-alia 40000 --max-general 25000 --max-legal 10000
+            --max-alia 40000 --max-general 25000 --max-legal 10000 --max-uji 20000
       - name: Validate final corpus
         run: |
           python - <<'PY'

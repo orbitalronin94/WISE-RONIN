@@ -1,0 +1,103 @@
+name: RONIN paired Spanish holdout at 41000
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/holdout-41000-paired.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-paired-holdout-41000
+  cancel-in-progress: false
+
+env:
+  SOURCE_RUN_ID: "45037602119"
+  PREPARED_RUN_ID: "45021399600"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+
+jobs:
+  paired-holdout-41000:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU evaluation runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download frozen Spanish corpus and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-45021399600
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download Lumen and Transformer checkpoints from the same 41000 run
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step51000-45037602119
+          path: lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ronin-transformer-step51000-45037602119
+          path: transformer
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify exact 41000 checkpoints and common frozen holdout
+        run: |
+          set -euo pipefail
+          test -s prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl
+          test -s prepared/data/spanish/tokenizer/tokenizer.json
+          test -s lumen/checkpoints/lumen/step_41000.pt
+          test -s transformer/checkpoints/transformer/step_41000.pt
+          python - <<'PY'
+          import json, torch
+          from pathlib import Path
+          rows=[json.loads(x) for x in Path("prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(rows)==2431, len(rows)
+          l=torch.load("lumen/checkpoints/lumen/step_41000.pt",map_location="cpu",weights_only=False)
+          t=torch.load("transformer/checkpoints/transformer/step_41000.pt",map_location="cpu",weights_only=False)
+          assert int(l.get("step",-1))==41000, l.get("step")
+          assert int(t.get("step",-1))==41000, t.get("step")
+          assert l.get("architecture_id")=="ronin_lumen_v3_2_parallel_delta"
+          assert "pain.pain" in l["model"] and "pleasure.pleasure" in l["model"]
+          assert l.get("optimizer") and l.get("rng")
+          assert t.get("optimizer") and t.get("rng")
+          print("Verified Lumen and Transformer global step 41000.")
+          print("Lumen scheduler metadata:", l.get("scheduler_transition"))
+          print("Transformer scheduler metadata:", t.get("scheduler_transition"))
+          print("Shared frozen holdout rows:",len(rows))
+          PY
+      - name: Evaluate both models on the same untouched Spanish holdout
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/evaluate_multiple_choice_holdout.py \
+            --holdout prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl \
+            --tokenizer prepared/data/spanish/tokenizer/tokenizer.json \
+            --lumen lumen/checkpoints/lumen/step_41000.pt \
+            --transformer transformer/checkpoints/transformer/step_41000.pt \
+            --expected-step 41000 --out results/step41000_paired_holdout.json \
+            --threads 4 --max-len 128
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-step41000-paired-spanish-holdout-${{ github.run_id }}
+          path: results/step41000_paired_holdout.json
+          if-no-files-found: warn
+          retention-days: 90

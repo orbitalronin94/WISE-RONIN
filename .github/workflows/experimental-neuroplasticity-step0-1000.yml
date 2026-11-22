@@ -1,0 +1,216 @@
+name: Neuroplasticity Lumen vs Transformer — fresh 0 to 1000
+
+on:
+  push:
+    branches: [experiment/neuroplasticity-step0-1000]
+    paths:
+      - "docs/LAUNCH_NEUROPLASTICITY_RUN.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-neuroplasticity-fresh-0-1000
+  cancel-in-progress: false
+
+env:
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  PREPARED_RUN_ID: "45021399600"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "datasets>=3,<4" "huggingface_hub>=0.25,<1.0" langid tokenizers numpy tqdm pytest
+      - name: Compile and run complete test suite
+        run: |
+          python -m compileall -q model train data scripts
+          PYTHONPATH=. pytest -q tests
+
+  prepare:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install corpus and tokenizer validation tools
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers
+      - name: Download frozen prepared Spanish corpus v1, tokenizer and cache
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-16000-${{ env.PREPARED_RUN_ID }}
+          path: .
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify corpus v1, tokenizer and cache hashes
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          import torch
+          from tokenizers import Tokenizer
+          root = Path("artifacts/spanish-v1")
+          manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+          assert manifest["language"] == "es"
+          assert manifest["train_rows"] == 70105
+          assert manifest["validation_rows"] == 1413
+          assert manifest["holdout_rows"] == 2431
+          expected = {
+              "train.jsonl": "d0dc9e12dc1b72b01eeafd42e204c59543e2196fc516ff1d67b1be9f78632b3f",
+              "validation.jsonl": "2efacb8236c1041534199709791e63469ce36f64335aef1b60c8ff0c57a986b6",
+              "holdout_multiple_choice.jsonl": "e21ae7e292d603f1b8073d8114572c92fb0c6448bfaed9066413ddce09e5a359",
+          }
+          for name, digest in expected.items():
+              actual = hashlib.sha256((root / name).read_bytes()).hexdigest()
+              assert actual == digest, (name, actual, digest)
+          tokenizer_path = Path("data/spanish/tokenizer/tokenizer.json")
+          tokenizer = Tokenizer.from_file(str(tokenizer_path))
+          assert tokenizer.get_vocab_size() == 4096
+          assert tokenizer.token_to_id("[PAD]") == 0
+          assert tokenizer.token_to_id("[EOS]") is not None
+          tokenizer_hash = hashlib.sha256(tokenizer_path.read_bytes()).hexdigest()
+          cache = torch.load("data/spanish/train_tokens_128.pt", map_location="cpu", weights_only=False)
+          assert cache["format"] == "ronin_token_cache_v1"
+          assert cache["data_sha256"] == expected["train.jsonl"]
+          assert cache["tokenizer_sha256"] == tokenizer_hash
+          assert cache["max_len"] == 128
+          assert cache["row_count"] == manifest["train_rows"] == 70105
+          print("Verified frozen corpus v1, shared 4k tokenizer and exact token cache")
+          print(json.dumps({
+              "train_rows": manifest["train_rows"],
+              "validation_rows": manifest["validation_rows"],
+              "holdout_rows": manifest["holdout_rows"],
+              "tokenizer_vocab_size": tokenizer.get_vocab_size(),
+              "tokenizer_sha256": tokenizer_hash,
+              "token_cache_rows": cache["row_count"],
+          }, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ronin-neuroplasticity-v1-prepared-${{ github.run_id }}
+          path: |
+            artifacts/spanish-v1/
+            data/spanish/tokenizer/tokenizer.json
+            data/spanish/train_tokens_128.pt
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  train-lumen:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - uses: actions/download-artifact@v4
+        with:
+          name: ronin-neuroplasticity-v1-prepared-${{ github.run_id }}
+          path: .
+      - name: Fresh Lumen neuroplasticity training on v1 — step 0 to 1000
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/lumen logs
+          python -m train.train \
+            --steps 1000 --phase 1 --pilot-all-rows \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/lumen_cpu_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 1000 \
+            --log-every 100 --checkpoint-every 250 \
+            --recovery-checkpoint-every 100 --parameter-check-every 100 \
+            --ckpt-dir checkpoints/lumen 2>&1 | tee logs/lumen.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-neuroplasticity-lumen-step1000-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/
+            logs/lumen.log
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+
+  train-transformer:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - uses: actions/download-artifact@v4
+        with:
+          name: ronin-neuroplasticity-v1-prepared-${{ github.run_id }}
+          path: .
+      - name: Fresh Transformer control training on v1 — step 0 to 1000
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/transformer logs
+          python -m train.transformer_baseline \
+            --steps 1000 \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 --threads 4 \
+            --lr 7.5e-5 --warmup 100 --total-steps 1000 \
+            --parameter-check-every 100 \
+            --ckpt-dir checkpoints/transformer 2>&1 | tee logs/transformer.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-neuroplasticity-transformer-step1000-${{ github.run_id }}
+          path: |
+            checkpoints/transformer/
+            logs/transformer.log
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+
+  paired-summary:
+    needs: [train-lumen, train-transformer]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report paired job outcomes
+        env:
+          LUMEN_RESULT: ${{ needs.train-lumen.result }}
+          TRANSFORMER_RESULT: ${{ needs.train-transformer.result }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          echo "Fresh neuroplasticity v1 experiment run: $RUN_ID"
+          echo "Lumen: $LUMEN_RESULT"
+          echo "Transformer: $TRANSFORMER_RESULT"
+          test "$LUMEN_RESULT" = success
+          test "$TRANSFORMER_RESULT" = success

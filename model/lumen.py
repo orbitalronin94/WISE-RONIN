@@ -11,6 +11,7 @@ from .heads import Heads
 from .ze import DualModelZe
 from .pain import Nociception
 from .pleasure import Recompensa
+from .chunking import AdaptiveChunking
 
 
 class RoninLumen(nn.Module):
@@ -34,6 +35,8 @@ class RoninLumen(nn.Module):
                         config.top_k_low if i < 2 else config.top_k_high)
             for i in range(config.delta_layers)
         ])
+        # A shared bounded controller keeps the parameter overhead small.
+        self.chunker = AdaptiveChunking(config.model_dim)
         self.memoria = MemoriaElastica(config.model_dim)
         self.heads = Heads(config.model_dim)
         self.head_out = nn.Linear(config.model_dim, config.vocab_size, bias=False)
@@ -60,10 +63,17 @@ class RoninLumen(nn.Module):
         """Public singular alias: clear only transient recurrent activity."""
         self.reset_states()
 
+    @torch.no_grad()
+    def set_learning_modulator(self, signal):
+        """Send delayed improvement/regression feedback to every Delta trace."""
+        for delta in self.delta_layers:
+            delta.set_eligibility_modulator(signal)
+
     def forward(self, token_ids, reset_state=True, collect_diagnostics=True):
         h = self.emb(token_ids)
         e_delta, e_mem, e_head, energy = self.presupuesto(h)
         surprises = []
+        chunk_sizes = []
         complexity_terms = []
         for delta, homeo in zip(self.delta_layers, self.homeo):
             # Delta returns an associative-memory update, not a replacement
@@ -74,6 +84,8 @@ class RoninLumen(nn.Module):
                 compute_complexity=self.v32_ze,
                 collect_diagnostics=collect_diagnostics,
             )
+            h = self.chunker(h, surprise)
+            chunk_sizes.append(self.chunker.last_chunk_size)
             h = homeo(h + delta_update, collect_diagnostics=collect_diagnostics)
             surprises.append(surprise)
             if self.v32_ze:
@@ -104,6 +116,8 @@ class RoninLumen(nn.Module):
             "surprise": surprise, "energy": energy, "hidden": hidden,
             "free_energy_complexity": free_energy_complexity,
             "ze": ze_metrics,
+            "chunk_sizes": tuple(chunk_sizes),
+            "eligibility_norms": tuple(delta.last_eligibility_norm for delta in self.delta_layers),
         }
 
     def predict_latent(self, hidden):

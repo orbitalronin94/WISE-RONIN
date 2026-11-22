@@ -96,12 +96,21 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({
         "model": model.state_dict(),
-        "architecture_id": "ronin_lumen_v3_2_parallel_delta",
+        "architecture_id": "ronin_lumen_v3_3_neuroplasticity",
         "architecture": {
             "model": "RoninLumen", "config": CONFIG.to_dict(),
             "v32_ze": args.v32_ze, "pilot_all_rows": args.pilot_all_rows,
             "no_sleep": args.no_sleep, "no_jepa": args.no_jepa,
             "no_rep": args.no_rep,
+            "neuroplasticity": {
+                "parallel_delta": True,
+                "persistent_eligibility_traces": True,
+                "delayed_modulator": "pleasure_minus_pain",
+                "adaptive_chunking": True,
+                "chunk_size_bounds": [4, 16],
+                "replay_enabled": not args.no_sleep,
+                "homeostasis_enabled": True,
+            },
         },
         "params": sum(parameter.numel() for parameter in model.parameters()),
         "optimizer": optimizer.state_dict(),
@@ -115,7 +124,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "torch_version": torch.__version__,
         "cpu_threads": torch.get_num_threads(),
         "runtime_profile": getattr(args, "runtime_profile_settings", {}),
-        "delta_policy": "reset_at_each_batch_boundary",
+        "delta_policy": "transient_state_reset_persistent_eligibility_trace",
         "v32_ze": args.v32_ze,
         "pilot_all_rows": args.pilot_all_rows,
         "tokens_seen": tokens_seen,
@@ -660,6 +669,15 @@ def main():
                 )
                 pain_state = model.pain.update(check_loss)
                 pleasure_state = model.pleasure.update(check_loss)
+                eligibility_signal = (
+                    pleasure_state["pleasure"] - pain_state["pain"]
+                )
+                model.set_learning_modulator(eligibility_signal)
+                LOG.info(
+                    "eligibility_feedback step=%d signal=%.4f trace_norms=%s",
+                    step, eligibility_signal,
+                    [round(layer.last_eligibility_norm, 6) for layer in model.delta_layers],
+                )
                 model.presupuesto.affect_scale = max(
                     0.85, min(1.05,
                         1.0 - pain_budget_gain * pain_state["pain"] + pleasure_budget_gain * pleasure_state["pleasure"])
@@ -689,6 +707,12 @@ def main():
                 float(output["surprise"].mean().detach()), float(output["surprise"].max().detach()),
                 model.memoria.occupancy(), ze_conflict, ze_erase,
                 tokens_seen, scheduler.get_last_lr()[0],
+            )
+            LOG.info(
+                "neuroplasticity step=%d chunk_sizes=%s eligibility_norms=%s modulator=%s",
+                step, output["chunk_sizes"],
+                [round(layer.last_eligibility_norm, 6) for layer in model.delta_layers],
+                [round(float(layer.eligibility_modulator.item()), 5) for layer in model.delta_layers],
             )
             layer_records = []
             for i, (delta, homeo) in enumerate(zip(model.delta_layers, model.homeo)):

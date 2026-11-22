@@ -24,6 +24,12 @@ class EstadoDelta(nn.Module):
         projection, _ = torch.linalg.qr(sketch, mode="reduced")
         self.register_buffer("memory_projection", projection, persistent=True)
         self.register_buffer("state", torch.empty(0), persistent=True)
+        # Eligibility is a bounded cross-batch trace of key/write coincidences.
+        # It is retained across transient Delta resets and modulated by delayed
+        # improvement/regression feedback from the affect organs.
+        self.register_buffer("eligibility_trace", torch.zeros(self.rank, self.dim), persistent=True)
+        self.register_buffer("eligibility_modulator", torch.zeros(()), persistent=True)
+        self.last_eligibility_norm = 0.0
         self.last_complexity = None
         self.last_write_rate = 0.0
         self.last_state_norm = 0.0
@@ -31,6 +37,14 @@ class EstadoDelta(nn.Module):
 
     def reset(self, batch, device, dtype):
         self.state = torch.zeros(batch, self.rank, self.dim, device=device, dtype=dtype)
+
+    @torch.no_grad()
+    def set_eligibility_modulator(self, signal):
+        value = torch.as_tensor(
+            signal, dtype=self.eligibility_modulator.dtype,
+            device=self.eligibility_modulator.device,
+        ).clamp(-1.0, 1.0)
+        self.eligibility_modulator.copy_(0.25 * value)
 
     def _project_sequence(self, x):
         projected = F.linear(x, torch.cat(
@@ -92,6 +106,19 @@ class EstadoDelta(nn.Module):
         )
         final_ratios = prefix[:, -1:].div(prefix).unsqueeze(-1)
         weighted_keys = k * final_ratios
+        write_summary = torch.einsum(
+            "btr,btd->brd", weighted_keys, write_vectors
+        ).mean(dim=0) / max(1, steps)
+        with torch.no_grad():
+            trace_update = write_summary.detach().to(
+                device=self.eligibility_trace.device,
+                dtype=self.eligibility_trace.dtype,
+            )
+            trace_norm = trace_update.norm().clamp_min(1e-8)
+            trace_update = trace_update * (0.05 / trace_norm).clamp(max=1.0)
+            self.eligibility_trace.mul_(0.95).add_(trace_update, alpha=0.05)
+            self.last_eligibility_norm = float(self.eligibility_trace.norm().item())
+
         final_state = (
             state * prefix[:, -1].view(batch, 1, 1)
             + torch.einsum("btr,btd->brd", weighted_keys, write_vectors)
@@ -117,6 +144,12 @@ class EstadoDelta(nn.Module):
                 or self.state.shape[0] != batch or self.state.device != x.device):
             self.reset(batch, x.device, x.dtype)
         state = self.state.to(dtype=x.dtype)
+        # Apply the previous batch's eligible trace only when delayed feedback
+        # has assigned it value. The trace itself remains bounded and detached.
+        modulation = self.eligibility_modulator.to(device=x.device, dtype=x.dtype)
+        if bool(modulation.detach().abs().item() > 0):
+            trace = self.eligibility_trace.to(device=x.device, dtype=x.dtype)
+            state = state + modulation * trace.unsqueeze(0)
         k_all, v_all, q_all = self._project_sequence(x)
 
         if self.parallel_scan and not compute_complexity:

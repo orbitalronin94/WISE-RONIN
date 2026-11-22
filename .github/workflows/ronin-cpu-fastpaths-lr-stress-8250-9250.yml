@@ -90,6 +90,10 @@ jobs:
             --data data/pilot_train_19k.jsonl \
             --tokenizer data/pilot_tokenizer/tokenizer.json \
             --output-dir checkpoints/continuation
+      - name: Gate fast paths on forward, full-loss and gradient parity
+        run: |
+          python scripts/validate_lumen_cpu_fastpaths.py \
+            --checkpoint checkpoints/parents/lumen_step_8250.pt
       - uses: actions/upload-artifact@v4
         with:
           name: ronin-cpu-8250-prepared-${{ github.run_id }}

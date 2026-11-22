@@ -55,13 +55,19 @@ jobs:
           import json
           p="prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl"
           rows=[json.loads(x) for x in open(p,encoding="utf-8") if x.strip()]
-          assert len(rows)==1413, len(rows)
-          assert all(x.get("language")=="es" and x.get("choices") and x.get("answer") is not None for x in rows)
-          print("Frozen Spanish holdout:",len(rows))
+          assert len(rows)==2431, len(rows)
+          invalid=[i for i,x in enumerate(rows,1) if x.get("language")!="es" or not isinstance(x.get("choices"),(list,dict)) or len(x.get("choices",[]))<2 or x.get("answer") is None]
+          assert not invalid, f"Invalid Spanish MC rows (first 20): {invalid[:20]}"
+          print("Frozen Spanish holdout validated:",len(rows))
           PY
       - name: Score both frozen models on identical holdout
         run: |
-          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/evaluate_multiple_choice_holdout.py             --holdout prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl             --tokenizer prepared/data/spanish/tokenizer/tokenizer.json             --lumen lumen/checkpoints/lumen/step_1000.pt             --transformer transformer/checkpoints/transformer/step_1000.pt             --out results/step1000_holdout.json --threads 4 --max-len 128
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/evaluate_multiple_choice_holdout.py \
+            --holdout prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl \
+            --tokenizer prepared/data/spanish/tokenizer/tokenizer.json \
+            --lumen lumen/checkpoints/lumen/step_1000.pt \
+            --transformer transformer/checkpoints/transformer/step_1000.pt \
+            --out results/step1000_holdout.json --threads 4 --max-len 128
       - uses: actions/upload-artifact@v4
         if: always()
         with:

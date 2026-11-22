@@ -22,7 +22,7 @@ No se vuelven a implementar mecanismos que ya existen en el repositorio:
 
 - Ningún órgano se desactiva.
 - El chunking no sustituye la secuencia token a token: añade un resumen residual limitado al 2,5 % de la norma de entrada.
-- Las trazas se almacenan como buffers, se actualizan sin gradiente y se limitan antes de acumularse. Esta es una aproximación asociativa del principio de elegibilidad: **no** implementa todavía una regla local de tres factores que actualice directamente cada parámetro sináptico. Esta es una aproximación asociativa del principio de elegibilidad: **no** implementa todavía una regla local de tres factores que actualice directamente cada parámetro sináptico.
+- Las trazas se almacenan como buffers, se actualizan sin gradiente y se limitan antes de acumularse. Esta es una aproximación asociativa del principio de elegibilidad: **no** implementa todavía una regla local de tres factores que actualice directamente cada parámetro sináptico.
 - Los estados recurrentes transitorios se reinician en cada minibatch; las trazas de elegibilidad sí persisten y forman parte del checkpoint.
 - El modulador de elegibilidad está acotado a ±0,25.
 - El Transformer no recibe chunking, trazas ni órganos de Lumen: permanece como baseline independiente.
@@ -43,7 +43,7 @@ No se vuelven a implementar mecanismos que ya existen en el repositorio:
 - Replay: habilitado; se registra si no hay memoria suficiente para ejecutarlo.
 - Comparación: loss, NLL, tokens vistos, tiempo por bloque, pasos/s, memoria, estabilidad numérica y, después, holdout común.
 
-El corpus v1 ya está congelado: 70.105 registros de entrenamiento, 1.413 de validación y 2.431 de holdout. Se verifica el SHA-256 de los tres splits, el tokenizer compartido de 4.096 y la caché precomputada de 128 tokens antes de arrancar. No se permite sustituirlo silenciosamente por v1. El workflow de entrenamiento solo se dispara al actualizar `docs/LAUNCH_NEUROPLASTICITY_RUN.txt`, que se creará después de verificar el artefacto v1; usa el tokenizer de 4.096 y la caché precomputada del mismo artefacto.
+El corpus v1 ya está congelado: 70.105 registros de entrenamiento, 1.413 de validación y 2.431 de holdout. Se verifica el SHA-256 de los tres splits, el tokenizer compartido de 4.096 y la caché precomputada de 128 tokens antes de arrancar. No se permite sustituirlo silenciosamente por otro corpus. El workflow de entrenamiento solo se dispara al actualizar `docs/LAUNCH_NEUROPLASTICITY_RUN.txt`, que se creará después de verificar el artefacto v1; usa el tokenizer de 4.096 y la caché precomputada del mismo artefacto.
 
 ## Interpretación
 

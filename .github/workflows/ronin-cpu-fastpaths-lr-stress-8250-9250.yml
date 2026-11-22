@@ -193,7 +193,7 @@ jobs:
               --token-cache data/pilot_tokenized_128.pt --batch 8 --max-len 128 --seed 42 --threads 4 \
               --lr 5e-5 --warmup 100 --total-steps 9250 \
               --scheduler-transition --transition-start 8250 --transition-end 9250 \
-              --warmup-transition 1 --grad-clip 1.0 --wall-clock-file artifacts/timing/transformer.json \
+              --warmup-transition 1 --grad-clip 1.0 --parameter-check-every 100 --wall-clock-file artifacts/timing/transformer.json \
               --ckpt-dir checkpoints/transformer --resume "$resume"
             resume=checkpoints/transformer/step_${target}.pt
             test -s "$resume"

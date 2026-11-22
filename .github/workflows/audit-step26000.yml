@@ -1,0 +1,47 @@
+name: Audit paired Spanish holdout at 26000
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/audit-step26000.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install audit dependencies
+        run: python -m pip install numpy scipy
+      - name: Download original paired 26000 holdout
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-step26000-paired-spanish-holdout-45030262114
+          path: source
+          repository: ${{ github.repository }}
+          run-id: 45030262114
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Recompute duplicate-ID, paired, NLL and calibration diagnostics
+        run: |
+          set -euo pipefail
+          test -s source/step26000_paired_holdout.json
+          python scripts/audit_paired_holdout.py \
+            --input source/step26000_paired_holdout.json \
+            --output results/step26000_audit.json \
+            --bootstrap 5000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-step26000-audit-${{ github.run_id }}
+          path: results/step26000_audit.json
+          if-no-files-found: warn
+          retention-days: 90

@@ -111,6 +111,8 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "seed": args.seed,
         "config": CONFIG.to_dict(),
         "data_sha256": data_hash,
+        "parent_data_sha256": getattr(args, "parent_data_sha256", None),
+        "corpus_transition": bool(getattr(args, "corpus_transition", False)),
         "rng": capture_rng(local_rng),
         "torch_version": torch.__version__,
         "cpu_threads": torch.get_num_threads(),
@@ -249,6 +251,8 @@ def main():
                         help="Compile only non-diagnostic forward passes; checkpoints remain eager-model state")
     parser.add_argument("--phase", type=int, choices=(1, 2, 3), required=True)
     parser.add_argument("--resume")
+    parser.add_argument("--allow-corpus-transition", action="store_true",
+                        help="Allow only the audited step-66000 checkpoint to continue on frozen corpus v2 with unchanged tokenizer")
     parser.add_argument("--data", default="data/train_25k.jsonl")
     parser.add_argument("--tokenizer", default="data/tokenizer/tokenizer.json")
     parser.add_argument("--token-cache", help="Validated pre-tokenized corpus cache")
@@ -437,8 +441,20 @@ def main():
             raise ValueError("Checkpoint training hyperparameters mismatch")
         if state.get("seed", args.seed) != args.seed:
             raise ValueError("Checkpoint seed mismatch")
-        if state["config"] != CONFIG.to_dict() or state["data_sha256"] != data_hash:
-            raise ValueError("Checkpoint config or training corpus hash mismatch")
+        if state["config"] != CONFIG.to_dict():
+            raise ValueError("Checkpoint model config mismatch")
+        parent_data_hash = state.get("data_sha256")
+        args.parent_data_sha256 = parent_data_hash
+        args.corpus_transition = False
+        if parent_data_hash != data_hash:
+            if not args.allow_corpus_transition:
+                raise ValueError("Checkpoint training corpus hash mismatch; audited transition flag required")
+            if int(state.get("step", -1)) != 66000 or state.get("architecture_id") != "ronin_lumen_v3_2_parallel_delta":
+                raise ValueError("Corpus transition is restricted to the exact Lumen step-66000 paired checkpoint")
+            if state.get("tokenizer_sha256") != tokenizer_hash:
+                raise ValueError("Corpus transition requires unchanged tokenizer hash")
+            args.corpus_transition = True
+            LOG.warning("CORPUS_TRANSITION accepted: parent_sha256=%s new_sha256=%s tokenizer_sha256=%s", parent_data_hash, data_hash, tokenizer_hash)
         if state["phase"] != args.phase:
             raise ValueError("Cannot change curriculum phase when resuming a checkpoint")
         if args.pilot_all_rows and (

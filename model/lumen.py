@@ -20,7 +20,7 @@ class RoninLumen(nn.Module):
         self.emb = VivoEmbedding(config.vocab_size, config.model_dim)
         self.presupuesto = Presupuesto(config.model_dim)
         self.delta_layers = nn.ModuleList([
-            EstadoDelta(config.model_dim, config.surprise_threshold)
+            EstadoDelta(config.model_dim, config.surprise_threshold, config.delta_rank)
             for _ in range(config.delta_layers)
         ])
         self.homeo = nn.ModuleList([

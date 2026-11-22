@@ -1,4 +1,4 @@
-from scripts.build_spanish_corpus import ALIA_LICENSES, EXCLUDED_ALIA, clean, make, chat_pairs, key
+from scripts.build_spanish_corpus import ALIA_LICENSES, EXCLUDED_ALIA, clean, make, chat_pairs, key, siqa_choice_label
 
 def test_unicode_and_whitespace():
     value = clean("  El&nbsp;niño\x00\n\n\n aprende  ")
@@ -23,3 +23,11 @@ def test_chat_pair_has_consistent_answer_prefix():
 
 def test_dedup_key_is_whitespace_stable():
     assert key("Pregunta", "Respuesta") == key(" Pregunta ", "Respuesta")
+
+
+def test_siqa_numeric_labels_map_to_answer_choices():
+    assert siqa_choice_label("1") == "A"
+    assert siqa_choice_label("2") == "B"
+    assert siqa_choice_label("3") == "C"
+    assert siqa_choice_label("A") == "A"
+    assert siqa_choice_label("0") is None

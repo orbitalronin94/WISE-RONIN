@@ -129,6 +129,8 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
                 "transition_start": args.transition_start,
                 "transition_end": args.transition_end,
                 "warmup_transition": args.warmup_transition,
+                "transition_plateau_steps": args.transition_plateau_steps,
+                "transition_min_lr_ratio": args.transition_min_lr_ratio,
                 "grad_clip": args.grad_clip,
             } if args.scheduler_transition else {}),
         },
@@ -221,6 +223,8 @@ def main():
     parser.add_argument("--transition-start", type=int, default=1000)
     parser.add_argument("--transition-end", type=int, default=2000)
     parser.add_argument("--warmup-transition", type=int, default=20)
+    parser.add_argument("--transition-plateau-steps", type=int, default=0)
+    parser.add_argument("--transition-min-lr-ratio", type=float, default=0.0)
     parser.add_argument("--wall-clock-file")
     parser.add_argument("--no-sleep", action="store_true")
     parser.add_argument("--no-jepa", action="store_true")
@@ -349,6 +353,8 @@ def main():
                 "transition_start": args.transition_start,
                 "transition_end": args.transition_end,
                 "warmup_transition": args.warmup_transition,
+                "transition_plateau_steps": args.transition_plateau_steps,
+                "transition_min_lr_ratio": args.transition_min_lr_ratio,
                 "grad_clip": args.grad_clip,
             } if args.scheduler_transition else {}),
         }
@@ -410,6 +416,8 @@ def main():
                 scheduler = CosineTransitionScheduler(
                     optimizer, start_step=start, end_step=args.transition_end,
                     old_lr=old_lr, new_lr=args.lr, warmup_steps=args.warmup_transition,
+                    plateau_steps=args.transition_plateau_steps,
+                    min_lr_ratio=args.transition_min_lr_ratio,
                 )
                 scheduler.step()
                 LOG.info("lr_transition_restart: step=%d from=%.8g to=%.8g optimizer_moments_preserved=True",
@@ -419,6 +427,8 @@ def main():
                     optimizer, start_step=saved_transition["start_step"],
                     end_step=saved_transition["end_step"], old_lr=saved_transition["old_lr"],
                     new_lr=saved_transition["new_lr"], warmup_steps=saved_transition["warmup_steps"],
+                    plateau_steps=saved_transition.get("plateau_steps", 0),
+                    min_lr_ratio=saved_transition.get("min_lr_ratio", 0.0),
                     current_step=saved_transition["current_step"],
                 )
                 scheduler.load_state_dict(saved_transition)
@@ -427,6 +437,8 @@ def main():
                 scheduler = CosineTransitionScheduler(
                     optimizer, start_step=args.transition_start, end_step=args.transition_end,
                     old_lr=old_lr, new_lr=args.lr, warmup_steps=args.warmup_transition,
+                    plateau_steps=args.transition_plateau_steps,
+                    min_lr_ratio=args.transition_min_lr_ratio,
                 )
                 LOG.info(
                     "lr_transition: step=%d, from=%.8g to=%.8g (LUMEN), "

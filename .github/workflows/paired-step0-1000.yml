@@ -80,13 +80,19 @@ jobs:
           root = Path("artifacts/spanish-v1")
           manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
           assert manifest["language"] == "es", manifest
-          for name, key in (("train.jsonl", "train_rows"), ("validation.jsonl", "validation_rows"), ("holdout.jsonl", "holdout_rows")):
+          for name, key in (("train.jsonl", "train_rows"), ("validation.jsonl", "validation_rows")):
               path = root / name
               assert path.is_file() and path.stat().st_size > 0, path
               rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
               assert len(rows) == int(manifest[key]), (name, len(rows), manifest[key])
               assert all(r.get("language") == "es" and str(r.get("completion", "")).strip() for r in rows), name
-              print(f"{name}: {len(rows)} Spanish rows")
+              print(f"{name}: {len(rows)} Spanish training rows")
+          holdout_path = root / "holdout_multiple_choice.jsonl"
+          assert holdout_path.is_file() and holdout_path.stat().st_size > 0, holdout_path
+          holdout = [json.loads(line) for line in holdout_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+          assert len(holdout) == int(manifest["holdout_rows"]), (len(holdout), manifest["holdout_rows"])
+          assert all(r.get("language") == "es" and r.get("choices") and r.get("answer") for r in holdout)
+          print(f"holdout_multiple_choice.jsonl: {len(holdout)} Spanish evaluation rows (kept out of tokenizer/training)")
           print("Corpus manifest validated; no synthetic or non-Spanish rows admitted.")
           PY
       - name: Train tokenizer on train split only and pre-tokenize once

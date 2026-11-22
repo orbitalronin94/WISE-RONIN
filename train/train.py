@@ -216,6 +216,8 @@ def main():
     parser.add_argument("--seed", type=int, default=CONFIG.seed)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--scheduler-transition", action="store_true")
+    parser.add_argument("--restart-scheduler-transition", action="store_true",
+                        help="Start a new cosine segment from an exhausted transition checkpoint")
     parser.add_argument("--transition-start", type=int, default=1000)
     parser.add_argument("--transition-end", type=int, default=2000)
     parser.add_argument("--warmup-transition", type=int, default=20)
@@ -246,6 +248,8 @@ def main():
         parser.error("--pilot-all-rows is only valid for real-data phase 1")
     if args.scheduler_transition and not args.resume:
         parser.error("--scheduler-transition requires an exact resumable parent checkpoint")
+    if args.restart_scheduler_transition and not args.scheduler_transition:
+        parser.error("--restart-scheduler-transition requires --scheduler-transition")
 
     runtime_profile = {}
     if args.runtime_profile and Path(args.runtime_profile).is_file():
@@ -358,6 +362,14 @@ def main():
                 raise ValueError("Parent checkpoint batch/length/LR/warmup/weight-decay mismatch")
             if int(parent_config.get("total_steps", -1)) < args.transition_start:
                 raise ValueError("Parent scheduler horizon ends before the transition step")
+        elif args.restart_scheduler_transition:
+            parent_config = state.get("training_config") or {}
+            stable_keys = ("batch", "max_len", "lr", "warmup", "weight_decay", "grad_clip")
+            mismatches = [key for key in stable_keys
+                          if parent_config.get(key) != expected_training_config.get(key)]
+            saved_transition = state.get("scheduler_transition")
+            if mismatches or not saved_transition or int(saved_transition.get("current_step", -1)) != int(state.get("step", -2)):
+                raise ValueError(f"Cannot restart scheduler from this checkpoint; mismatches={mismatches}")
         elif state.get("training_config") not in (None, expected_training_config):
             raise ValueError("Checkpoint training hyperparameters mismatch")
         if state.get("seed", args.seed) != args.seed:
@@ -373,6 +385,8 @@ def main():
             raise ValueError("Pilot resume requires the same all-row mode and tokenizer hash")
         incompatible = model.load_state_dict(state["model"], strict=False)
         allowed_missing = {f"homeo.{i}.effective_m" for i in range(len(model.homeo))}
+        allowed_missing |= {"pain.loss_ema", "pain.pain", "pain.last_regression",
+                            "pleasure.loss_ema", "pleasure.pleasure", "pleasure.last_improvement"}
         missing = set(incompatible.missing_keys)
         unexpected = set(incompatible.unexpected_keys)
         if missing - allowed_missing or unexpected:
@@ -391,7 +405,16 @@ def main():
         start = int(state["step"])
         if args.scheduler_transition:
             saved_transition = state.get("scheduler_transition")
-            if saved_transition:
+            if args.restart_scheduler_transition:
+                old_lr = float(optimizer.param_groups[0]["lr"])
+                scheduler = CosineTransitionScheduler(
+                    optimizer, start_step=start, end_step=args.transition_end,
+                    old_lr=old_lr, new_lr=args.lr, warmup_steps=args.warmup_transition,
+                )
+                scheduler.step()
+                LOG.info("lr_transition_restart: step=%d from=%.8g to=%.8g optimizer_moments_preserved=True",
+                         start, old_lr, args.lr)
+            elif saved_transition:
                 scheduler = CosineTransitionScheduler(
                     optimizer, start_step=saved_transition["start_step"],
                     end_step=saved_transition["end_step"], old_lr=saved_transition["old_lr"],
@@ -419,7 +442,11 @@ def main():
         tokens_seen = int(state.get("tokens_seen", 0))
         layer_diagnostics_history = list(state.get("layer_diagnostics_history", []))
         sleep_events = list(state.get("sleep_events", []))
-        LOG.info("resumed step=%d tokens_seen=%d", start, tokens_seen)
+        pain_value = float(model.pain.pain.item())
+        pleasure_value = float(model.pleasure.pleasure.item())
+        model.presupuesto.affect_scale = max(0.85, min(1.05, 1.0 - 0.10 * pain_value + 0.05 * pleasure_value))
+        LOG.info("resumed step=%d tokens_seen=%d pain=%.3f pleasure=%.3f affect_scale=%.3f",
+                 start, tokens_seen, pain_value, pleasure_value, model.presupuesto.affect_scale)
 
     phase_ranges = {1: (0, 2000), 2: (2000, 8000), 3: (8000, 10000)}
     low, high = ((0, args.total_steps) if args.pilot_all_rows else phase_ranges[args.phase])
@@ -559,6 +586,18 @@ def main():
                 LOG.info(
                     "glucose_check step=%d mean_loss=%.6f improved=%s signal=%s reserve=%.3f",
                     step, check_loss, improved, glucose_signal, glucose_level,
+                )
+                pain_state = model.pain.update(check_loss)
+                pleasure_state = model.pleasure.update(check_loss)
+                model.presupuesto.affect_scale = max(
+                    0.85, min(1.05,
+                        1.0 - 0.10 * pain_state["pain"] + 0.05 * pleasure_state["pleasure"])
+                )
+                LOG.info(
+                    "affect_check step=%d pain=%.3f regression=%.5f pleasure=%.3f improvement=%.5f affect_scale=%.3f",
+                    step, pain_state["pain"], pain_state["regression"],
+                    pleasure_state["pleasure"], pleasure_state["improvement"],
+                    model.presupuesto.affect_scale,
                 )
             dead_by_layer = [organ.neuronas_muertas() for organ in model.homeo]
             dead = max(dead_by_layer, default=1.0)

@@ -1,0 +1,71 @@
+name: RONIN paired step-1000 Spanish holdout
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/evaluate_multiple_choice_holdout.py"
+      - ".github/workflows/holdout-step1000.yml"
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU evaluation runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download frozen Spanish holdout and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-spanish-prepared-45012493289
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: 45012493289
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download Lumen step-1000 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step1000-45012493289
+          path: lumen
+          repository: ${{ github.repository }}
+          run-id: 45012493289
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download Transformer step-1000 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-transformer-step1000-45012493289
+          path: transformer
+          repository: ${{ github.repository }}
+          run-id: 45012493289
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify frozen holdout and checkpoint pair
+        run: |
+          test -s prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl
+          test -s prepared/data/spanish/tokenizer/tokenizer.json
+          test -s lumen/checkpoints/lumen/step_1000.pt
+          test -s transformer/checkpoints/transformer/step_1000.pt
+          python - <<'PY'
+          import json
+          p="prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl"
+          rows=[json.loads(x) for x in open(p,encoding="utf-8") if x.strip()]
+          assert len(rows)==1413, len(rows)
+          assert all(x.get("language")=="es" and x.get("choices") and x.get("answer") is not None for x in rows)
+          print("Frozen Spanish holdout:",len(rows))
+          PY
+      - name: Score both frozen models on identical holdout
+        run: |
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/evaluate_multiple_choice_holdout.py             --holdout prepared/artifacts/spanish-v1/holdout_multiple_choice.jsonl             --tokenizer prepared/data/spanish/tokenizer/tokenizer.json             --lumen lumen/checkpoints/lumen/step_1000.pt             --transformer transformer/checkpoints/transformer/step_1000.pt             --out results/step1000_holdout.json --threads 4 --max-len 128
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ronin-step1000-spanish-holdout-${{ github.run_id }}
+          path: results/step1000_holdout.json
+          if-no-files-found: warn
+          retention-days: 90

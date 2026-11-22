@@ -8,6 +8,9 @@ on:
         required: true
         default: "45007651092"
         type: string
+  push:
+    branches: [main]
+    paths: [".github/workflows/paired-step0-1000.yml"]
 
 permissions:
   contents: read
@@ -23,6 +26,7 @@ env:
   OMP_DYNAMIC: "FALSE"
   MKL_DYNAMIC: "FALSE"
   OMP_WAIT_POLICY: "PASSIVE"
+  CORPUS_RUN_ID: ${{ inputs.corpus_run_id || '45007651092' }}
 
 jobs:
   validate:
@@ -63,10 +67,10 @@ jobs:
       - name: Download frozen Spanish-only corpus
         uses: actions/download-artifact@v4
         with:
-          name: wise-ronin-spanish-corpus-v1-${{ inputs.corpus_run_id }}
+          name: wise-ronin-spanish-corpus-v1-${{ env.CORPUS_RUN_ID }}
           path: artifacts/spanish-v1
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.corpus_run_id }}
+          run-id: ${{ env.CORPUS_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Validate corpus split and provenance
         run: |

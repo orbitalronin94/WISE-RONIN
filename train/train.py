@@ -188,6 +188,49 @@ def migrate_legacy_homeostasis(model, optimizer):
     )
 
 
+
+def apply_organ_profile(model, profile):
+    """Apply bounded organ-parameter hypotheses without disabling organs."""
+    allowed = {"glucose", "pain", "pleasure", "homeostasis", "memory", "pain_budget_gain", "pleasure_budget_gain"}
+    unknown = set(profile) - allowed
+    if unknown: raise ValueError(f"Unknown organ profile keys: {sorted(unknown)}")
+    glucose_map = {"step": "GLUCOSE_STEP", "decay": "GLUCOSE_DECAY", "improvement_threshold": "IMPROVEMENT_THRESHOLD"}
+    for key, value in profile.get("glucose", {}).items():
+        if key not in glucose_map: raise ValueError(f"Unknown glucose parameter: {key}")
+        value = float(value)
+        if key == "step" and value < 0: raise ValueError("glucose step must be non-negative")
+        if key == "decay" and not 0 <= value < 1: raise ValueError("glucose decay must be in [0,1)")
+        if key == "improvement_threshold" and value < 0: raise ValueError("glucose threshold must be non-negative")
+        setattr(model.presupuesto, glucose_map[key], value)
+    for name in ("pain", "pleasure"):
+        organ = getattr(model, name)
+        for key, value in profile.get(name, {}).items():
+            if key not in {"ema", "deadband", "full_scale", "response", "decay"}: raise ValueError(f"Unknown {name} parameter: {key}")
+            setattr(organ, key, float(value))
+        if not (0 <= organ.ema < 1 and organ.deadband >= 0 and organ.full_scale > organ.deadband and 0 < organ.response <= 1 and 0 <= organ.decay < 1):
+            raise ValueError(f"Invalid {name} organ profile")
+    for key, value in profile.get("homeostasis", {}).items():
+        if key == "eta":
+            value = float(value)
+            if value < 0: raise ValueError("homeostasis eta must be non-negative")
+            for organ in model.homeo: organ.eta = value
+        elif key == "target":
+            value = float(value)
+            if not 0 <= value <= 1: raise ValueError("homeostasis target must be in [0,1]")
+            for organ in model.homeo: organ.m_target = value
+        elif key == "k_top":
+            value = int(value)
+            if not 1 <= value <= model.config.model_dim: raise ValueError("homeostasis k_top out of range")
+            for organ in model.homeo: organ.k_top = value
+        else: raise ValueError(f"Unknown homeostasis parameter: {key}")
+    for key, value in profile.get("memory", {}).items():
+        if key not in {"small_pe", "large_pe"}: raise ValueError(f"Unknown memory parameter: {key}")
+        setattr(model.memoria, key, float(value))
+    if not 0 <= model.memoria.small_pe < model.memoria.large_pe: raise ValueError("memory thresholds must satisfy 0 <= small_pe < large_pe")
+    for key in ("pain_budget_gain", "pleasure_budget_gain"):
+        if key in profile and not 0 <= float(profile[key]) <= 1: raise ValueError(f"{key} must be in [0,1]")
+    LOG.info("organ_profile applied: %s", json.dumps(profile, sort_keys=True))
+
 def main():
     parser = argparse.ArgumentParser(description="RONIN-LUMEN CPU training")
     parser.add_argument("--steps", type=int, default=500)
@@ -269,6 +312,11 @@ def main():
     elif args.runtime_profile:
         LOG.warning("runtime profile not found; using explicit/default CLI CPU settings: %s", args.runtime_profile)
     args.runtime_profile_settings = dict(runtime_profile)
+    organ_profile = runtime_profile.get("organs", {})
+    pain_budget_gain = float(organ_profile.get("pain_budget_gain", 0.10))
+    pleasure_budget_gain = float(organ_profile.get("pleasure_budget_gain", 0.05))
+    if not 0.0 <= pain_budget_gain <= 1.0 or not 0.0 <= pleasure_budget_gain <= 1.0:
+        raise ValueError("organ budget gains must be in [0,1]")
 
     torch.set_num_threads(args.threads)
     torch.set_num_interop_threads(args.interop_threads)
@@ -461,9 +509,11 @@ def main():
         sleep_events = list(state.get("sleep_events", []))
         pain_value = float(model.pain.pain.item())
         pleasure_value = float(model.pleasure.pleasure.item())
-        model.presupuesto.affect_scale = max(0.85, min(1.05, 1.0 - 0.10 * pain_value + 0.05 * pleasure_value))
+        model.presupuesto.affect_scale = max(0.85, min(1.05, 1.0 - pain_budget_gain * pain_value + pleasure_budget_gain * pleasure_value))
         LOG.info("resumed step=%d tokens_seen=%d pain=%.3f pleasure=%.3f affect_scale=%.3f",
                  start, tokens_seen, pain_value, pleasure_value, model.presupuesto.affect_scale)
+
+    apply_organ_profile(model, organ_profile)
 
     phase_ranges = {1: (0, 2000), 2: (2000, 8000), 3: (8000, 10000)}
     low, high = ((0, args.total_steps) if args.pilot_all_rows else phase_ranges[args.phase])
@@ -608,7 +658,7 @@ def main():
                 pleasure_state = model.pleasure.update(check_loss)
                 model.presupuesto.affect_scale = max(
                     0.85, min(1.05,
-                        1.0 - 0.10 * pain_state["pain"] + 0.05 * pleasure_state["pleasure"])
+                        1.0 - pain_budget_gain * pain_state["pain"] + pleasure_budget_gain * pleasure_state["pleasure"])
                 )
                 LOG.info(
                     "affect_check step=%d pain=%.3f regression=%.5f pleasure=%.3f improvement=%.5f affect_scale=%.3f",

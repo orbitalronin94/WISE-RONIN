@@ -41,7 +41,7 @@ def main() -> None:
         raise ValueError("Tokenizer must define [PAD] at token ID 0")
     encoded = encode_rows(rows, tokenizer, args.max_len)
     payload = {
-        "format": "ronin_token_cache_v1",
+        "format": "ronin_token_cache_v2",
         "data_sha256": data_hash,
         "tokenizer_sha256": sha256_file(tokenizer_path),
         "max_len": int(args.max_len),

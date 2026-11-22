@@ -6,14 +6,6 @@ on:
     branches: [experiment/neuroplasticity-step0-1000]
     paths:
       - "docs/LAUNCH_NEUROPLASTICITY_RUN.txt"
-  workflow_dispatch:
-    inputs:
-      corpus_run_id:
-        description: "Run that produced the frozen shared Spanish corpus v2 artifact"
-        required: true
-        default: "45065384110"
-        type: string
-
 permissions:
   contents: read
   actions: read
@@ -27,7 +19,7 @@ env:
   MKL_NUM_THREADS: "4"
   OMP_DYNAMIC: "FALSE"
   MKL_DYNAMIC: "FALSE"
-  CORPUS_RUN_ID: ${{ inputs.corpus_run_id || '45065384110' }}
+  CORPUS_RUN_ID: "45065384110"
 
 jobs:
   validate:

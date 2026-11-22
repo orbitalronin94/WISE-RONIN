@@ -122,7 +122,7 @@ El corpus v1 y sus hashes anteriores se conservan como referencia histórica. La
 
 El constructor está en `scripts/build_spanish_corpus_v2.py` y la ejecución automatizada en [build-spanish-corpus-v2.yml](../.github/workflows/build-spanish-corpus-v2.yml).
 
-- Run de construcción: [45065329753](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45065329753).
+- Run de construcción: [45065384110](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45065384110).
 - Fuentes ingeridas: CSIC y TDX, descargadas de Zenodo y verificadas contra los MD5 publicados.
 - Tokenizador: se reutiliza el tokenizador BPE compartido del artefacto preparado 16k; no se reentrena ni cambia el vocabulario.
 - Formato: JSONL compatible con el cargador actual. Los textos largos se dividen en ventanas de hasta 126 tokens BPE para dejar espacio a BOS/EOS en el contexto de 128.

@@ -4,17 +4,29 @@
 
 El repositorio mantiene el nombre técnico WISE-RONIN, pero el proyecto activo, la documentación y la línea de entrenamiento corresponden a **Lumen-Ronin**. La arquitectura que se promueve es ronin_lumen_v3_2_parallel_delta; no se eliminan sus órganos para perseguir velocidad. Las optimizaciones deben preservar sus funciones y demostrar equivalencia o mejora con pruebas y mediciones.
 
-> **Estado experimental — 22 de noviembre de 2026, checkpoint 16.000:** Lumen obtuvo **786/2.431 (32,332%)** en el holdout español congelado; el Transformer obtuvo **761/2.431 (31,304%)**. Lumen aventajó al baseline por 25 respuestas (+1,028 puntos porcentuales). La comparación emparejada aún no es estadísticamente concluyente (McNemar exacto bilateral p=0,329); tampoco se rechaza el azar ponderado del conjunto (31,619%; p=0,231). Se trata de una señal favorable, no de una victoria demostrada.
+> **Estado experimental — 22 de noviembre de 2026, checkpoint 21.000:** Lumen obtuvo **837/2.431 (34,430%)** en el holdout español congelado; el Transformer obtuvo **766/2.431 (31,510%)**. Lumen aventajó al baseline por 71 respuestas (+2,921 puntos porcentuales). Lumen lidera en accuracy, pero el Transformer conserva menor NLL media (6,7644 frente a 7,1043). El resultado favorece a Lumen en clasificación, no demuestra superioridad en calibración ni en todas las métricas.
 
 ## Decisión de proyecto
 
 - **Modelo principal:** Lumen-Ronin, arquitectura recurrente ronin_lumen_v3_2_parallel_delta.
 - **Baseline:** Transformer pequeño, conservado para controles y comparaciones cuando sean informativas.
-- **Checkpoint de trabajo:** Lumen step 16.000, con pesos, buffers de los órganos y estado de AdamW preservados.
-- **Siguiente bloque:** 5.000 pasos adicionales, step 16.000 → 21.000, solo Lumen.
-- **Scheduler:** warmup de 100 pasos desde el LR agotado, meseta a 3e-5 hasta step 20.000 y decaimiento coseno suave hasta 1,5e-5 en step 21.000. El LR no vuelve a cero en este bloque.
+- **Checkpoint de trabajo:** Lumen step 21.000, con pesos, buffers de glucosa/dolor/placer y estado de AdamW preservados.
+- **Baseline de control:** Transformer step 21.000, conservado con su propio estado de AdamW.
+- **Siguiente bloque:** continuación emparejada de 5.000 pasos, step 21.000 → 26.000, ambos modelos.
+- **Scheduler:** warmup de 100 pasos, meseta de 3.900 pasos y decaimiento coseno en los últimos 1.000 hasta la mitad del LR objetivo. Lumen: 3e-5 → 1,5e-5; Transformer: 7,5e-5 → 3,75e-5.
 - **Reguladores:** glucosa, dolor y placer siguen siendo señales independientes y acotadas; los órganos afectivos modulan el presupuesto interno, no el LR ni los momentos del optimizador.
 - **Criterio de avance:** holdout congelado, precisión y NLL informadas por separado, integridad de checkpoint y throughput. La loss de entrenamiento por sí sola no acredita generalización.
+
+## Holdout español de step 21.000
+
+La evaluación emparejada del run [45025897082](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45025897082) utilizó los mismos 2.431 registros congelados, tokenizer y contexto para ambos checkpoints.
+
+| Modelo | Aciertos | Accuracy | NLL medio |
+|---|---:|---:|---:|
+| **Lumen-Ronin** | **837/2.431** | **34,430%** | 7,1043 |
+| Transformer baseline | 766/2.431 | 31,510% | **6,7644** |
+
+Lumen obtuvo 71 aciertos más (+2,921 puntos porcentuales). El resultado consolida la señal favorable de clasificación observada a 16k. Sin embargo, Transformer mantiene menor NLL media: Lumen todavía debe mejorar la asignación de probabilidad a las respuestas. No se debe presentar la ventaja de accuracy como una victoria en todas las métricas. Los dos checkpoints 21k y el JSON del holdout están publicados como artefactos del run.
 
 ## Holdout español de step 16.000
 

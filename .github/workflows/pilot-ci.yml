@@ -2,7 +2,7 @@ name: RONIN-LUMEN pilot checks (no training)
 
 on:
   push:
-    branches: [pilot/ronin-lumen-500]
+    branches: [main, pilot/ronin-lumen-500]
     paths:
       - "model/**"
       - "train/**"

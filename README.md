@@ -51,8 +51,8 @@ El loro representa la fluidez: producir secuencias deprisa y parecer competente 
 En Lumen, esa metáfora tiene correspondencias técnicas concretas:
 
 - **Glucosa:** reserva de energía interna que responde a mejoras verificadas de la loss.
-- **Dolor:** señal acotada de regresión; favorece protección y modula la plasticidad.
-- **Placer:** señal independiente de mejora; puede favorecer moderadamente plasticidad y consolidación.
+- **Dolor:** señal acotada de regresión; reduce de forma acotada el multiplicador energético interno.
+- **Placer:** señal independiente de mejora; eleva de forma moderada el multiplicador energético interno.
 - **Homeostasis:** regula la actividad efectiva de las unidades.
 - **Delta:** escribe en un estado asociativo cuando la sorpresa lo justifica.
 - **Memoria:** separa adaptación elástica y registros lentos.

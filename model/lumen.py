@@ -73,6 +73,7 @@ class RoninLumen(nn.Module):
         h = self.emb(token_ids)
         e_delta, e_mem, e_head, energy = self.presupuesto(h)
         surprises = []
+        chunk_sizes = []
         complexity_terms = []
         for delta, homeo in zip(self.delta_layers, self.homeo):
             # Delta returns an associative-memory update, not a replacement
@@ -84,6 +85,7 @@ class RoninLumen(nn.Module):
                 collect_diagnostics=collect_diagnostics,
             )
             h = self.chunker(h, surprise)
+            chunk_sizes.append(self.chunker.last_chunk_size)
             h = homeo(h + delta_update, collect_diagnostics=collect_diagnostics)
             surprises.append(surprise)
             if self.v32_ze:
@@ -114,7 +116,7 @@ class RoninLumen(nn.Module):
             "surprise": surprise, "energy": energy, "hidden": hidden,
             "free_energy_complexity": free_energy_complexity,
             "ze": ze_metrics,
-            "chunk_size": self.chunker.last_chunk_size,
+            "chunk_sizes": tuple(chunk_sizes),
             "eligibility_norms": tuple(delta.last_eligibility_norm for delta in self.delta_layers),
         }
 

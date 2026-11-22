@@ -100,6 +100,8 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args,
         "step": step,
         "seed": args.seed,
         "data_sha256": data_hash,
+        "parent_data_sha256": getattr(args, "parent_data_sha256", None),
+        "corpus_transition": bool(getattr(args, "corpus_transition", False)),
         "tokenizer_sha256": tokenizer_hash,
         "tokens_seen": tokens_seen,
         "params": params,
@@ -137,6 +139,8 @@ def main():
     p.add_argument("--threads", type=int, default=2,
                    help="PyTorch intra-op CPU threads; benchmark 1/2/4 on the target runner")
     p.add_argument("--resume", help="Previous global-step checkpoint")
+    p.add_argument("--allow-corpus-transition", action="store_true",
+                   help="Allow an audited corpus change only from the exact step-66000 baseline checkpoint with unchanged tokenizer")
     p.add_argument("--batch", type=int, default=8)
     p.add_argument("--max-len", type=int, default=128)
     p.add_argument("--seed", type=int, default=42)
@@ -237,10 +241,21 @@ def main():
                     f"checkpoint_step={saved_step}, scheduler_step={scheduler_step}"
                 )
             expected_resume_config = parent_config
+        parent_data_hash = state.get("data_sha256")
+        args.parent_data_sha256 = parent_data_hash
+        args.corpus_transition = False
+        if parent_data_hash != data_hash:
+            if not args.allow_corpus_transition:
+                raise ValueError("Transformer checkpoint corpus hash mismatch; audited transition flag required")
+            if int(state.get("step", -1)) != 66000 or state.get("architecture_id") != ARCHITECTURE_ID:
+                raise ValueError("Corpus transition is restricted to the exact Transformer step-66000 paired checkpoint")
+            if state.get("tokenizer_sha256") != tokenizer_hash:
+                raise ValueError("Corpus transition requires unchanged tokenizer hash")
+            args.corpus_transition = True
+            LOG.warning("CORPUS_TRANSITION accepted: parent_sha256=%s new_sha256=%s tokenizer_sha256=%s", parent_data_hash, data_hash, tokenizer_hash)
         checks = {
             "architecture_id": (state.get("architecture_id"), ARCHITECTURE_ID),
             "seed": (state.get("seed"), args.seed),
-            "data_sha256": (state.get("data_sha256"), data_hash),
             "tokenizer_sha256": (state.get("tokenizer_sha256"), tokenizer_hash),
             "training_config": (state.get("training_config"), expected_resume_config),
             "params": (state.get("params"), params),

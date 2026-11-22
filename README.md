@@ -6,7 +6,7 @@ La línea experimental activa deja de ser WISE-RONIN. El objetivo ahora es deter
 
 El repositorio conserva su nombre técnico actual (`WISE-RONIN`), pero la identidad y el plan de trabajo documentados aquí corresponden a **Lumen-Ronin**. No se reutilizarán checkpoints anteriores: ambos modelos comenzarán en **step 0**, con inicialización nueva.
 
-> **Estado a 22 de noviembre de 2026:** fase de auditoría y optimización de rendimiento. No iniciar el entrenamiento largo hasta completar las pruebas de equivalencia, medir los cuellos de botella y verificar el corpus/tokenizer exactos que compartirán ambos modelos.
+> **Estado a 22 de noviembre de 2026:** Delta de bajo rango y reserva de glucosa integrados en `main`. Se ha preparado y lanzado el piloto emparejado desde step 0 hasta 1.000 pasos para Lumen y Transformer, con corpus español y tokenizer compartidos; los resultados de entrenamiento y holdout aún deben evaluarse antes de autorizar una campaña larga.
 
 ## Decisión de proyecto
 
@@ -252,6 +252,81 @@ El corpus resultante es principalmente SFT/QA/instrucciones, texto paralelo y ma
 3. Tratar `torch.compile` como opción exclusiva de campañas largas, contabilizando su arranque y evitando recompilaciones.
 4. Verificar/publicar el corpus y tokenizer definitivos que compartirán ambos modelos.
 5. Iniciar Lumen-Ronin y Transformer desde step 0 con pesos y estados de optimizador nuevos, en ejecución emparejada.
+
+## Dos hipótesis de arquitectura: Lumen-Ronin frente al Transformer
+
+Esta comparación no enfrenta dos nombres para la misma receta. Enfrenta dos maneras distintas de organizar el cómputo, la memoria y la adaptación.
+
+El Transformer representa una de las grandes victorias de la ingeniería moderna: atención causal, bloques densos, operaciones matriciales altamente paralelizables y una ruta de escalado que aprovecha extraordinariamente bien aceleradores y grandes presupuestos de datos y cómputo. Su éxito es real y está demostrado. Pero su principio organizador dominante sigue siendo calcular relaciones entre posiciones mediante atención y transformar representaciones a través de bloques repetidos. Es una solución potente; no es la única forma imaginable de construir una máquina que aprenda.
+
+Lumen-Ronin parte de otra pregunta: **¿podemos obtener una conducta útil organizando el modelo como un sistema de órganos con responsabilidades diferenciadas, estados persistentes y regulación interna, en lugar de confiar casi todo el trabajo a una pila uniforme de bloques de atención?**
+
+No afirmamos que el cerebro sea un plano de ingeniería que haya que copiar literalmente, ni que la neurociencia haya demostrado que esta arquitectura vaya a ganar. Tomamos inspiración de principios funcionales —plasticidad, memoria, homeostasis, especialización, regulación de recursos y consolidación— y los convertimos en mecanismos computables que se pueden medir, refutar y modificar.
+
+### Anatomía comparada
+
+| Dimensión | Lumen-Ronin | Transformer de control |
+|---|---|---|
+| Principio organizador | Órganos especializados que cooperan sobre una representación compartida | Bloques causales repetidos de atención y red feed-forward |
+| Dependencia temporal | Estado recurrente Delta actualizado secuencialmente por token | Atención causal sobre el contexto; las posiciones de una secuencia se procesan en paralelo dentro de cada bloque |
+| Memoria de trabajo | Estado asociativo recurrente Delta, con escritura condicionada por sorpresa | Contexto representado por activaciones y claves/valores de atención durante el forward |
+| Compresión de estado | Delta usa una proyección ortogonal de rango 64 sobre dimensión 256 para reducir el estado asociativo | No usa esta memoria recurrente de bajo rango; conserva la representación contextual del bloque de atención |
+| Regulación de actividad | Homeostasis por unidad, EMA de actividad efectiva, sesgo adaptativo y Top-K | LayerNorm y transformaciones densas; no incorpora el mismo lazo homeostático adaptativo |
+| Presupuesto | Presupuesto aprendido que distribuye energía entre Delta, memoria y cabezas; reserva de glucosa acotada que responde a la mejora de loss | No tiene un presupuesto energético explícito ni realimentación de glucosa |
+| Memoria de largo plazo | Banco lento de slots, escritura selectiva por sorpresa y recuperación asociativa; componente elástico aprendido | No contiene un banco externo equivalente en esta implementación; el conocimiento se expresa en pesos y contexto |
+| Procesamiento de salida | Router que mezcla una cabeza spline/KAN y una MLP | Proyección de salida desde la representación transformada |
+| Aprendizaje auxiliar | JEPA/predicción latente, diversidad, router y penalización de repetición, además de next-token | Baseline de next-token; no incorpora esos órganos ni el mismo conjunto de pérdidas auxiliares |
+| Vocabulario | Embedding vivo con contabilidad de uso y propuestas no destructivas de poda | Embedding estándar |
+| Consolidación | Mecanismo de sueño/replay disponible en el trainer y banco de memoria | Sin mecanismo equivalente en el baseline |
+| Control experimental | Diagnósticos de escritura, actividad efectiva, energía, sorpresa y estado de memoria | Diagnósticos convencionales de loss, parámetros y optimizador |
+
+La tabla describe las implementaciones presentes en este repositorio, no todos los Transformers existentes ni todas las variantes posibles de Lumen. En particular, el módulo dual ZE V3.2 es opt-in y no forma parte del camino Lumen V1 que se compara por defecto.
+
+### Los órganos de Lumen, uno por uno
+
+**1. VivoEmbedding — vocabulario con observabilidad.** Mantiene un contador de uso por token y puede proponer candidatos sin uso para una poda posterior. No modifica el tokenizer ni elimina IDs por su cuenta: la integridad del vocabulario congelado tiene prioridad sobre una poda automática.
+
+**2. EstadoDelta — memoria asociativa recurrente.** Proyecta K, V y Q, predice el contenido asociado a una clave desde el estado actual y calcula el error de predicción. La sorpresa derivada de ese error gobierna la escritura; una puerta aprendible y el presupuesto Delta modulan cuánto se incorpora. El estado se actualiza token a token, y la consulta lee de ese estado. La versión actual comprime el espacio de claves mediante una proyección ortogonal fija de rango 64 (frente a dimensión 256), reduciendo el tamaño de la matriz recurrente de 256×256 a 64×256 por capa. Es una aproximación de bajo rango, no una equivalencia matemática exacta a rango 64.
+
+**3. Homeostasis — regulación de actividad.** Selecciona las unidades Top-K y mide la actividad que realmente sobrevive a la puerta. Una media móvil exponencial de esa actividad efectiva ajusta un sesgo por unidad para aproximarse al objetivo de actividad. No es una simple máscara de sparsity: intenta cerrar un lazo de regulación sobre qué unidades están participando de verdad.
+
+**4. Presupuesto — asignación de recursos.** Una capa aprendida reparte el presupuesto entre memoria Delta, memoria elástica/lenta y cabezas de salida. La reserva de glucosa es un buffer acotado: en cada ventana de comprobación, una mejora relativa de loss superior al umbral añade reserva; si no hay mejora, decae suavemente. La reserva escala la energía disponible, pero no cambia el learning rate. Es una hipótesis de control experimental, no una afirmación de que la glucosa biológica se comporte así en una neurona artificial.
+
+**5. MemoriaElastica — plasticidad y banco lento.** Una MLP aporta una vía elástica cuya contribución se modula por sorpresa. Los eventos de sorpresa alta pueden escribirse en slots persistentes; la recuperación se realiza por similitud con las activaciones actuales y el uso de slots se sigue mediante estadísticas. La escritura está restringida al entrenamiento para evitar que la evaluación modifique la memoria entre prompts.
+
+**6. Heads — especialización de la transformación final.** Un router aprendido mezcla dos rutas: una cabeza spline de tipo KAN, que interpola puntos aprendibles, y una MLP convencional. La salida se escala con el presupuesto asignado a las cabezas.
+
+**7. JEPA y objetivos auxiliares.** Además de predecir el siguiente token, Lumen puede aprender una predicción de representación latente a varios pasos, regularizar diversidad de activaciones y uso del router, y penalizar patrones de repetición. Estas pérdidas se registran por separado porque una suma de objetivos distinta no debe confundirse con una comparación limpia de la arquitectura.
+
+**8. Sueño y replay.** El trainer incluye una fase periódica de consolidación/replay. Su valor no se da por supuesto: se mide su coste y se comprueba que exista memoria que consolidar. Si no hay registros, no se debe atribuir al sueño una mejora o una penalización que no ha ocurrido.
+
+### Neurociencia frente a escalado: la pregunta incómoda
+
+La historia reciente de la IA ha premiado una estrategia muy eficaz: tomar una arquitectura general, aumentar datos, parámetros y cómputo, y explotar hardware cada vez más capaz. El Transformer ha sido extraordinariamente compatible con esa estrategia. La atención convierte gran parte del trabajo en álgebra matricial densa, y esa regularidad es una ventaja industrial inmensa.
+
+Pero una ventaja de escalado no equivale a una teoría completa de la inteligencia.
+
+Los cerebros no funcionan como una única operación homogénea repetida millones de veces. Son sistemas físicos, recurrentes, distribuidos y energéticamente restringidos, con memoria en múltiples escalas, mecanismos de adaptación local, regulación, especialización y coordinación. La neurociencia tampoco ofrece una receta cerrada: sigue habiendo debate sobre cómo emergen la memoria, la predicción, la atención, la conciencia y el aprendizaje. Lo que sí ofrece es un repertorio de problemas y principios que la ingeniería de redes puede explorar.
+
+La provocación de Lumen es ésta: **quizá hemos confundido una arquitectura muy escalable con una arquitectura cognitivamente inevitable.** Quizá una parte del progreso futuro no consista únicamente en alimentar la misma familia de bloques con más cómputo, sino en descubrir mejores mecanismos de organización: cuándo escribir, qué conservar, qué regular, qué especializar y cómo asignar recursos según el estado del sistema.
+
+Decir que el Transformer «nació obsoleto» sería ir demasiado lejos. No lo sabemos, y su rendimiento empírico impide despacharlo con una consigna. La crítica más seria es otra: el Transformer estándar no intenta reproducir muchos de los principios de organización que la biología ha desarrollado bajo restricciones extremas de energía, memoria y adaptación continua. Eso no lo invalida; delimita una decisión de diseño que merece ser cuestionada.
+
+Lumen tampoco puede reclamar superioridad por llevar nombres de órganos. Una metáfora biológica no es una explicación, y una arquitectura más compleja puede ser peor: más lenta, más frágil, más difícil de entrenar y más propensa a introducir objetivos auxiliares que distorsionen la comparación. Si sus órganos no mejoran aprendizaje, robustez, memoria o eficiencia medidos, habrá que simplificarlos o descartarlos. La inspiración neurocientífica solo tiene valor cuando se traduce en mecanismos operativos y resultados reproducibles.
+
+### Qué debe demostrar el experimento
+
+La comparación emparejada desde cero es el primer juicio, no el veredicto final. Debe separar tres preguntas:
+
+1. **Aprendizaje:** ¿Lumen reduce la pérdida de next-token y mejora las generaciones reales, o solo optimiza sus pérdidas auxiliares?
+2. **Organización:** ¿los órganos hacen un trabajo observable —escrituras útiles, actividad homeostática estable, recuperación de memoria, asignación de presupuesto— o son complejidad decorativa?
+3. **Economía:** ¿qué calidad obtiene cada modelo por paso, por token y por segundo de CPU? Una arquitectura inspirada en el cerebro que necesite diez veces más cómputo para obtener lo mismo no habrá resuelto el problema de eficiencia.
+
+Para que la comparación sea honesta, hay que publicar por separado la cross-entropy común, las pérdidas propias de Lumen, los parámetros entrenables, tokens vistos, pasos/s, tokens/s, consumo de CPU/tiempo, métricas de generación y hashes de datos y tokenizer. También hay que declarar que el baseline actual es un Transformer pequeño y concreto —decoder causal de cuatro capas, dimensión 192, cuatro cabezas y FFN 576—, no «el Transformer» en abstracto.
+
+**La tesis de trabajo no es que la biología tenga razón por ser biología. Es que sus soluciones contienen hipótesis de ingeniería que la escala, por sí sola, no responde.** Lumen debe ganarse su lugar en los logs, no en la retórica.
+
+---
 
 ## Código y workflows
 

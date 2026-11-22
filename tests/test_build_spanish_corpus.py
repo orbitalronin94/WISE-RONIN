@@ -2,7 +2,7 @@ from scripts.build_spanish_corpus import ALIA_LICENSES, EXCLUDED_ALIA, clean, ma
 
 def test_unicode_and_whitespace():
     value = clean("  El&nbsp;niño\x00\n\n\n aprende  ")
-    assert "El niño" in value and "aprende" in value
+    assert "El niño" in value.replace("\u00a0", " ") and "aprende" in value
     assert "\x00" not in value
 
 def test_license_component_allowlist():

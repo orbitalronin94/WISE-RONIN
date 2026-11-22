@@ -2,17 +2,57 @@
 import torch
 from torch import nn
 
+
 class Presupuesto(nn.Module):
+    """Learned per-token allocation with a bounded, loss-feedback glucose reserve."""
+
+    GLUCOSE_STEP = 0.02
+    GLUCOSE_CAP = 0.25
+    GLUCOSE_DECAY = 0.98
+    IMPROVEMENT_THRESHOLD = 0.005
+
     def __init__(self, dim=256):
         super().__init__()
         self.proj = nn.Linear(dim, 3)
         nn.init.zeros_(self.proj.weight)
         nn.init.zeros_(self.proj.bias)
+        # Buffers are checkpointed with the model but are not optimizer parameters.
+        self.register_buffer("glucose", torch.tensor(0.0))
+        self.register_buffer("last_check_loss", torch.tensor(float("nan")))
+
+    @torch.no_grad()
+    def check_loss(self, mean_loss):
+        """Reward a meaningful loss improvement with internal energy, never LR."""
+        current = torch.as_tensor(
+            mean_loss, dtype=self.last_check_loss.dtype,
+            device=self.last_check_loss.device,
+        )
+        if current.numel() != 1 or not torch.isfinite(current):
+            raise ValueError("glucose feedback requires one finite check loss")
+
+        previous = self.last_check_loss
+        has_baseline = bool(torch.isfinite(previous).item())
+        improved = (
+            has_baseline
+            and float(current.item()) < float(previous.item()) * (1.0 - self.IMPROVEMENT_THRESHOLD)
+        )
+        if improved:
+            self.glucose.add_(self.GLUCOSE_STEP).clamp_(0.0, self.GLUCOSE_CAP)
+        else:
+            self.glucose.mul_(self.GLUCOSE_DECAY).clamp_(0.0, self.GLUCOSE_CAP)
+        self.last_check_loss.copy_(current)
+        return improved if has_baseline else None, float(self.glucose.item())
 
     def forward(self, x):
-        e = torch.softmax(self.proj(x), dim=-1)
-        return e[..., 0:1], e[..., 1:2], e[..., 2:3], e
+        allocation = torch.softmax(self.proj(x), dim=-1)
+        # Glucose scales the total available energy; the learned allocator keeps
+        # deciding how that energy is divided among Delta, memory and the heads.
+        energy = allocation * (1.0 + self.glucose.clamp(0.0, self.GLUCOSE_CAP))
+        return energy[..., 0:1], energy[..., 1:2], energy[..., 2:3], energy
 
     @staticmethod
     def entropy(weights):
-        return -(weights.clamp_min(1e-8) * weights.clamp_min(1e-8).log()).sum(-1).mean()
+        # Energy may sum above one after glucose; entropy is measured on shares.
+        shares = weights / weights.sum(dim=-1, keepdim=True).clamp_min(1e-8)
+        shares = shares.clamp_min(1e-8)
+        return -(shares * shares.log()).sum(-1).mean()

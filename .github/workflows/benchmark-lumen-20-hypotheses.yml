@@ -1,0 +1,101 @@
+name: RONIN-LUMEN 20 CPU throughput hypotheses (100 steps each)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/benchmark_lumen_20_hypotheses.py"
+      - ".github/workflows/benchmark-lumen-20-hypotheses.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lumen-20-cpu-hypotheses-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    name: "${{ matrix.profile }} — matched 100-step CPU test"
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        profile:
+          - threads_1
+          - threads_4
+          - interop_2
+          - mkldnn_off
+          - foreach_off
+          - affinity_2
+          - fused_adamw
+          - cpu_bfloat16
+          - flush_denormal
+          - zero_grad_reuse
+          - compile_default
+          - compile_reduce_overhead
+          - matmul_high
+          - threads_1_mkldnn_off
+          - threads_4_mkldnn_on
+          - threads_2_interop_2_affinity
+          - fused_adamw_bf16
+          - compile_default_bf16
+          - compile_reduce_overhead_threads_1
+    env:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      OMP_DYNAMIC: "FALSE"
+      OMP_PROC_BIND: "close"
+      OMP_PLACES: "cores"
+      KMP_AFFINITY: "granularity=fine,compact,1,0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Run matched control on this runner
+        run: |
+          python scripts/benchmark_lumen_20_hypotheses.py \
+            --profile control --steps 100 --warmup 10 --seed 41000 \
+            --batch 8 --seq-len 128 --output artifacts/control.json
+      - name: Run candidate profile (100 measured steps)
+        run: |
+          python scripts/benchmark_lumen_20_hypotheses.py \
+            --profile "${{ matrix.profile }}" --steps 100 --warmup 10 --seed 41000 \
+            --batch 8 --seq-len 128 --output "artifacts/${{ matrix.profile }}.json"
+      - name: Compare candidate against same-runner control
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          base = json.loads(pathlib.Path("artifacts/control.json").read_text())
+          candidate_path = pathlib.Path("artifacts/${{ matrix.profile }}.json")
+          candidate = json.loads(candidate_path.read_text()) if candidate_path.exists() else {"status":"missing"}
+          report = {
+              "profile": candidate.get("profile", "${{ matrix.profile }}"),
+              "control": base,
+              "candidate": candidate,
+              "speedup_vs_control": (
+                  round(candidate["steps_per_second"] / base["steps_per_second"], 4)
+                  if base.get("status") == "ok" and candidate.get("status") == "ok" else None
+              ),
+          }
+          pathlib.Path("artifacts/comparison.json").write_text(json.dumps(report, indent=2) + "\n")
+          print(json.dumps({"profile": report["profile"], "control_steps_s": base.get("steps_per_second"),
+                            "candidate_steps_s": candidate.get("steps_per_second"),
+                            "speedup": report["speedup_vs_control"], "status": candidate.get("status")}, indent=2))
+          PY
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-20cpu-${{ matrix.profile }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 30

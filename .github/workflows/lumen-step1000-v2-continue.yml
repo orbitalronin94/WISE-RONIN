@@ -57,13 +57,17 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: wise-ronin-spanish-corpus-v2-45065384110
-          path: .
+          path: artifacts/spanish-v2
           repository: ${{ github.repository }}
           run-id: ${{ env.V2_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify and sample frozen v2
         run: |
           set -euo pipefail
+          echo 'Downloaded v2 artifact contents:'
+          find artifacts/spanish-v2 -maxdepth 1 -type f -printf '%f %s bytes\\n' | sort
+          test -s artifacts/spanish-v2/manifest.json
+          test -s artifacts/spanish-v2/train.jsonl
           python scripts/sample_spanish_v2.py \
             --manifest artifacts/spanish-v2/manifest.json \
             --input artifacts/spanish-v2/train.jsonl \

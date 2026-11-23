@@ -27,6 +27,9 @@ jobs:
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Load the exact source revision used to train the paired checkpoints.
+          ref: f3d69ae7f4f47795579926bd8f08c42d53baee44
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"

@@ -232,7 +232,6 @@ def run_training(root: Path, label: str, profile: dict, args, out: Path) -> dict
         "MKL_NUM_THREADS": "4",
         "OMP_DYNAMIC": "FALSE",
         "MKL_DYNAMIC": "FALSE",
-        "OMP_WAIT_POLICY": "PASSIVE",
         "PYTHONUNBUFFERED": "1",
     })
     started = time.perf_counter()

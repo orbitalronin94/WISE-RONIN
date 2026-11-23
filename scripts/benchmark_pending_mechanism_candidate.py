@@ -266,7 +266,9 @@ def run_training(root: Path, label: str, profile: dict, args, out: Path) -> dict
         "log_file": log_path.name,
         "profile_file": profile_path.name,
         "sleep_skipped": "Sleep skipped" in raw,
+        "sleep_skipped_count": raw.count("Sleep skipped:"),
         "sleep_calls": raw.count("sleep_called:"),
+        "sleep_exercised": raw.count("sleep_called:") > raw.count("Sleep skipped:"),
         "nonfinite_marker": "NONFINITE" in raw or bool(re.search(r"\b(?:nan|inf)\b", raw, re.IGNORECASE)),
     }
     if (proc.returncode == 0 and len(records) == 100
@@ -331,12 +333,12 @@ def main():
             candidate = run_training(args.candidate_root, "candidate", candidate_profile, args, args.output)
         reasons = []
         if "prioritized_replay" in args.candidate or "sleep_downscaling" in args.candidate or "tag_replay" in args.candidate or "plus_replay" in args.candidate or "plus_downscale" in args.candidate or "scaling_plus_downscale" in args.candidate or "all_pending" in args.candidate:
-            if candidate.get("sleep_skipped"):
-                candidate["status"] = "not_exercised"
-                candidate["reason"] = "no había registros consolidados; el órgano de sueño no llegó a actuar"
-            elif candidate.get("sleep_calls", 0) < 1:
+            if candidate.get("sleep_calls", 0) < 1:
                 candidate["status"] = "not_exercised"
                 candidate["reason"] = "el plan de 100 pasos no ejecutó ningún ciclo de sueño"
+            elif not candidate.get("sleep_exercised", False):
+                candidate["status"] = "not_exercised"
+                candidate["reason"] = "todos los ciclos de sueño se omitieron por falta de registros consolidados"
         if candidate["status"] != "ok":
             reasons.append(candidate.get("reason", "no completó 100 pasos válidos o produjo métricas no finitas"))
         else:

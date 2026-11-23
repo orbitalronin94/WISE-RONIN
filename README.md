@@ -17,7 +17,7 @@ El repositorio conserva el nombre técnico **WISE-RONIN**. El proyecto activo es
 - [La tesis: el perro y el loro](#la-tesis-el-perro-y-el-loro)
 - [Qué estamos construyendo](#qué-estamos-construyendo)
 - [Arquitectura actual](#arquitectura-actual)
-- [La campaña de entrenamiento: de cero a 73,5k](#la-campaña-de-entrenamiento-de-cero-a-735k)
+- [La campaña de entrenamiento: de cero a 133,2k](#la-campaña-de-entrenamiento-de-cero-a-1332k)
 - [Resultados emparejados](#resultados-emparejados)
 - [Corpus y evaluación](#corpus-y-evaluación)
 - [Cómo se investiga](#cómo-se-investiga)

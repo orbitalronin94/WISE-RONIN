@@ -37,18 +37,19 @@ El repositorio conserva el nombre técnico **WISE-RONIN**. El proyecto activo es
 <details>
 <summary><strong>La campaña activa</strong></summary>
 
-**Último checkpoint emparejado evaluado: step 155.700**, sobre el corpus español v2 más 50.000 ejemplos de personalidad factual adaptados a Lumen-Ronin. El holdout común de 2.431 preguntas permanece intacto.
+**Último holdout emparejado promovido: LUMEN step 219.700 / Transformer step 219.750**, run [45257284512](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45257284512), sobre las mismas 2.431 preguntas congeladas.
 
-- Lumen: **819/2.431 (33,69 %)**, NLL **5,7331**.
-- Transformer: 808/2.431 (33,24 %), NLL **5,7858**.
-- Lumen aventaja al baseline por **11 aciertos (+0,45 puntos porcentuales)** y obtiene una NLL **0,0526 menor** (reducción relativa del 0,91 % frente al Transformer).
-- Frente al corte anterior de 140.700, Lumen pierde 5 aciertos pero reduce su NLL 0,0620; Transformer pierde 13 aciertos y reduce su NLL 0,0719. La diferencia de accuracy a favor de Lumen pasa de +3 a +11; la brecha de NLL se estrecha ligeramente.
-- El resultado describe este ensayo emparejado; no demuestra significación estadística ni superioridad general.
+- Lumen: **831/2.431 (34,18 %)**, NLL media **5,7441**.
+- Transformer: **805/2.431 (33,11 %)**, NLL media **5,5147**.
+- Lumen obtiene **26 aciertos más (+1,07 puntos porcentuales)**; Transformer conserva una NLL **0,2294 menor**.
+- Ambos aciertan 456 preguntas; solo Lumen acierta 313; solo Transformer acierta 289; ambos fallan 1.198.
+- Los checkpoints están separados por 50 actualizaciones: Lumen 219.700 y Transformer 219.750. La diferencia se declara expresamente; no se presenta como igualdad exacta de pasos.
 
-**Estado operativo:** step 155.700 queda promovido como nueva referencia experimental emparejada y sustituye al step 140.700 como punto de partida. Ambos modelos continuaron desde sus checkpoints verificados de step 140.700 durante 15.000 pasos (bloques de 10.000 + 5.000), con la misma muestra de 250.000 filas (200k v2 + 50k personalidad), tokenizer v2 de 4.096 IDs, seed 42 y holdout congelado. Los checkpoints y el informe de evaluación están preservados como artefactos de Actions: [Lumen](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14809524099), [Transformer](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14807032549) y [holdout emparejado](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14811302311).
+El holdout y sus predicciones están preservados en el [artefacto 14859702424](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45257284512/artifacts/14859702424). La continuación previa desde 185.700 se interrumpió: Lumen conservó su último checkpoint en 219.700, mientras Transformer llegó a 235.700. Se seleccionaron los dos checkpoints más próximos con procedencia verificable para la comparación emparejada.
 
-**Siguiente train: ampliación progresiva con v3, condicionada a su admisión.** El corpus Lumen-Ronin Spanish v3.0.0 está congelado como snapshot reproducible: 9.933.007 filas de train (+575.558; +6,15 % respecto a v2), tokenizer de 4.096 IDs y los mismos splits protegidos de evaluación. Si se cierra formalmente el gate de datos, el próximo ciclo emparejado partirá de los checkpoints de step 155.700 y aplicará la ampliación por igual a Lumen y Transformer. La auditoría automática v3 terminó, pero no equivale a una certificación perfecta: detectó near-duplicates, 63 respuestas duplicadas frente a v2, 157.874 consultas fuera del límite de candidatos y 41 posibles marcadores sensibles. El manifiesto mantiene `training_authorized=false`; por tanto, v3 **no queda autorizado todavía para entrenamiento**. Véase [informe de auditoría](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45142717502) y [ficha v3](docs/CORPUS_V3_ES.md).
+**Promoción:** el par 219.700/219.750 queda fijado como nueva referencia experimental y padre de continuación. El siguiente entrenamiento continúa ambos modelos hasta el paso global 300.000: Lumen añade 80.300 actualizaciones y Transformer 80.250. Se preservan optimizador y RNG; se reinicia una transición de LR documentada hasta 300k, con las tasas base aprobadas de cada modelo.
 
+La entrada común sigue siendo el snapshot congelado de 250.000 filas (200k v2 + 50k personalidad factual), tokenizer v2 de 4.096 IDs, seed 42, batch 8 y contexto 128. El perfil runtime aprobado de Lumen se extrae del propio checkpoint, incluyendo plasticidad y fast paths Delta. Corpus v3 sigue excluido: su manifiesto mantiene `training_authorized=false`.
 </details>
 
 ## La tesis: el perro y el loro
@@ -98,7 +99,7 @@ La extensión dual-state ZE está disponible en el código, pero no se activa en
 
 La descripción completa, con responsabilidades, fórmulas, parámetros y distinción entre código disponible y código activo, está en [Arquitectura actual](docs/ARQUITECTURA_ACTUAL_ES.md).
 
-## La campaña de entrenamiento: de cero a 155,7k
+## La campaña de entrenamiento: de cero a 300k
 
 El linaje emparejado se inició desde cero y avanzó mediante continuaciones verificadas. Cada bloque conserva checkpoints y estado de optimizador; los holdouts comparan ambos modelos sobre las mismas 2.431 preguntas.
 
@@ -117,6 +118,9 @@ El linaje emparejado se inició desde cero y avanzó mediante continuaciones ver
 | 73,5k → 133,5k (corpus v2) | [45082812702](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45082812702) | Transformer completó 133,5k; Lumen guardó 133,2k antes de la cancelación del job |
 | 133,2k → 140,7k (v2 + personalidad) | [45136184396](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45136184396) | Ambos modelos completaron +7.500 pasos; holdout emparejado completado |
 | 140,7k → 155,7k (v2 + personalidad) | [45149684913](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913) | Ambos modelos completaron +15.000 pasos; holdout emparejado completado; step 155.700 promovido |
+| 185,7k → 219,7k/235,7k (continuación interrumpida) | [45230206330](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45230206330) | Lumen conservó 219.700; Transformer completó 235.700; se verificaron los padres 219.700/219.750 para el holdout |
+| Holdout 219,7k/219,75k | [45257284512](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45257284512) | 2.431 preguntas; Lumen 831, Transformer 805; par promovido |
+| 219,7k/219,75k → 300k | En ejecución tras la promoción | Continuación emparejada desde ambos checkpoints; 80.300 pasos Lumen y 80.250 Transformer |
 
 El primer piloto de 500 pasos detectó un colapso de escrituras en las capas superiores. No se oculta ni se suma al linaje actual: fue una prueba de arranque que ayudó a corregir la ruta residual y la migración homeostática.
 
@@ -124,21 +128,18 @@ La crónica completa explica qué cambió en cada tramo, qué runs fallaron desp
 
 ## Resultados emparejados
 
-Último holdout completo: **step 155.700**, run [45149684913](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913). El corte anterior de 140.700 está documentado en [run 45136184396](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45136184396).
+Último holdout completo: **Lumen 219.700 vs Transformer 219.750**, run [45257284512](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45257284512), con el holdout congelado de 2.431 preguntas.
 
 | Modelo | Aciertos | Accuracy | NLL media |
 |---|---:|---:|---:|
-| **Lumen-Ronin** | **819/2.431** | **33,69 %** | **5,7331** |
-| Transformer baseline | 808/2.431 | 33,24 % | 5,7858 |
+| **Lumen-Ronin** | **831/2.431** | **34,18 %** | 5,7441 |
+| Transformer baseline | 805/2.431 | 33,11 % | **5,5147** |
 
-En 155,7k Lumen supera al Transformer por **11 respuestas (+0,45 puntos porcentuales)** y obtiene una NLL **0,0526 menor** (−0,91 % relativa). Frente a 140,7k, Lumen pasa de 824 a 819 aciertos (−5), mientras su NLL mejora de 5,7951 a 5,7331; Transformer pasa de 821 a 808 (−13) y su NLL mejora de 5,8577 a 5,7858. La ventaja de accuracy de Lumen crece de 3 a 11 respuestas, aunque la diferencia de NLL se estrecha de 0,0626 a 0,0526.
+Lumen supera al control por **26 respuestas (+1,07 puntos porcentuales)**. Transformer obtiene una NLL media inferior por 0,2294. Por tanto, la ventaja de Lumen está en la elección correcta; la distribución probabilística del Transformer sigue siendo mejor según esta NLL. No se deben colapsar ambas métricas en una única afirmación de victoria total.
 
-El bloque continuó ambos modelos desde los checkpoints verificados de 140.700 durante 15.000 pasos (10.000 + 5.000), con la misma muestra determinista de 250.000 filas (200.000 v2 + 50.000 ejemplos de personalidad factual), tokenizer v2 de 4.096 IDs, seed 42 y holdout congelado de 2.431 preguntas. No se aisló causalmente el efecto de personalidad ni el del scheduler; los cambios se interpretan como resultado del bloque completo. La ventaja observada requiere réplicas con semillas nuevas y evaluaciones independientes antes de formular una conclusión general.
+La comparación es casi emparejada, con 50 actualizaciones de diferencia entre checkpoints. Ambos modelos utilizaron el mismo tokenizer, contexto y holdout, sin actualizaciones durante la evaluación. Conteos emparejados: ambos correctos 456; solo Lumen correcto 313; solo Transformer correcto 289; ambos incorrectos 1.198.
 
-**Artefactos promovidos:** [checkpoint Lumen (14809524099)](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14809524099) · [checkpoint Transformer (14807032549)](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14807032549) · [holdout emparejado (14811302311)](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14811302311).
-
-La training loss tampoco sustituye al holdout: las métricas de entrenamiento y las de generalización responden a preguntas distintas. Las generaciones libres se documentan aparte porque no son comparables directamente con el test de opción múltiple. La serie histórica completa está en la [crónica experimental](docs/CRONICA_EXPERIMENTAL_ES.md).
-
+[Artefacto completo con predicciones por pregunta](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45257284512/artifacts/14859702424). La ficha de promoción y procedencia está en [experiments/step_219700_promotion.json](experiments/step_219700_promotion.json).
 ## Corpus y evaluación
 
 Los tramos 66k→73,5k y 73,5k→133,2k utilizaron el corpus español v2 congelado, preparado con seed 42. Los tramos 133,2k→140,7k y 140,7k→155,7k utilizaron la misma base v2 más 50.000 ejemplos de personalidad factual adaptados a Lumen-Ronin; no incorporaron literatura, M-Personas ni los currículos sintéticos adicionales del candidato v3. El manifiesto registra 9.357.876 filas de entrenamiento, 1.413 de validación y 2.431 de holdout. La muestra determinista compartida de entrenamiento contiene 200.000 filas (20k v1, 72k CSIC y 108k TDX); tokenizer de 4.096 IDs, PAD=0 y EOS presente. Hash del tokenizer: `d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe`. CSIC y TDX se incorporaron bajo CC BY 4.0; CoWeSe quedó excluido por derechos de los textos de origen.

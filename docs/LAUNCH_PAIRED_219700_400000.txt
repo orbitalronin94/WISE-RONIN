@@ -42,3 +42,5 @@ NO CAMBIAR
 WORKFLOWS
 - .github/workflows/continue-paired-219700-300000.yml: orquestador y cadena de jobs.
 - .github/workflows/train-paired-block.yml: implementación reutilizable de un bloque.
+
+RETRIGGER: versión de workflow con artefacto de checkpoint canónico por job; no cambia el plan de bloques.

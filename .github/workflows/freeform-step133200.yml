@@ -1,0 +1,124 @@
+name: Informal free-form holdout — 100 questions at step 133200
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/LAUNCH_FREEFORM_100_STEP133200.txt
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-freeform-100-step133200
+  cancel-in-progress: false
+
+env:
+  LUMEN_RUN_ID: "45082812702"
+  TRANSFORMER_RUN_ID: "45123727239"
+  PREPARED_RUN_ID: "45071952349"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+
+jobs:
+  freeform-holdout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU inference runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+
+      - name: Download frozen Spanish v2 holdout and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-paired-v2-prepared-45071952349
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download exact Lumen step-133200 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step133500-v2-45082812702
+          path: lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.LUMEN_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download exact Transformer step-133200 checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-step133200-paired-v2-holdout-45123727239
+          path: paired
+          repository: ${{ github.repository }}
+          run-id: ${{ env.TRANSFORMER_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify identical step, tokenizer and evaluation inputs
+        run: |
+          set -euo pipefail
+          test -s lumen/checkpoints/lumen-v2-133500/latest_good.pt
+          test -s paired/checkpoints/transformer-sync-133200/step_133200.pt
+          test -s prepared/artifacts/spanish-v2/tokenizer.json
+          test -s prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl
+          python - <<'PY'
+          import torch
+          l=torch.load("lumen/checkpoints/lumen-v2-133500/latest_good.pt",map_location="cpu",weights_only=False)
+          t=torch.load("paired/checkpoints/transformer-sync-133200/step_133200.pt",map_location="cpu",weights_only=False)
+          assert l["step"] == t["step"] == 133200, (l.get("step"),t.get("step"))
+          assert l["tokenizer_sha256"] == t["tokenizer_sha256"]
+          assert l["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          assert t["architecture_id"] == "decoder_transformer_4l_d192_h4_ff576_tied_v1"
+          print("Verified exact paired checkpoints at step 133200.")
+          PY
+
+      - name: Generate the same 100 free-form answers from both models
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/freeform_generation_holdout.py \
+            --holdout prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --lumen lumen/checkpoints/lumen-v2-133500/latest_good.pt \
+            --transformer paired/checkpoints/transformer-sync-133200/step_133200.pt \
+            --out-dir results/freeform-step133200 \
+            --sample-size 100 --seed 31000 --expected-step 133200 \
+            --threads 4 --max-len 128 --max-new-tokens 64
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path("results/freeform-step133200")
+          old=p/"step31000_freeform_100.json"
+          data=json.loads(old.read_text(encoding="utf-8"))
+          data["step"]=133200
+          data["sample_seed"]=31000
+          data["evaluation_note"]="Unofficial free-form generation probe; not an accuracy score and not a replacement for the frozen 2431-question multiple-choice holdout."
+          (p/"step133200_freeform_100.json").write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          md=(p/"step31000_freeform_100.md").read_text(encoding="utf-8")
+          md=md.replace("31k","133.2k").replace("31.000","133.200").replace("step31000","step133200")
+          md=md.replace("Muestra aleatoria reproducible", "Muestra aleatoria reproducible")
+          md += "\n\n> Sonda informal de generación libre; no es una puntuación de exactitud ni sustituye al holdout oficial de 2.431 preguntas.\n"
+          (p/"step133200_freeform_100.md").write_text(md,encoding="utf-8")
+          old.unlink()
+          (p/"step31000_freeform_100.md").unlink()
+          PY
+
+      - name: Upload paired free-form generations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ronin-step133200-freeform-100-${{ github.run_id }}
+          path: results/freeform-step133200/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6

@@ -141,6 +141,7 @@ jobs:
       parent_step: 229700
       steps: 10000
       first_block: true
+      restart_scheduler_transition: true
   lumen-249700:
     needs: [lumen-239700]
     uses: ./.github/workflows/train-paired-block.yml
@@ -303,6 +304,7 @@ jobs:
       parent_step: 229700
       steps: 10000
       first_block: true
+      restart_scheduler_transition: true
   transformer-249700:
     needs: [transformer-239700]
     uses: ./.github/workflows/train-paired-block.yml

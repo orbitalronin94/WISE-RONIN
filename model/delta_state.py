@@ -164,6 +164,10 @@ class EstadoDelta(nn.Module):
                 self.tagging.update(trace_update, resource)
             if self.plasticity_profile.intrinsic_threshold_enabled:
                 self.intrinsic_threshold.update(gate.detach())
+            if self.plasticity_profile.ltd_enabled and self.plasticity_profile.tagging_enabled:
+                negative_reward = (-self.eligibility_modulator).clamp(0.0, 0.25)
+                protected_tags = self.tagging.captured.clamp(0.0, 1.0)
+                self.eligibility_trace.mul_(1.0 - 0.10 * negative_reward * protected_tags)
             if not self.trace_norm_diagnostics_on_demand or collect_diagnostics:
                 self.last_eligibility_norm = float(self.eligibility_trace.norm().item())
 

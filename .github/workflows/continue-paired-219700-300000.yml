@@ -129,7 +129,7 @@ jobs:
           shutil.copy2(data,b/"data/spanish-v2-plus-personality-250k.jsonl")
           shutil.copy2("prepared/data/spanish-v2-plus-personality-token-cache.pt",b/"data/spanish-v2-plus-personality-token-cache.pt")
           shutil.copy2(tok,b/"artifacts/tokenizer.json")
-          (b/"config/lumen-runtime-profile.json").write_text(json.dumps(profile,indent=2)+"\\n")
+          (b/"config/lumen-runtime-profile.json").write_text(json.dumps(profile,indent=2)+"\n")
           print("Both parents, exact global steps, architectures, optimizer/RNG, scheduler, shared data hashes and approved LUMEN profile verified.")
           PY
       - name: Publish immutable inputs for every block

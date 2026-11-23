@@ -1,8 +1,8 @@
 # Crónica experimental de Lumen-Ronin
 >
-> Del primer encendido al linaje evaluado en 155.700 pasos.
+> Del primer encendido al linaje evaluado en 185.700 pasos, con continuación a 235.700 en curso.
 >
-> **Corte documental:** 23 de noviembre de 2026. El último checkpoint emparejado evaluado es 155.700, sobre el corpus español v2 + personalidad factual.
+> **Corte documental:** 23 de noviembre de 2026. El último checkpoint emparejado evaluado es 185.700, sobre el corpus español v2 + personalidad factual.
 
 ## Cómo leer esta cronología
 

@@ -362,3 +362,69 @@ El bloque no permite aislar causalmente el efecto de los 50.000 ejemplos de pers
 - Informe de holdout: [artefacto 14811302311](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14811302311), 176.523 bytes; SHA-256 `75428c55c07bf6d5a4b233ae5fde79f74fdc409736e161930793405160fb79ce`.
 
 **Promoción:** el par de checkpoints de step 155.700 queda fijado como nueva referencia experimental emparejada de Lumen-Ronin frente al baseline Transformer y como punto de partida para la siguiente continuación. La promoción es documental y de referencia reproducible; no afirma una victoria universal ni sustituye réplicas independientes. El próximo ciclo podrá incorporar corpus v3 solo cuando se cierre formalmente su gate de admisión; el manifiesto actual mantiene `training_authorized=false`.
+
+
+## XI. Step 170.700: primera continuación con los dos mecanismos aprobados
+
+[Train emparejado 155.700→170.700, run 45177953462](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45177953462) · ambos entrenamientos y el resumen terminaron correctamente.
+
+### Qué cambió
+
+Después del torneo neuroplástico anterior, solo dos cambios habían superado el gate estricto: `07_disinhibition_gain` (inhibición ×0,80) y `09_eligibility_window` (retención de elegibilidad 0,98). Se ejecutó primero un piloto integrado de 1.000 pasos, 155.700→156.700, para verificar la combinación; después ambos modelos continuaron hasta 170.700. Lumen recibió esos dos mecanismos; Transformer permaneció como control. Se mantuvieron el corpus v2 + personalidad factual, tokenizer y condiciones emparejadas.
+
+### Holdout de step 170.700
+
+[Evaluación emparejada, run 45192856799](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45192856799).
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| Lumen-Ronin | **802/2.431** | **32,99 %** | 5,7983 |
+| Transformer | 792/2.431 | 32,58 % | **5,7610** |
+
+Lumen obtuvo 10 aciertos más (+0,41 puntos porcentuales), mientras Transformer conservó una NLL 0,0373 menor. El resultado fue favorable a Lumen en clasificación, no en NLL. No permite atribuir causalidad separada a la desinhibición o a la ventana de elegibilidad: se aplicaron como paquete.
+
+### Artefactos
+
+- [Checkpoint Lumen 170.700, artefacto 14825257774](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45177953462/artifacts/14825257774).
+- [Checkpoint Transformer 170.700, artefacto 14822642309](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45177953462/artifacts/14822642309).
+
+**Promoción:** step 170.700 quedó como nuevo par de referencia para la continuación siguiente. La promoción conserva el carácter experimental del resultado; no equivale a superioridad general.
+
+## XII. Step 185.700: OpenMP y tercera victoria consecutiva en accuracy
+
+[Train emparejado 170.700→185.700, run 45200252793](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45200252793) · ambos entrenamientos y el resumen terminaron correctamente.
+
+### Qué cambió
+
+El torneo de ejecución CPU identificó OpenMP ACTIVE, afinidad `close`, `PLACES=cores` y `KMP_BLOCKTIME=0` como el mejor perfil medido: 3,4415 frente a 3,2161 pasos/s (+7,01 %) en el cribado de 100 pasos, con loss final idéntica. Esta optimización se aplicó al entorno de ejecución de ambos modelos; no se eliminó ni redujo ningún órgano. Lumen continuó con los dos mecanismos neuroplásticos previamente aprobados. Transformer mantuvo su arquitectura de control.
+
+Ambos modelos avanzaron 15.000 pasos desde 170.700 hasta 185.700 con los datos, tokenizer, token cache, batch y scheduler congelados.
+
+### Holdout de step 185.700
+
+[Evaluación emparejada, run 45219320709](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45219320709).
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| Lumen-Ronin | **830/2.431** | **34,14 %** | 5,8633 |
+| Transformer | 802/2.431 | 32,99 % | **5,6503** |
+
+Lumen obtuvo 28 respuestas más (+1,15 puntos porcentuales), su tercera victoria consecutiva en accuracy desde 133.200. Transformer conservó una NLL menor por 0,2130. La lectura no debe ocultar esa diferencia: Lumen gana en aciertos, Transformer en NLL. La racha es prometedora, pero los cortes comparten el mismo holdout y no son réplicas independientes.
+
+### Artefactos
+
+- [Checkpoint Lumen 185.700, artefacto 14838207679](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45200252793/artifacts/14838207679).
+- [Checkpoint Transformer 185.700, artefacto 14834055610](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45200252793/artifacts/14834055610).
+- [Holdout emparejado, artefacto 14839499639](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45219320709/artifacts/14839499639).
+
+**Promoción:** step 185.700 queda fijado como padre de la continuación de 50.000 pasos. Es una referencia experimental; la ventaja en accuracy no debe confundirse con una ventaja simultánea en NLL.
+
+## XIII. Continuación emparejada 185.700→235.700: entrenamiento en curso
+
+[Workflow 45230206330](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45230206330).
+
+La siguiente continuación amplía el presupuesto en 50.000 pasos para cada modelo, distribuidos en cinco segmentos consecutivos de 10.000. Lumen parte del checkpoint 185.700 con los dos mecanismos neuroplásticos aprobados y los fast paths Delta ya seleccionados; Transformer parte de su checkpoint emparejado y permanece como baseline. Ambos conservan la misma muestra v2 + personalidad, tokenizer, token cache, seed 42, batch y contexto.
+
+En la última consulta de estado, el job Transformer había terminado y Lumen seguía entrenando. El workflow aún no había completado el par ni publicado el holdout de 235.700. Por tanto, no se anticipan métricas ni se considera promovido el checkpoint final.
+
+El próximo corte permitirá comprobar si la ventaja reciente en accuracy se sostiene después de 50.000 pasos adicionales, y si lo hace sin deteriorar NLL, estabilidad o comportamiento generativo. Una vez cerrado el holdout, esta crónica se actualizará con los resultados reales, sin rellenar de antemano el desenlace.

@@ -25,7 +25,7 @@ class EstadoDelta(nn.Module):
         # Exact-equivalence simplifications toggled only by benchmark profiles.
         self.reuse_write_update = False
         self.always_apply_eligibility = False
-        self.trace_norm_diagnostics = True
+        self.trace_norm_diagnostics_on_demand = False
         self.share_causal_masks = False
         self.proj_k = nn.Linear(dim, dim, bias=False)
         self.proj_v = nn.Linear(dim, dim, bias=False)
@@ -138,7 +138,7 @@ class EstadoDelta(nn.Module):
             trace_norm = trace_update.norm().clamp_min(1e-8)
             trace_update = trace_update * (0.05 / trace_norm).clamp(max=1.0)
             self.eligibility_trace.mul_(0.95).add_(trace_update, alpha=0.05)
-            if self.trace_norm_diagnostics and collect_diagnostics:
+            if not self.trace_norm_diagnostics_on_demand or collect_diagnostics:
                 self.last_eligibility_norm = float(self.eligibility_trace.norm().item())
 
         if batch_write_update is None:

@@ -116,6 +116,87 @@ def persona_rows(limit=50000, revision="6fab205"):
                "theme":str(item.get("theme","") or ""),"persona_type":str(item.get("type","") or "")}
         if count>=limit: break
 
+
+def adapt_legacy_identity_row(row):
+    prompt=str(row.get("prompt","") or "").strip()
+    completion=str(row.get("completion","") or "").strip()
+    p=prompt.casefold()
+    c=completion.casefold()
+    identity_prompt=bool(re.search(
+        r"present|quien eres|quién eres|que eres|qué eres|como te llamas|cómo te llamas|"
+        r"tu nombre|tu proposito|tu propósito|que puedes hacer|qué puedes hacer|"
+        r"que eres capaz|qué eres capaz|conciencia|naturaleza de tu realidad|"
+        r"tus pasiones|sueñas|tus padres|quienes son tus padres|quiénes son tus padres|"
+        r"quien te creo|quién te creó|quien te desarrollo|quién te desarrolló|"
+        r"como se inicio este proyecto|cómo se inició este proyecto|"
+        r"que idiomas|qué idiomas|traducir contenido|eres una alternativa|"
+        r"chat.?gpt|que tan confiable|qué tan confiable|funciones de activacion|"
+        r"funciones de activación|tu codigo|tu código|tu arquitectura|"
+        r"entrenamiento de una ia como esta|modelo como esta|modelo como ésta",
+        p))
+    legacy_claim=bool(re.search(
+        r"\balia\b|barcelona supercomputing center|generalitat|proyecto aina|"
+        r"financiaci[oó]n p[uú]blica|ministerio de econom[ií]a|"
+        r"secretar[ií]a de estado para la digitalizaci[oó]n",
+        c))
+    if not identity_prompt and not legacy_claim:
+        # Keep genuinely generic answers from this component, but anchor them to Lumen-Ronin.
+        kept=dict(row)
+        kept["prompt"]=f"{IDENTITY}\n{prompt}".strip()
+        kept["task"]="general_sft"
+        kept["source_component"]="oasst2-selfidentity-rephrase-generic-cleaned"
+        kept["source_note"]="Generic prompt retained; legacy ALIA identity claims excluded."
+        return kept
+    if not identity_prompt and legacy_claim:
+        # Do not keep old institutional/model identity claims under a new name.
+        if re.search(r"^usuario:?\s*(hola|buenos dias|buenas|hey)\b",p):
+            answer="Hola. Soy Lumen-Ronin, un modelo experimental pequeño. Puedo ayudarte con preguntas, análisis, escritura y programación, procurando distinguir evidencia de conjetura."
+            identity_prompt=True
+        else:
+            return None
+    if re.search(r"conciencia|realidad|pasiones|sueñas|padres|amig|enemig|sentir|emocion",p):
+        answer=("No tengo conciencia ni experiencias subjetivas, y no debo afirmar que sueño, siento o tengo pasiones. "
+                "En Lumen-Ronin, «dolor» y «placer» nombran señales computacionales de regulación, no sensaciones.")
+    elif re.search(r"idioma|traduc",p):
+        answer=("Puedo trabajar principalmente en castellano y puedo intentar traducir a otras lenguas, incluido el catalán. "
+                "La calidad depende del texto y debe revisarse cuando la precisión importe.")
+    elif re.search(r"entrenamiento|arquitectura|funciones de activacion|funciones de activación|tu codigo|tu código|modelo como esta",p):
+        answer=("Lumen-Ronin es una arquitectura experimental con mecanismos de regulación y memoria: glucosa como presupuesto, "
+                "señales de dolor y placer, homeostasis, replay, engramas y refinamientos Delta. "
+                "No debo inventar detalles de implementación que no estén documentados.")
+    elif re.search(r"proposito|propósito|que puedes hacer|qué puedes hacer|eres capaz|utilidad|ayudarme",p):
+        answer=("Puedo ayudar a explicar conceptos, analizar textos, escribir, programar y explorar hipótesis. "
+                "Soy un modelo experimental pequeño: puedo equivocarme, no tengo acceso automático a información externa "
+                "y debo reconocer cuándo faltan datos.")
+    elif re.search(r"chat.?gpt|alternativa|más listo|mas listo|einstein|mejor",p):
+        answer=("No hay una clasificación universal que permita declarar un modelo mejor en todo. "
+                "Lumen-Ronin es un modelo experimental pequeño; debe compararse con otros sistemas en tareas, datos y métricas iguales.")
+    elif re.search(r"confiable|fiable|confianza",p):
+        answer=("No soy infalible. Puedo producir errores o respuestas plausibles pero falsas; conviene verificar las afirmaciones importantes "
+                "y distinguir entre hechos, inferencias e hipótesis.")
+    elif re.search(r"como se inicio|cómo se inició|proyecto|creador|desarroll",p):
+        answer=("Lumen-Ronin forma parte de WISE-RONIN, un proyecto experimental que investiga mecanismos de regulación, memoria "
+                "y asignación de recursos en modelos pequeños. No debo atribuirle financiación institucional ni orígenes que no estén documentados.")
+    elif re.search(r"hola|present|quien eres|quién eres|que eres|qué eres|nombre|quien habla|quién habla",p):
+        answer=("Hola. Soy Lumen-Ronin, un modelo experimental pequeño. Mi arquitectura investiga mecanismos de regulación y memoria "
+                "inspirados en procesos biológicos, sin que eso implique conciencia o experiencias subjetivas.")
+    else:
+        answer=("Soy Lumen-Ronin, un modelo experimental pequeño. No soy ALIA ni debo atribuirme su identidad, desarrolladores, "
+                "financiación o capacidades. Puedo responder sobre mi arquitectura y mis límites cuando estén documentados.")
+    if re.search(r"\balia\b",p) and "No soy ALIA" not in answer:
+        answer="No soy ALIA; soy Lumen-Ronin. "+answer
+    return {
+        "id":"lumen-adapted-"+str(row.get("id","legacy")),
+        "prompt":f"{IDENTITY}\n{PERSONALITY_STYLE}\n{prompt}".strip(),
+        "completion":answer,
+        "task":"identity_and_behavior",
+        "language":"es",
+        "source":"BSC-LT/ALIA-2606-SFT adapted for Lumen-Ronin",
+        "source_id":str(row.get("source_id",row.get("id",""))),
+        "source_component":"oasst2-selfidentity-rephrase",
+        "license":"Apache-2.0; original ALIA-specific answer replaced with project-authored Lumen-Ronin response"
+    }
+
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--v2-dir",required=True)
@@ -142,16 +223,36 @@ def main():
     if sha(tokenizer)!=bm["tokenizer_sha256"]: raise RuntimeError("v2 tokenizer hash mismatch")
     # Exact dedup against the full v2 train plus protected evaluation splits.
     seen_pairs=set(); seen_text=set(); eval_pairs=set()
+    legacy_identity_rows=0
     for path in (train,validation,holdout):
         for row in read_jsonl(path):
+            if path==train and row.get("task")=="self-identity":
+                legacy_identity_rows+=1
+                continue
             p=str(row.get("prompt","") or ""); c=str(row.get("completion","") or "")
             seen_pairs.add(digest(p+"\n"+c))
             if c: seen_text.add(digest(c))
             if path!=train: eval_pairs.add(digest(p+"\n"+c))
     new_counts=Counter(); new_bytes=Counter(); added=0; dropped=Counter()
+    base_identity_adapted=0; base_identity_generic_kept=0; base_identity_removed=0
     out_train=out/"train.jsonl"
     with out_train.open("w",encoding="utf-8",newline="\n") as dst:
-        shutil.copyfileobj(train.open("r",encoding="utf-8"),dst)
+        for base_row in read_jsonl(train):
+            if base_row.get("task")=="self-identity":
+                adapted=adapt_legacy_identity_row(base_row)
+                if adapted is None:
+                    base_identity_removed+=1
+                    continue
+                if write_row(dst,adapted,seen_pairs,seen_text):
+                    if adapted.get("task")=="identity_and_behavior":
+                        base_identity_adapted+=1
+                    else:
+                        base_identity_generic_kept+=1
+                    added+=1
+                else:
+                    dropped["legacy_identity_duplicate"]+=1
+            else:
+                dst.write(json.dumps(base_row,ensure_ascii=False,sort_keys=True,separators=(",",":"))+"\n")
         # 1) Source-scoped Spanish public-domain literature: train partition only.
         lit=Path(args.literature_dir)/"train.txt"
         lit_manifest=Path(args.literature_dir)/"dataset-manifest.json"

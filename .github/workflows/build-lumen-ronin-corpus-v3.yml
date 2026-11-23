@@ -1,0 +1,130 @@
+name: Build Lumen-Ronin Spanish corpus v3
+
+on:
+  push:
+    branches: [corpus/lumen-ronin-spanish-v3]
+    paths:
+      - scripts/build_lumen_ronin_corpus_v3.py
+      - .github/workflows/build-lumen-ronin-corpus-v3.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-ronin-spanish-corpus-v3
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      PYTHONUNBUFFERED: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - name: Checkout WISE-RONIN
+        uses: actions/checkout@v4
+
+      - name: Checkout MINIRONIN synthetic curricula
+        uses: actions/checkout@v4
+        with:
+          repository: orbitalronin94/MINIRONIN
+          ref: main
+          path: minironin
+
+      - name: Checkout MINIRONIN verifiable personality corpus
+        uses: actions/checkout@v4
+        with:
+          repository: orbitalronin94/MINIRONIN
+          ref: feat/technopolitics-corpus-mix
+          path: minironin-personality
+
+      - name: Prepare Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install corpus dependencies
+        run: python -m pip install --upgrade pip datasets tokenizers
+
+      - name: Download frozen Spanish corpus v2
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-spanish-corpus-v2-45065384110
+          path: inputs/v2
+          repository: orbitalronin94/WISE-RONIN
+          run-id: 45065384110
+          github-token: \${{ github.token }}
+
+      - name: Download admitted Spanish literature train partition
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-admitted-literature-es-v1-train
+          path: inputs/literature
+          repository: orbitalronin94/RONIN-IA
+          run-id: 41926088900
+          github-token: \${{ github.token }}
+
+      - name: Generate the 24 reviewed Spanish behavior and lexicon curricula
+        run: |
+          set -euo pipefail
+          python minironin/scripts/generate_synthetic_curricula.py \
+            --output-dir "$GITHUB_WORKSPACE/inputs/curricula" \
+            --seed 20261123
+
+      - name: Generate the 50k verifiable personality dataset
+        run: python minironin-personality/scripts/build_verifiable_personality_dataset.py
+
+      - name: Resolve frozen v2 tokenizer
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKENIZER="$(find inputs/v2 -name tokenizer.json -type f | head -n 1)"
+          test -s "$TOKENIZER"
+          echo "TOKENIZER_PATH=$TOKENIZER" >> "$GITHUB_ENV"
+
+      - name: Build v3 with Spanish-only additions and Lumen-Ronin identity
+        run: |
+          set -euo pipefail
+          python scripts/build_lumen_ronin_corpus_v3.py \
+            --v2-dir inputs/v2 \
+            --tokenizer "$TOKENIZER_PATH" \
+            --literature-dir inputs/literature \
+            --personality-dir minironin-personality/data/curated \
+            --curricula-dir inputs/curricula \
+            --output-dir artifacts/spanish-v3 \
+            --persona-limit 50000 \
+            --curriculum-per-dataset 5000
+
+      - name: Validate frozen v3 and protected evaluation assets
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path("artifacts/spanish-v3")
+          m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          assert m["status"]=="FROZEN_BUILD_OUTPUT"
+          assert m["train_rows"]>m["base_train_rows"]
+          assert m["new_sources"]["m_personas_conversations"]>=30000
+          assert m["new_sources"]["verifiable_personality"]==50000
+          assert m["new_sources"]["synthetic_curricula_total"]>=100000
+          assert m["validation_rows"]==1413
+          assert m["holdout_rows"]==2431
+          assert m["authorization"]["training_authorized"] is False
+          for name,expected in m["sha256"].items():
+              actual=hashlib.sha256((root/name).read_bytes()).hexdigest()
+              assert actual==expected,(name,actual,expected)
+          print(json.dumps(m,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Upload frozen Lumen-Ronin Spanish corpus v3
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-ronin-spanish-corpus-v3-\${{ github.run_id }}
+          path: artifacts/spanish-v3/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1

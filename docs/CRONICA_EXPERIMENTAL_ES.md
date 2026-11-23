@@ -268,7 +268,7 @@ Esta divergencia es el resultado experimental central de este corte: **la menor 
 - [Run de entrenamiento 73,5k→133,5k](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45082812702)
 - [Run de holdout emparejado 133,2k](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45123727239)
 - [Artefacto del holdout y checkpoint Transformer sincronizado](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45123727239/artifacts/14794737935)
-- Checkpoint Lumen 133,2k: latest_good.pt preservado en el artefacto del run 45082812702 (ronin-lumen-step133500-v2-45082812702).
+- Checkpoint Lumen 133,2k: [artefacto del run 45082812702](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45082812702/artifacts/14792670252), con latest_good.pt (ronin-lumen-step133500-v2-45082812702).
 - Checkpoint Transformer 133,2k: step_133200.pt incluido en el artefacto del run 45123727239.
 
 **Promoción:** el par de checkpoints de step 133.200 queda fijado como referencia experimental actual de Lumen-Ronin frente al baseline Transformer. La promoción es documental y de referencia reproducible; no afirma una victoria universal ni sustituye futuras réplicas independientes.

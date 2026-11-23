@@ -4,16 +4,14 @@ import argparse
 import json
 from pathlib import Path
 
-BASE_PROFILE = {
-    "threads": 4, "interop_threads": 2, "mkldnn_enabled": True,
-    "foreach": False, "cpu_affinity": True, "delta_pre_normalize": False,
-    "homeostasis_fused_scatter": False, "delta_parallel_refinements": 2,
-    "organs": {
-        "pain": {"response": 0.30, "decay": 0.55},
-        "pleasure": {"response": 0.75},
-        "pain_budget_gain": 0.10, "pleasure_budget_gain": 0.1125,
-    },
-}
+EXPECTED_CANDIDATES = [
+    "01_shared_signal_core", "02_pain_response", "03_pleasure_response",
+    "04_pain_budget_gain", "05_pleasure_budget_gain", "06_ltp_threshold",
+    "07_disinhibition_gain", "08_modulator_gain", "09_eligibility_window",
+    "10_attention_gate", "11_tagging_capture", "12_intrinsic_threshold",
+    "13_simulated_pruning", "14_tag_protected_ltd", "15_one_shot_memory",
+    "16_homeostatic_scaling", "17_prioritized_replay", "18_sleep_downscaling",
+]
 
 def merge_delta(target, delta, path=""):
     conflicts = []
@@ -37,10 +35,27 @@ def main():
         | {"artifact_path": str(p.parent.relative_to(args.root))}
         for p in files
     ]
+    by_name = {r.get("candidate"): r for r in reports}
+    missing = [name for name in EXPECTED_CANDIDATES if name not in by_name]
+    pending_missing = [
+        {
+            "candidate": name,
+            "decision": "PENDING",
+            "reasons": ["no llegó artefacto; evaluación fallida o no ejecutada"],
+            "artifact_path": None,
+        }
+        for name in missing
+    ]
     approved = [r for r in reports if r.get("decision") == "APPROVED"]
-    pending = [r for r in reports if r.get("decision") != "APPROVED"]
+    pending = [r for r in reports if r.get("decision") != "APPROVED"] + pending_missing
 
-    combined = json.loads(json.dumps(BASE_PROFILE))
+    # Start from main's committed runtime profile, not a hand-maintained approximation.
+    main_profile_path = args.root / "main-runtime-profile.json"
+    if not main_profile_path.exists():
+        raise FileNotFoundError(
+            "main-runtime-profile.json must be copied from main/config/lumen_cpu_profile.json"
+        )
+    combined = json.loads(main_profile_path.read_text(encoding="utf-8"))
     conflicts = []
     for report in approved:
         found = merge_delta(combined, report.get("profile_delta", {}))
@@ -49,6 +64,9 @@ def main():
         combined = None
 
     approved_payload = {
+        "expected_candidates": EXPECTED_CANDIDATES,
+        "received_candidates": sorted(by_name),
+        "missing_candidates": missing,
         "approved_candidates": [r["candidate"] for r in approved],
         "pending_candidates": [
             {
@@ -63,7 +81,7 @@ def main():
         "training_authorized": bool(approved) and not conflicts,
         "training_note": (
             "La configuración combina únicamente los candidatos aprobados. "
-            "La base de señales compartidas es común a todos los candidatos de esta rama."
+            "La base de señales compartidas es común a todos los candidatos de esta rama; el perfil base se toma del main congelado."
         ),
     }
     (args.root / "approved_candidates.json").write_text(
@@ -74,7 +92,8 @@ def main():
     lines = [
         "# Resultado — torneo neuroplástico de 18 cambios",
         "",
-        f"- Evaluaciones recibidas: **{len(reports)}/18**",
+        f"- Artefactos recibidos: **{len(reports)}/18**",
+        f"- Evaluaciones contabilizadas: **{len(approved) + len(pending)}/18**",
         f"- Aprobados: **{len(approved)}**",
         f"- Pendientes: **{len(pending)}**",
         f"- Perfil combinado sin conflictos: **{'sí' if combined is not None else 'no'}**",

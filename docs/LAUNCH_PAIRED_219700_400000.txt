@@ -1,50 +1,38 @@
-AUTORIZACIÓN Y ESPECIFICACIÓN — CONTINUACIÓN EMPAREJADA 219.700/219.750 → 400.000
+RECUPERACIÓN Y CONTINUACIÓN EMPAREJADA — 229.700 → 400.000
 Fecha: 2026-11-23
 Repositorio: orbitalronin94/WISE-RONIN
 
-PADRES PROMOVIDOS
-- LUMEN: step interno 219700; arquitectura ronin_lumen_v3_3_neuroplasticity.
-  Run de origen 45230206330; artefacto 14857727162.
-- Transformer: step interno 219750; arquitectura decoder_transformer_4l_d192_h4_ff576_tied_v1.
-  Run de origen 45230206330; artefacto 14854630840.
-- Holdout de promoción: run 45257284512, 2.431 preguntas.
-  LUMEN 831/2431 (34,18 %), NLL 5,7440759.
-  Transformer 805/2431 (33,11 %), NLL 5,5147196.
-  LUMEN +26 aciertos; Transformer conserva mejor NLL. Los padres tienen 50 pasos de diferencia.
+CHECKPOINTS DE PARTIDA
+- LUMEN: checkpoint final exacto step 229700, artefacto lumen-step-229700-45262377661, run 45262377661.
+- Transformer: checkpoint final exacto step 229700, artefacto transformer-step-229700-45262377661, run 45262377661.
+- Ambos bloques 219700/219750 → 229700 terminaron correctamente.
+- El fallo posterior no fue del entrenamiento: el workflow no incluyó el directorio checkpoint/ en el artefacto, aunque los jobs posteriores intentaban descargar previous/checkpoint/step_PARENT.pt.
+- Se recuperan los checkpoints finales de ambos modelos; no se repite el tramo ya completado.
 
 PLAN DE BLOQUES
-- LUMEN: 219700 → 229700 (10.000); después bloques consecutivos de 10.000 hasta 399700; último bloque 399700 → 400000 (300).
-- Transformer: 219750 → 229700 (9.950, absorbe exactamente los 50 pasos de adelanto del padre); desde 229700, mismos bloques de 10.000 que LUMEN hasta 399700; último bloque 399700 → 400000 (300).
-- Así ambos modelos quedan sincronizados en 229700 y cada comparación posterior usa el mismo paso global.
-- Cada bloque de cada modelo es un job de GitHub Actions independiente, encadenado al artefacto del bloque anterior. Los dos trenes se ejecutan en paralelo, pero los bloques de cada tren son secuenciales.
-- Cada job publica su propio checkpoint, log y reloj acumulado con retención de 90 días. Si un bloque falla, los siguientes de esa cadena quedan bloqueados y el último checkpoint válido permanece descargable.
-- El remanente final de 300 pasos es inevitable para llegar exactamente a 400000 desde 399700; todos los bloques intermedios son de 10000.
+- Ambos modelos parten exactamente de 229700.
+- 229700 → 239700 → 249700 → 259700 → 269700 → 279700 → 289700 → 299700 → 309700 → 319700 → 329700 → 339700 → 349700 → 359700 → 369700 → 379700 → 389700 → 399700.
+- Último bloque: 399700 → 400000 (300 pasos).
+- Los bloques de 10.000 son jobs independientes y secuenciales por modelo; LUMEN y Transformer avanzan en paralelo.
+- Cada job publica el checkpoint en dos ubicaciones: checkpoints/<modelo>/step_N.pt y checkpoint/step_N.pt. La segunda es la ruta canónica que consumen los jobs siguientes.
+- Cada bloque publica también logs y wall-clock; retención 90 días. Si falla un bloque, la cadena se detiene y el último checkpoint válido queda recuperable.
 
-DATOS Y CONFIGURACIÓN CONGELADOS
-- Corpus ronin-v2-plus-personality-250k, artefacto de run 45149684913.
-- Tokenizer v2, 4096 IDs; token cache validada.
+CONFIGURACIÓN
+- LR LUMEN: 5e-5.
+- LR Transformer: 5e-5 para mantener comparación emparejada con el mismo LR.
+- Se conservan pesos, optimizer, RNG y datos. Se inicia una nueva transición coseno desde el LR efectivo del checkpoint 229700 hacia 5e-5, hasta el paso 400000; los momentos del optimizer no se reinician.
+- El metadato training_config.lr de cada checkpoint recuperado se alinea con 5e-5 para que el trainer valide el cambio explícito de régimen. Los pesos y estados del optimizer/RNG no se modifican.
+- Corpus congelado ronin-v2-plus-personality-250k; tokenizer v2 (4096 IDs); token cache.
 - Batch 8; contexto 128; seed 42.
-- LUMEN LR 3e-5; Transformer LR 7.5e-5.
-- Scheduler global hasta 400000, transición reiniciada solo en el primer bloque desde el estado del padre; bloques siguientes reanudan el estado guardado.
-- LUMEN conserva runtime_profile aprobado, plasticidad y fast paths Delta.
-- Cada frontera valida paso global, arquitectura, optimizer, RNG y scheduler.
+- LUMEN conserva su runtime profile aprobado, plasticidad y fast paths Delta.
+- Sin cambios de arquitectura, órganos, mecanismos, tokenizer, corpus, batch, contexto ni seed.
 
 VALIDACIÓN
-- Instalar requirements.txt y pytest; langid se incorpora a requirements.txt porque el test de merge de corpus lo importa.
-- Ejecutar compileall y toda la suite antes de preparar datos o iniciar entrenamientos.
-- No iniciar ningún bloque si falla la validación.
-
-NO CAMBIAR
-- No cambiar arquitectura, órganos, tokenizer, corpus, batch, contexto, seed ni mecanismos aprobados.
-- No fusionar PRs experimentales.
-- No afirmar victoria de LUMEN en NLL.
+- Ejecutar compileall y la suite completa antes de preparar.
+- Verificar paso exacto 229700, architecture_id, optimizer, RNG, scheduler y hashes de corpus/tokenizer de ambos checkpoints.
+- Verificar el runtime profile de LUMEN contra el perfil congelado.
+- No iniciar entrenamiento si falla cualquiera de estas comprobaciones.
 
 WORKFLOWS
-- .github/workflows/continue-paired-219700-300000.yml: orquestador y cadena de jobs.
-- .github/workflows/train-paired-block.yml: implementación reutilizable de un bloque.
-
-RETRIGGER: versión de workflow con artefacto de checkpoint canónico por job; no cambia el plan de bloques.
-
-RETRIGGER: cancel stale pre-fix run; execute only the corrected reusable block workflow.
-
-RETRIGGER: final fix to runtime-profile JSON serialization in preparation.
+- .github/workflows/continue-paired-219700-300000.yml: orquestador de la reanudación desde 229700.
+- .github/workflows/train-paired-block.yml: un bloque independiente.

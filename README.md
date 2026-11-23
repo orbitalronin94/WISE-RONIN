@@ -1,7 +1,7 @@
 # Lumen-Ronin
 ### Una arquitectura pequeña. Una pregunta enorme: ¿y si aprender no fuera solo escalar?
 
-> **LUMEN es un perro.** Un perro de Pavlov que aprende lento, pero aprende. Que saliva, que tiene hambre, que le duele, que le da placer. Y un perro, aunque sea más lento que un loro para repetir, es más listo que un loro para aprender.
+> **LUMEN ES UN PERRO.** Un perro de Pavlov que aprende lento, pero aprende. Que saliva, que tiene hambre, que le duele, que le da placer. Y un perro, aunque sea más lento que un loro para repetir, es más listo que un loro para aprender.
 
 Lumen-Ronin es un experimento de arquitectura recurrente, CPU-first y de pocos millones de parámetros. En lugar de limitarse a apilar bloques Transformer y aumentar cómputo, explora otra pregunta: **¿pueden un estado asociativo, la homeostasis, un presupuesto energético y varias escalas de memoria mejorar la manera en que aprende un modelo pequeño?**
 
@@ -130,6 +130,8 @@ La serie histórica completa está en la [crónica experimental](docs/CRONICA_EX
 ## Corpus y evaluación
 
 **Corpus v3 experimental:** ya está construido y congelado en la rama `corpus/lumen-ronin-spanish-v3`. Añade 575.558 registros netos (9.933.007 train en total), incorpora personalidad y currículos en castellano condicionados a la identidad Lumen-Ronin y conserva sin cambios validation, holdout y tokenizer de v2. El artefacto y sus límites de autorización están documentados en [Corpus v3](docs/CORPUS_V3_ES.md). **No se ha entrenado con v3:** la deduplicación global y la auditoría de contaminación siguen pendientes.
+
+**Corpus v3.1 en preparación:** se ha abierto una rama separada para ampliar humanidades, ciencias humanas, matemáticas, lógica y medicina. El catálogo incluye filosofía, historia global, patrimonio cultural, jurisprudencia española, ética intercultural y ciencias sociales; también define la remediación de los near-duplicates y de las alertas detectadas en v3.0.0. Licencias no comerciales o todavía no verificadas quedan expresamente fuera de la admisión automática. Consulta [plan de corpus v3.1](docs/CORPUS_V3_1_ES.md). No existe aún un artefacto v3.1 ni autorización de entrenamiento.
 
 Los tramos 66k→73,5k y 73,5k→133,2k utilizaron el corpus español v2 congelado, preparado con seed 42. El manifiesto registra 9.357.876 filas de entrenamiento, 1.413 de validación y 2.431 de holdout. La muestra determinista compartida de entrenamiento contiene 200.000 filas (20k v1, 72k CSIC y 108k TDX); tokenizer de 4.096 IDs, PAD=0 y EOS presente. Hash del tokenizer: `d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe`. CSIC y TDX se incorporaron bajo CC BY 4.0; CoWeSe quedó excluido por derechos de los textos de origen.
 

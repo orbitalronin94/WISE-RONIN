@@ -839,7 +839,7 @@ def main():
                     sleep_loss = sueno(model, device="cpu", compression_ratio=replay_compression, downscale=sleep_downscale)
                     sleep_duration = time.perf_counter() - sleep_started
                     profile["sleep"] += sleep_duration
-                    LOG.info("sleep_called: step=%d, duration_s=%.3f", step, sleep_duration)
+                    LOG.info("sleep_called: step=%d, records=%d, duration_s=%.3f", step, records_before_sleep, sleep_duration)
                     sleep_events.append({"step": step, "records": records_before_sleep,
                                          "executed": records_before_sleep > 0, "loss": float(sleep_loss),
                                          "duration_s": sleep_duration})
@@ -849,7 +849,7 @@ def main():
             elif step % sleep_interval_steps == 0:
                 records_before_sleep = int((model.memoria.contador_lenta > 0).sum().item())
                 sleep_started = time.perf_counter()
-                sleep_loss = sueno(model, device="cpu")
+                sleep_loss = sueno(model, device="cpu", compression_ratio=replay_compression, downscale=sleep_downscale)
                 sleep_duration = time.perf_counter() - sleep_started
                 profile["sleep"] += sleep_duration
                 LOG.info("sleep_called: step=%d, duration_s=%.3f", step, sleep_duration)

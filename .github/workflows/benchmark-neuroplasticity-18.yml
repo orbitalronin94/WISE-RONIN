@@ -5,6 +5,7 @@ on:
     branches: [feat/unified-neuroplasticity-organs]
     paths:
       - ".github/workflows/benchmark-neuroplasticity-18.yml"
+      - "scripts/benchmark_neuroplasticity_candidate.py"
   workflow_dispatch:
 
 permissions:

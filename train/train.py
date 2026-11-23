@@ -233,6 +233,9 @@ def apply_organ_profile(model, profile):
             value = int(value)
             if not 1 <= value <= model.config.model_dim: raise ValueError("homeostasis k_top out of range")
             for organ in model.homeo: organ.k_top = value
+        elif key == "synaptic_scaling":
+            if not isinstance(value, bool): raise ValueError("homeostasis synaptic_scaling must be boolean")
+            for organ in model.homeo: organ.synaptic_scaling_enabled = value
         else: raise ValueError(f"Unknown homeostasis parameter: {key}")
     for key, value in profile.get("memory", {}).items():
         if key not in {"small_pe", "large_pe"}: raise ValueError(f"Unknown memory parameter: {key}")
@@ -492,6 +495,7 @@ def main():
         allowed_missing |= {
             f"delta_layers.{i}.eligibility_modulator" for i in range(len(model.delta_layers))
         }
+        allowed_missing |= {f"homeo.{i}.synaptic_scale" for i in range(len(model.homeo))}
         # New experimental plasticity buffers are neutral on migration from
         # pre-organ checkpoints; no trained parameters or optimizer moments are reset.
         for i in range(len(model.delta_layers)):

@@ -129,6 +129,8 @@ La serie histórica completa está en la [crónica experimental](docs/CRONICA_EX
 
 ## Corpus y evaluación
 
+**Corpus v3 experimental:** ya está construido y congelado en la rama `corpus/lumen-ronin-spanish-v3`. Añade 575.558 registros netos (9.933.007 train en total), incorpora personalidad y currículos en castellano condicionados a la identidad Lumen-Ronin y conserva sin cambios validation, holdout y tokenizer de v2. El artefacto y sus límites de autorización están documentados en [Corpus v3](docs/CORPUS_V3_ES.md). **No se ha entrenado con v3:** la deduplicación global y la auditoría de contaminación siguen pendientes.
+
 Los tramos 66k→73,5k y 73,5k→133,2k utilizaron el corpus español v2 congelado, preparado con seed 42. El manifiesto registra 9.357.876 filas de entrenamiento, 1.413 de validación y 2.431 de holdout. La muestra determinista compartida de entrenamiento contiene 200.000 filas (20k v1, 72k CSIC y 108k TDX); tokenizer de 4.096 IDs, PAD=0 y EOS presente. Hash del tokenizer: `d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe`. CSIC y TDX se incorporaron bajo CC BY 4.0; CoWeSe quedó excluido por derechos de los textos de origen.
 
 | Split | Filas |

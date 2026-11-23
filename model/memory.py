@@ -49,10 +49,10 @@ class MemoriaElastica(nn.Module):
         self.write_pointer.fill_((slot + 1) % self.lenta.shape[0])
         return True
 
-    def forward(self, x, sorpresa, e_mem):
-        pe = sorpresa.detach().squeeze(-1)
+    def forward(self, x, sorpresa, e_mem, signals=None):
+        pe = (signals.surprise if signals is not None else sorpresa).detach().squeeze(-1)
         small = pe < self.small_pe
-        fast_rate = self.one_shot_gate(pe) if self.one_shot_enabled else torch.zeros_like(pe)
+        fast_rate = self.one_shot_gate(signals.uncertainty.squeeze(-1) if signals is not None else pe / (1.0 + pe.abs())) if self.one_shot_enabled else torch.zeros_like(pe)
         # High uncertainty can open a bounded local write path; the global
         # optimizer learning rate is never modified.
         large = pe > self.large_pe * (1.0 - fast_rate)

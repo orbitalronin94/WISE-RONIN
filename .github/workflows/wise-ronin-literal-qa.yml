@@ -1,0 +1,60 @@
+name: WISE-RONIN — Literal questions / manual answers
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/wise-ronin-literal-qa.yml'
+      - 'scripts/build_literal_qa_queue.py'
+      - 'scripts/validate_literal_qa_dataset.py'
+      - 'tests/test_literal_qa_dataset.py'
+      - 'data/external_qa/**'
+      - 'docs/EXTERNAL_QA_METHOD.md'
+  push:
+    paths:
+      - '.github/workflows/wise-ronin-literal-qa.yml'
+      - 'scripts/build_literal_qa_queue.py'
+      - 'scripts/validate_literal_qa_dataset.py'
+      - 'tests/test_literal_qa_dataset.py'
+      - 'data/external_qa/**'
+      - 'docs/EXTERNAL_QA_METHOD.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wise-ronin-literal-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-and-prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile and run tests
+        run: |
+          python -m py_compile scripts/build_literal_qa_queue.py scripts/validate_literal_qa_dataset.py
+          python -m unittest discover -s tests -p 'test_literal_qa_dataset.py' -v
+      - name: Download pinned SQAC train source and build authoring queue
+        run: |
+          python scripts/build_literal_qa_queue.py --download \
+            --output build/sqac_train_authoring_queue.jsonl
+      - name: Validate committed manual answers against verbatim source queue
+        run: |
+          python scripts/validate_literal_qa_dataset.py \
+            --input data/external_qa/sqac_manual_answers.jsonl \
+            --source-queue build/sqac_train_authoring_queue.jsonl \
+            --sft-output build/sqac_manual_sft.jsonl
+      - name: Upload source queue and reviewed SFT sample
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-sqac-manual-authoring-${{ github.sha }}
+          path: |
+            build/sqac_train_authoring_queue.jsonl
+            build/sqac_manual_sft.jsonl
+          if-no-files-found: error
+          retention-days: 30

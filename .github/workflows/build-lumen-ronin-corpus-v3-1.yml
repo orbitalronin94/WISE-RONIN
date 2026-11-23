@@ -1,0 +1,88 @@
+name: Build Lumen-Ronin Spanish corpus v3.1
+
+on:
+  push:
+    branches: [corpus/lumen-ronin-spanish-v3-1]
+    paths:
+      - scripts/build_lumen_ronin_corpus_v3_1.py
+      - .github/workflows/build-lumen-ronin-corpus-v3-1.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-ronin-spanish-corpus-v3-1
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      PYTHONUNBUFFERED: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install build dependencies
+        run: python -m pip install --upgrade pip datasets tokenizers pyarrow
+      - name: Download frozen v2 baseline
+        uses: actions/download-artifact@v7
+        with:
+          name: wise-ronin-spanish-corpus-v2-45065384110
+          path: inputs/v2
+          repository: ${{ github.repository }}
+          run-id: 45065384110
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download frozen v3.0.0 baseline
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-ronin-spanish-corpus-v3-45132496748
+          path: inputs/v3
+          repository: ${{ github.repository }}
+          run-id: 45132496748
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve corpus roots
+        shell: bash
+        run: |
+          set -euo pipefail
+          V2_ROOT="$(dirname "$(find inputs/v2 -name manifest.json -type f | head -n 1)")"
+          test -s "$V2_ROOT/train.jsonl"
+          test -s inputs/v3/train.jsonl
+          echo "V2_ROOT=$V2_ROOT" >> "$GITHUB_ENV"
+          du -sh inputs/v2 inputs/v3
+      - name: Build v3.1 in one pass
+        run: |
+          python scripts/build_lumen_ronin_corpus_v3_1.py \
+            --v2 "$V2_ROOT" \
+            --v3 inputs/v3 \
+            --out artifacts/spanish-v3-1
+      - name: Validate artifact and protected evaluation assets
+        run: |
+          python - <<'PY'
+          import json, hashlib
+          from pathlib import Path
+          p=Path("artifacts/spanish-v3-1")
+          m=json.loads((p/"manifest.json").read_text())
+          assert m["status"]=="BUILT_NEEDS_FINAL_AUDIT"
+          assert m["train_rows"]>9_000_000
+          assert m["protected_assets_identical_to_v2"] is True
+          assert m["authorization"]["training_authorized"] is False
+          for n,h in m["sha256"].items():
+              actual=hashlib.sha256((p/n).read_bytes()).hexdigest()
+              assert actual==h,(n,actual,h)
+          print(json.dumps(m,ensure_ascii=False,indent=2))
+          PY
+      - name: Upload Lumen-Ronin corpus v3.1
+        uses: actions/upload-artifact@v6
+        with:
+          name: lumen-ronin-spanish-corpus-v3-1-${{ github.run_id }}
+          path: artifacts/spanish-v3-1/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1

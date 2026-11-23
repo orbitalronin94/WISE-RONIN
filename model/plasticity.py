@@ -14,6 +14,7 @@ class PlasticityProfile:
     tagging_enabled: bool = False
     intrinsic_threshold_enabled: bool = False
     simulated_pruning_enabled: bool = False
+    one_shot_enabled: bool = False
 
     @classmethod
     def from_config(cls, config=None):
@@ -31,7 +32,7 @@ class PlasticityProfile:
         if name not in presets:
             raise ValueError(f"unknown plasticity mode: {name}")
         values = {**presets[name], **{k: v for k, v in config.items() if k != "mode"}}
-        allowed = {"threshold_scale", "modulator_gain", "eligibility_retention", "attention_gain", "tagging_enabled", "intrinsic_threshold_enabled", "simulated_pruning_enabled"}
+        allowed = {"threshold_scale", "modulator_gain", "eligibility_retention", "attention_gain", "tagging_enabled", "intrinsic_threshold_enabled", "simulated_pruning_enabled", "one_shot_enabled"}
         if set(values) - allowed:
             raise ValueError(f"unknown plasticity factors: {sorted(set(values) - allowed)}")
         boolean_keys = {"tagging_enabled", "intrinsic_threshold_enabled", "simulated_pruning_enabled"}

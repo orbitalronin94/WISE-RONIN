@@ -6,6 +6,7 @@ on:
     paths:
       - scripts/build_lumen_ronin_corpus_v3_1.py
       - .github/workflows/build-lumen-ronin-corpus-v3-1.yml
+      - .github/workflows/.v3-1-build-marker
   workflow_dispatch:
 
 permissions:

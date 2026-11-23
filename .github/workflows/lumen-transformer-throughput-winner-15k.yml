@@ -122,7 +122,7 @@ jobs:
               "delta_pre_normalize": False,
               "homeostasis_fused_scatter": False,
           })
-          Path(os.environ["PROFILE"]).write_text(json.dumps(profile, indent=2) + "\\n")
+          Path(os.environ["PROFILE"]).write_text(json.dumps(profile, indent=2) + "\n")
           print("Verified promoted step 185700, data/tokenizer, approved plasticity and exact Delta fast paths.")
           print("data_sha256:", sha(data))
           print("tokenizer_sha256:", sha(tokenizer))
@@ -222,7 +222,7 @@ jobs:
       - name: Verify original Transformer checkpoint and data hashes
         run: |
           set -euo pipefail
-          CHECKPOINT="$(find parent -name step_170700.pt -print -quit)"
+          CHECKPOINT="$(find parent -name step_185700.pt -print -quit)"
           test -n "$CHECKPOINT"
           export CHECKPOINT
           python - <<'PY'
@@ -233,16 +233,16 @@ jobs:
           tokenizer = Path("prepared/artifacts/spanish-v2/tokenizer.json")
           state = torch.load(checkpoint, map_location="cpu", weights_only=False)
           sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-          assert state["step"] == 170700
+          assert state["step"] == 185700
           assert state["data_sha256"] == sha(data)
           assert state["tokenizer_sha256"] == sha(tokenizer)
           assert state.get("optimizer") and state.get("rng")
-          print("Verified latest Transformer step 170700 and identical data/tokenizer.")
+          print("Verified paired Transformer step 185700 and identical data/tokenizer.")
           print("data_sha256:", sha(data))
           print("tokenizer_sha256:", sha(tokenizer))
           PY
           echo "CHECKPOINT=$CHECKPOINT" >> "$GITHUB_ENV"
-      - name: Continue Transformer for 15,000 steps from latest paired step 170700 to 185700
+      - name: Continue Transformer for 15,000 steps from paired step 185700 to 200700
         run: |
           set -euo pipefail
           mkdir -p checkpoints/transformer
@@ -262,7 +262,7 @@ jobs:
             --ckpt-dir checkpoints/transformer \
             --wall-clock-file transformer-wall.json \
             2>&1 | tee transformer-training-10k.log
-          MIDPOINT="$(find checkpoints/transformer -name step_180700.pt -print -quit)"
+          MIDPOINT="$(find checkpoints/transformer -name step_195700.pt -print -quit)"
           test -n "$MIDPOINT"
           python -m train.transformer_baseline \
             --steps 5000 \
@@ -280,7 +280,7 @@ jobs:
             --ckpt-dir checkpoints/transformer \
             --wall-clock-file transformer-wall.json \
             2>&1 | tee transformer-training-5k.log
-      - name: Upload Transformer step-185700 checkpoint and logs
+      - name: Upload Transformer step-200700 checkpoint and logs
         if: always()
         uses: actions/upload-artifact@v7
         with:

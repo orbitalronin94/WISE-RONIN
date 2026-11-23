@@ -24,7 +24,7 @@ class EstadoDelta(nn.Module):
         self.parallel_refinements = max(1, int(parallel_refinements))
         self.plasticity_profile = PlasticityProfile()
         self.tagging = SynapticTaggingCapture((self.rank, self.dim), decay=0.95, threshold=0.005)
-        self.intrinsic_threshold = IntrinsicThreshold(initial=float(tau), target=0.05, rate=0.0005)
+        self.intrinsic_threshold = IntrinsicThreshold(initial=max(0.01, min(0.8, float(tau))), target=0.05, rate=0.0005)
         self.simulated_pruner = SimulatedSynapticPruner((self.rank, self.dim))
         self.parallel_scan = True
         self.pre_normalize_sequence = False

@@ -13,7 +13,7 @@ def test_neutral_profile_is_exact_identity():
 @pytest.mark.parametrize(
     ("mode", "expected"),
     [
-        ("disinhibition", {"threshold_scale": 0.85}),
+        ("disinhibition", {"threshold_scale": 0.85, "inhibition_scale": 0.8}),
         ("modulator_gain", {"modulator_gain": 1.5, "eligibility_retention": 0.96}),
         ("plasticity_window", {"eligibility_retention": 0.98}),
         ("attentional_gate", {"attention_gain": 0.4}),

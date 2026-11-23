@@ -22,7 +22,7 @@ concurrency:
 
 env:
   BASE_SHA: "19986f27925e3ccd2c965bbad6ebca2fa4db9e57"
-  PARENT_RUN_ID: "45230206330"
+  PARENT_RUN_ID: "45200252793"
   DATA_RUN_ID: "45149684913"
   PYTHONUNBUFFERED: "1"
   OMP_NUM_THREADS: "4"
@@ -109,10 +109,10 @@ jobs:
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           python -m pip install numpy tokenizers tqdm
 
-      - name: Download exact paired step-235700 Lumen checkpoint
+      - name: Download exact paired step-185700 Lumen checkpoint
         uses: actions/download-artifact@v7
         with:
-          name: lumen-approved-neuroplasticity-step235700-45230206330
+          name: lumen-approved-neuroplasticity-step185700-45200252793
           path: parent
           repository: ${{ github.repository }}
           run-id: ${{ env.PARENT_RUN_ID }}
@@ -130,7 +130,7 @@ jobs:
       - name: Verify parent, data, tokenizer and cache
         run: |
           set -euo pipefail
-          CHECKPOINT="$(find parent -name step_235700.pt -print -quit)"
+          CHECKPOINT="$(find parent -name step_185700.pt -print -quit)"
           test -n "$CHECKPOINT"
           test -s prepared/data/spanish-v2-plus-personality-250k.jsonl
           test -s prepared/data/spanish-v2-plus-personality-token-cache.pt
@@ -144,7 +144,7 @@ jobs:
           tokenizer = Path("prepared/artifacts/spanish-v2/tokenizer.json")
           state = torch.load(checkpoint, map_location="cpu", weights_only=False)
           sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-          assert state["step"] == 235700
+          assert state["step"] == 185700
           assert state["architecture_id"] == "ronin_lumen_v3_3_neuroplasticity"
           assert state["seed"] == 42
           assert state["training_config"]["batch"] == 8
@@ -152,7 +152,7 @@ jobs:
           assert state["data_sha256"] == sha(data)
           assert state["tokenizer_sha256"] == sha(tokenizer)
           assert state.get("optimizer") and state.get("rng")
-          print("Exact step-235700 parent/data/tokenizer verified")
+          print("Exact step-185700 parent/data/tokenizer verified")
           print("data_sha256:", sha(data))
           print("tokenizer_sha256:", sha(tokenizer))
           PY

@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: lumen-ronin-corpus-v3-admission-audit
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   audit:

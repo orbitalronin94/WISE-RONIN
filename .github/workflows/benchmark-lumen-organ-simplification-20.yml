@@ -15,7 +15,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: lumen-organ-simplification-${{ github.run_id }
+  group: lumen-organ-simplification-${{ github.run_id }}
   cancel-in-progress: false
 
 env:
@@ -78,7 +78,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref }
+          ref: ${{ github.ref }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14.10"
@@ -92,17 +92,17 @@ jobs:
         with:
           name: ronin-v2-plus-personality-250k-45136184396
           path: prepared
-          repository: ${{ github.repository }
-          run-id: ${{ env.PREPARED_RUN_ID }
-          github-token: ${{ secrets.GITHUB_TOKEN }
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download promoted step-140700 Lumen checkpoint
         uses: actions/download-artifact@v7
         with:
           name: ronin-lumen-step140700-v2-personality-45136184396
           path: lumen-parent
-          repository: ${{ github.repository }
-          run-id: ${{ env.PARENT_RUN_ID }
-          github-token: ${{ secrets.GITHUB_TOKEN }
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify frozen inputs and checkpoint
         run: |
           set -euo pipefail
@@ -124,7 +124,7 @@ jobs:
           PY
       - name: Write baseline profile
         env:
-          PROFILE: ${{ matrix.profile }
+          PROFILE: ${{ matrix.profile }}
         run: |
           mkdir -p "artifacts/results/$PROFILE" config
           python - <<'PY'
@@ -141,7 +141,7 @@ jobs:
           PY
       - name: Run 100-step matched control
         env:
-          PROFILE: ${{ matrix.profile }
+          PROFILE: ${{ matrix.profile }}
         run: |
           set -euo pipefail
           python -m train.train --steps 100 --resume lumen-parent/checkpoints/lumen-v2-140700/step_140700.pt \
@@ -158,7 +158,7 @@ jobs:
             2>&1 | tee "artifacts/results/$PROFILE/control.log"
       - name: Apply simplification hypothesis
         env:
-          PROFILE: ${{ matrix.profile }
+          PROFILE: ${{ matrix.profile }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -203,7 +203,7 @@ jobs:
           python -m json.tool config/runtime_profile.json >/dev/null
       - name: Run 100-step candidate from same checkpoint and seed
         env:
-          PROFILE: ${{ matrix.profile }
+          PROFILE: ${{ matrix.profile }}
         run: |
           set -euo pipefail
           python -m train.train --steps 100 --resume lumen-parent/checkpoints/lumen-v2-140700/step_140700.pt \
@@ -221,7 +221,7 @@ jobs:
       - name: Parse matched loss, timings and organ traces
         if: always()
         env:
-          PROFILE: ${{ matrix.profile }
+          PROFILE: ${{ matrix.profile }}
         run: |
           python - <<'PY'
           import json, os, pathlib, re, statistics
@@ -234,12 +234,12 @@ jobs:
               total=nums(r"profile_20:.*?total=([0-9.]+)s")
               back=nums(r"profile_20:.*?backward=([0-9.]+)s")
               forward=nums(r"profile_20:.*?forward=([0-9.]+)s")
-              loss=nums(r"glucose_check step=\\d+ mean_loss=([0-9.eE+-]+)")
-              pain=nums(r"affect_check step=\\d+ pain=([0-9.eE+-]+)")
-              pleasure=nums(r"affect_check step=\\d+ pain=[0-9.eE+-]+ regression=[0-9.eE+-]+ pleasure=([0-9.eE+-]+)")
-              glucose=nums(r"glucose_check step=\\d+ mean_loss=[0-9.eE+-]+ improved=(?:True|False|None) signal=[a-z_]+ reserve=([0-9.eE+-]+)")
-              trace=re.findall(r"eligibility_feedback step=\\d+ signal=([0-9.eE+-]+) trace_norms=(\\[[^\\]]+\\])",raw)
-              dead=re.findall(r"effective_dead_by_layer step=\\d+ values=([0-9.,]+)",raw)
+              loss=nums(r"glucose_check step=\d+ mean_loss=([0-9.eE+-]+)")
+              pain=nums(r"affect_check step=\d+ pain=([0-9.eE+-]+)")
+              pleasure=nums(r"affect_check step=\d+ pain=[0-9.eE+-]+ regression=[0-9.eE+-]+ pleasure=([0-9.eE+-]+)")
+              glucose=nums(r"glucose_check step=\d+ mean_loss=[0-9.eE+-]+ improved=(?:True|False|None) signal=[a-z_]+ reserve=([0-9.eE+-]+)")
+              trace=re.findall(r"eligibility_feedback step=\d+ signal=([0-9.eE+-]+) trace_norms=(\[[^\]]+\])",raw)
+              dead=re.findall(r"effective_dead_by_layer step=\d+ values=([0-9.,]+)",raw)
               bad=("NONFINITE" in raw or "non-finite" in raw.lower())
               if any(len(v)!=5 for v in (total,back,loss,pain,pleasure,glucose,trace)) or bad:
                   return {"status":"incomplete_or_unhealthy","windows":{"total":len(total),"backward":len(back),"loss":len(loss),"pain":len(pain),"pleasure":len(pleasure),"glucose":len(glucose),"trace":len(trace)},"nonfinite":bad,"tail":raw[-1500:]}
@@ -263,8 +263,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: lumen-organ-simplification-${{ matrix.profile }-${{ github.run_id }
-          path: artifacts/results/${{ matrix.profile }/
+          name: lumen-organ-simplification-${{ matrix.profile }}-${{ github.run_id }}
+          path: artifacts/results/${{ matrix.profile }}/
           if-no-files-found: warn
           retention-days: 90
           compression-level: 6
@@ -277,14 +277,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref }
+          ref: ${{ github.ref }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14.10"
       - name: Download all individual reports
         uses: actions/download-artifact@v7
         with:
-          pattern: lumen-organ-simplification-*-${{ github.run_id }
+          pattern: lumen-organ-simplification-*-${{ github.run_id }}
           path: artifacts/all
           merge-multiple: false
       - name: Rank only complete, healthy and loss-safe hypotheses
@@ -311,7 +311,7 @@ jobs:
       - name: Upload aggregate ranking
         uses: actions/upload-artifact@v7
         with:
-          name: lumen-organ-simplification-20-report-${{ github.run_id }
+          name: lumen-organ-simplification-20-report-${{ github.run_id }}
           path: artifacts/lumen_organ_simplification_20.json
           if-no-files-found: error
           retention-days: 90

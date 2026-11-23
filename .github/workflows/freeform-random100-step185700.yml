@@ -116,6 +116,7 @@ jobs:
           assert all("Opciones:" not in p for p in prompts)
           print("Validated 100 open prompts; person-description prompts are rewritten as explicit ¿Quién es X? questions.")
           print("Who-is prompts:",sum("¿Quién es " in p for p in prompts))
+          print("A separate direct ¿Quién eres? identity probe is generated for both models.")
           PY
       - name: Generate 100 open-ended answers from both models
         env:

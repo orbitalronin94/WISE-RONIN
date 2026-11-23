@@ -108,8 +108,8 @@ jobs:
           assert state["tokenizer_sha256"] == sha(tokenizer)
           assert state.get("optimizer") and state.get("rng")
           profile = json.loads(Path(os.environ["PROFILE"]).read_text())
-          assert profile.get("organs", {}).get("disinhibition_gain") is not None
-          assert profile.get("organs", {}).get("eligibility_window") is not None
+          assert profile.get("plasticity", {}).get("inhibition_scale") == 0.80
+          assert profile.get("plasticity", {}).get("eligibility_retention") == 0.98
           print("Verified original step 155700, exact data/tokenizer and the two approved mechanisms.")
           print("data_sha256:", sha(data))
           print("tokenizer_sha256:", sha(tokenizer))

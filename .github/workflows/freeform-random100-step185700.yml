@@ -80,7 +80,10 @@ jobs:
           eligible=[r for r in rows if isinstance(r.get("prompt"),str) and r["prompt"].strip()]
           sample=random.Random(int(os.environ["SAMPLE_SEED"])).sample(eligible,100)
           Path("prepared/random100_holdout.jsonl").write_text(
-              "".join(json.dumps(r,ensure_ascii=False)+"\\n" for r in sample),encoding="utf-8")
+              "".join(json.dumps(r,ensure_ascii=False)+"\n" for r in sample),encoding="utf-8")
+          check=Path("prepared/random100_holdout.jsonl").read_text(encoding="utf-8").splitlines()
+          assert len(check)==100, f"Expected 100 JSONL lines, got {len(check)}"
+          assert all(json.loads(line).get("id") for line in check)
           l=torch.load(os.environ["LUMEN_CKPT"],map_location="cpu",weights_only=False)
           t=torch.load(os.environ["TRANSFORMER_CKPT"],map_location="cpu",weights_only=False)
           assert int(l.get("step",-1))==185700, l.get("step")
@@ -94,6 +97,26 @@ jobs:
           PY
           echo "LUMEN_CKPT=$LUMEN_CKPT" >> "$GITHUB_ENV"
           echo "TRANSFORMER_CKPT=$TRANSFORMER_CKPT" >> "$GITHUB_ENV"
+      - name: Validate open-question wording before model inference
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.freeform_generation_holdout import freeform_prompt
+          probe=freeform_prompt("Contexto: Adri aparece en el relato.\\nPregunta: ¿Qué describe mejor a Adri?\\nOpciones:\\nA) Serio\\nB) Alegre")
+          assert "¿Quién es Adri?" in probe, probe
+          assert "Opciones:" not in probe and "A) Serio" not in probe
+          rows=[json.loads(line) for line in Path("prepared/random100_holdout.jsonl").read_text(encoding="utf-8").splitlines()]
+          assert len(rows)==100
+          prompts=[freeform_prompt(row["prompt"]) for row in rows]
+          assert all("Pregunta:" in p and "Respuesta:" in p for p in prompts)
+          assert all("Opciones:" not in p for p in prompts)
+          print("Validated 100 open prompts; person-description prompts are rewritten as explicit ¿Quién es X? questions.")
+          print("Who-is prompts:",sum("¿Quién es " in p for p in prompts))
+          PY
       - name: Generate 100 open-ended answers from both models
         env:
           PYTHONPATH: ${{ github.workspace }}
@@ -118,11 +141,11 @@ jobs:
           data["sample_seed"]=20261123
           data["evaluation_note"]="Open-ended greedy generations on the exact same 100 questions as the paired random-100 multiple-choice holdout. Options and gold answers are stripped before generation. Qualitative probe, not an automatic accuracy score."
           data["decoding"]="greedy argmax; no repetition penalty; max_new_tokens=96; max_len=128"
-          (p/"step185700_freeform_100.json").write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\\n",encoding="utf-8")
+          (p/"step185700_freeform_100.json").write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
           md=(p/"step31000_freeform_100.md").read_text(encoding="utf-8")
           md=md.replace("31k","185.7k").replace("31.000","185.700").replace("step31000","step185700")
           md=md.replace("máximo de 64 tokens","máximo de 96 tokens")
-          md += "\\n\\n> Muestra idéntica a la prueba multiple-choice aleatoria de 100 preguntas. Las opciones y la respuesta correcta se eliminan antes de generar. Evaluación cualitativa; no equivale a una puntuación automática de exactitud.\\n"
+          md += "\n\n> Muestra idéntica a la prueba multiple-choice aleatoria de 100 preguntas. Las opciones y la respuesta correcta se eliminan antes de generar. Evaluación cualitativa; no equivale a una puntuación automática de exactitud.\n"
           (p/"step185700_freeform_100.md").write_text(md,encoding="utf-8")
           src.unlink()
           (p/"step31000_freeform_100.md").unlink()

@@ -42,7 +42,7 @@ El repositorio conserva el nombre técnico **WISE-RONIN**. El proyecto activo es
 - Lumen: **830/2.431 (34,14 %)**, NLL **5,8633**.
 - Transformer: 802/2.431 (32,99 %), NLL **5,6503**.
 - Lumen aventaja al baseline por **28 aciertos (+1,15 puntos porcentuales)** en accuracy; Transformer conserva una NLL **0,2130 menor**. Las métricas discrepan y deben leerse por separado.
-- Frente al corte anterior de 140.700, Lumen pierde 5 aciertos pero reduce su NLL 0,0620; Transformer pierde 13 aciertos y reduce su NLL 0,0719. La diferencia de accuracy a favor de Lumen pasa de +3 a +11; la brecha de NLL se estrecha ligeramente.
+- Frente a 170.700, Lumen sube de 802 a 830 aciertos (+28), mientras Transformer pasa de 792 a 802 (+10). La NLL de Lumen pasa de 5,7983 a 5,8633; la del Transformer mejora de 5,7610 a 5,6503.
 - El resultado describe este ensayo emparejado; no demuestra significación estadística ni superioridad general.
 
 **Estado operativo:** step 185.700 es la última referencia emparejada evaluada. El train siguiente, 185.700→235.700, está en curso: cinco bloques de 10.000 pasos por modelo. Lumen conserva los dos mecanismos que superaron el torneo anterior (desinhibición y ventana de elegibilidad) y el perfil de ejecución OpenMP; Transformer permanece como control. En la última consulta, Transformer había terminado y Lumen seguía entrenando. [Workflow 45230206330](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45230206330).
@@ -123,6 +123,25 @@ El linaje emparejado se inició desde cero y avanzó mediante continuaciones ver
 | 170,7k → 185,7k (OpenMP ganador) | [45200252793](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45200252793) | +15.000 pasos emparejados; holdout [45219320709](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45219320709) |
 | 185,7k → 235,7k (+50k) | [45230206330](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45230206330) | En curso; cinco bloques de 10k por modelo; holdout final pendiente |
 
+### Narrativa de cada train
+
+- **0→1.000 — arranque emparejado.** Nace la línea de comparación desde cero. El primer holdout deja 759 aciertos para Lumen y 764 para Transformer; la NLL favorece a Lumen (7,2570 frente a 14,6228). Es una referencia inicial, no un veredicto.
+- **1.000→11.000 — primera continuación larga.** Ambos modelos avanzan con el mismo corpus y tokenizer. El holdout queda casi empatado: 741 frente a 745; Lumen conserva una NLL ligeramente menor (7,0225 frente a 7,0573).
+- **11.000→16.000 — entran glucosa, dolor y placer.** Se separan las señales de mejora y regresión y su modulación del presupuesto interno. Lumen obtiene 786 aciertos frente a 761; Transformer conserva menor NLL (6,8550 frente a 7,1953). La coincidencia temporal no demuestra que los órganos causaran la diferencia.
+- **16.000→21.000 — primer margen amplio.** Lumen llega a 837 frente a 766 (+71). Transformer sigue con NLL menor (6,7644 frente a 7,1043): precisión y calibración vuelven a contar historias distintas.
+- **21.000→26.000 — mejora en ambas métricas.** Lumen conserva 50 aciertos de ventaja (823 frente a 773) y obtiene también menor NLL (6,6643 frente a 6,7229).
+- **26.000→31.000 — continuidad sin monotonía.** Lumen mantiene +14 aciertos (797 frente a 783) y menor NLL (6,5564 frente a 6,6534); el margen se reduce, pero no desaparece.
+- **31.000→41.000 — recuperación tras fallo de workflow.** El job falla en su gate final, pero se recuperan y verifican los checkpoints de 41k y se evalúan aparte. Transformer gana en aciertos (814 frente a 801); Lumen mantiene menor NLL (6,4777 frente a 6,6670).
+- **41.000→61.000 — continuación larga.** El Transformer toma ventaja en accuracy (824 frente a 795), mientras Lumen conserva menor NLL (6,1771 frente a 6,4988). Se conserva el checkpoint padre verificado, no se mezclan ejecuciones duplicadas.
+- **61.000→66.000 — cierre de la primera campaña.** Lumen queda en 792 y Transformer en 824; la NLL de Lumen sigue siendo menor (6,0756 frente a 6,4868). Se congela el punto de partida para el cambio de corpus.
+- **66.000→73.500 — corpus español v2.** Se incorpora la muestra v2 común. Lumen obtiene 791 y Transformer 792; la NLL favorece a Lumen (5,8320 frente a 6,4189). El cambio de datos y el entrenamiento se producen juntos, así que no se atribuye causalidad aislada al corpus.
+- **73.500→133.200 — continuación extensa.** El job de Lumen se interrumpe tras guardar 133.200; el Transformer se sincroniza exactamente a ese paso para el holdout. Lumen obtiene 810 frente a 793 y menor NLL (5,7221 frente a 5,8947), pese a que el Transformer había mostrado menor training loss en los logs.
+- **133.200→140.700 — personalidad factual.** Ambos reciben la misma muestra v2 + 50k ejemplos de personalidad. Lumen queda 824 frente a 821 y NLL 5,7951 frente a 5,8577. Corpus y scheduler cambian en el mismo bloque; no se separa su efecto.
+- **140.700→155.700 — continuación de 15k.** Se mantienen datos y tokenizer. Lumen termina con 819 frente a 808 y NLL 5,7331 frente a 5,7858. Se fija el checkpoint 155.700 como padre de la fase neuroplástica.
+- **155.700→170.700 — dos mecanismos aprobados.** Tras el torneo de 18 cambios, solo desinhibición (0,80) y retención de elegibilidad (0,98) pasan el gate. Se prueban en Lumen; Transformer queda intacto. Holdout: 802 frente a 792, pero NLL 5,7983 frente a 5,7610 favorece al Transformer.
+- **170.700→185.700 — OpenMP y +15k.** Se aplica el ganador de throughput al entorno de ambos modelos (+7,01 % en el cribado, con loss final idéntica); Lumen conserva los dos mecanismos aprobados. Holdout: 830 frente a 802, tercera victoria consecutiva de Lumen en accuracy, pero NLL 5,8633 frente a 5,6503 favorece al Transformer.
+- **185.700→235.700 — +50k en curso.** Cinco segmentos de 10k por modelo, Lumen con los mecanismos aprobados y Transformer como control. No hay resultado final hasta completar ambos entrenamientos y el holdout emparejado.
+
 El primer piloto de 500 pasos detectó un colapso de escrituras en las capas superiores. No se oculta ni se suma al linaje actual: fue una prueba de arranque que ayudó a corregir la ruta residual y la migración homeostática.
 
 La crónica completa explica qué cambió en cada tramo, qué runs fallaron después de producir checkpoints válidos y qué ramas fueron únicamente benchmarks: [Crónica experimental, step 0 → actualidad](docs/CRONICA_EXPERIMENTAL_ES.md).
@@ -140,7 +159,7 @@ En 185,7k Lumen supera al Transformer por **28 respuestas (+1,15 puntos porcentu
 
 El tramo 170,7k→185,7k continuó ambos modelos 15.000 pasos con corpus v2 + personalidad factual, tokenizer y token cache congelados. Lumen mantuvo los dos mecanismos previamente aprobados; la optimización OpenMP se aplicó al entorno de ambos modelos. No se aisló causalmente el efecto de cada cambio.
 
-**Artefactos promovidos:** [checkpoint Lumen (14809524099)](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14809524099) · [checkpoint Transformer (14807032549)](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14807032549) · [holdout emparejado (14811302311)](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14811302311).
+**Artefactos del corte 185.700:** [checkpoint Lumen (14838207679)](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45200252793/artifacts/14838207679) · [checkpoint Transformer (14834055610)](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45200252793/artifacts/14834055610) · [holdout emparejado (14839499639)](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45219320709/artifacts/14839499639).
 
 La training loss tampoco sustituye al holdout: las métricas de entrenamiento y las de generalización responden a preguntas distintas. Las generaciones libres se documentan aparte porque no son comparables directamente con el test de opción múltiple. La serie histórica completa está en la [crónica experimental](docs/CRONICA_EXPERIMENTAL_ES.md).
 

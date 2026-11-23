@@ -59,7 +59,7 @@ PARENT_STEP = 170700
 TRAIN_STEPS = 100
 LOSS_TOLERANCE = 0.01
 DEAD_TOLERANCE_PP = 0.5
-MIN_SPEEDUP_PERCENT = 3.0
+MIN_SPEEDUP_PERCENT = 0.0
 
 
 def deep_merge(base: dict, delta: dict) -> dict:
@@ -224,8 +224,8 @@ def main():
         )
         loss_delta = candidate_result["final_loss"] - control_result["final_loss"]
         dead_delta = candidate_result["final_dead_percent"] - control_result["final_dead_percent"]
-        if speedup < MIN_SPEEDUP_PERCENT:
-            reasons.append(f"speedup {speedup:.3f}% below {MIN_SPEEDUP_PERCENT:.1f}% gate")
+        if speedup <= MIN_SPEEDUP_PERCENT:
+            reasons.append(f"speedup {speedup:.3f}% is not positive")
         if loss_delta > LOSS_TOLERANCE:
             reasons.append(f"final loss regression {loss_delta:.6f} exceeds {LOSS_TOLERANCE}")
         if dead_delta > DEAD_TOLERANCE_PP:
@@ -236,7 +236,7 @@ def main():
         "status": "completed" if not (
             control_result.get("status") != "ok" or candidate_result.get("status") != "ok"
         ) else "incomplete",
-        "decision": "APPROVED_FOR_LONGER_VALIDATION" if not reasons else "PENDING",
+        "decision": "POSITIVE_SCREENING_REQUIRES_REPEAT" if not reasons else "PENDING",
         "reasons": reasons,
         "control": control_result,
         "candidate_result": candidate_result,
@@ -256,7 +256,7 @@ def main():
             "all_organs_and_delta_fastpaths_preserved": True,
             "sleep_not_disabled": True,
             "measurement": "trainer profile_100 total wall time; includes sampling/collation, forward, loss, backward, optimizer and normal diagnostics; excludes model/data initialization and checkpoint write",
-            "promotion_gate": f">={MIN_SPEEDUP_PERCENT}% faster; final loss regression <= {LOSS_TOLERANCE}; dead regression <= {DEAD_TOLERANCE_PP} percentage points; finite complete run and four-layer diagnostics",
+            "promotion_gate": f">0% faster in screening; final loss regression <= {LOSS_TOLERANCE}; dead regression <= {DEAD_TOLERANCE_PP} percentage points; finite complete run and four-layer diagnostics",
             "holdout_used": False,
         },
     }

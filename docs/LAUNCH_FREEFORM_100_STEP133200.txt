@@ -1,0 +1,1 @@
+Launch the reproducible unofficial 100-question free-form generation comparison at exact paired checkpoint step 133200. Seed 31000; frozen Spanish v2 holdout; remove options and gold answers; greedy decoding, max 64 new tokens.

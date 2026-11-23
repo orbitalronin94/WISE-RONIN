@@ -53,7 +53,7 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.SOURCE_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Resolve and verify exact step-219700 checkpoints
+      - name: Resolve and verify nearest valid paired checkpoints
         run: |
           set -euo pipefail
           test -s prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl
@@ -94,7 +94,7 @@ jobs:
           Path("resolved").mkdir(exist_ok=True)
           import shutil
           shutil.copy2(lp,"resolved/lumen-219700.pt")
-          shutil.copy2(tp,"resolved/transformer-219700.pt")
+          shutil.copy2(tp,"resolved/transformer-219750.pt")
           print("LUMEN:",lp,"step",l["step"],"architecture",l["architecture_id"])
           print("Transformer:",tp,"step",t["step"],"architecture",t["architecture_id"])
           print("Checkpoint gap: 50 optimizer updates (LUMEN 219700; Transformer 219750)")

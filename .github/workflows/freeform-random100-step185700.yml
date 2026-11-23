@@ -106,7 +106,11 @@ jobs:
           import json
           from pathlib import Path
           from scripts.freeform_generation_holdout import freeform_prompt
-          probe=freeform_prompt("Contexto: Adri aparece en el relato.\\nPregunta: ¿Qué describe mejor a Adri?\\nOpciones:\\nA) Serio\\nB) Alegre")
+          probe=freeform_prompt("""Contexto: Adri aparece en el relato.
+Pregunta: ¿Qué describe mejor a Adri?
+Opciones:
+A) Serio
+B) Alegre""")
           assert "¿Quién es Adri?" in probe, probe
           assert "Opciones:" not in probe and "A) Serio" not in probe
           rows=[json.loads(line) for line in Path("prepared/random100_holdout.jsonl").read_text(encoding="utf-8").splitlines()]

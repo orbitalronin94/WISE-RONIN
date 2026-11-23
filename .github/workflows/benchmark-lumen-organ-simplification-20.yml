@@ -19,8 +19,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PARENT_RUN_ID: "45136184396"
-  PREPARED_RUN_ID: "45136184396"
+  PARENT_RUN_ID: "45149684913"
+  PREPARED_RUN_ID: "45149684913"
   OMP_DYNAMIC: "FALSE"
   MKL_DYNAMIC: "FALSE"
   OMP_WAIT_POLICY: "PASSIVE"
@@ -90,15 +90,15 @@ jobs:
       - name: Download frozen v2 plus personality corpus
         uses: actions/download-artifact@v7
         with:
-          name: ronin-v2-plus-personality-250k-45136184396
+          name: ronin-v2-plus-personality-250k-45149684913
           path: prepared
           repository: ${{ github.repository }}
           run-id: ${{ env.PREPARED_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Download promoted step-140700 Lumen checkpoint
+      - name: Download promoted step-155700 Lumen checkpoint
         uses: actions/download-artifact@v7
         with:
-          name: ronin-lumen-step140700-v2-personality-45136184396
+          name: ronin-lumen-step155700-v2-personality-45149684913
           path: lumen-parent
           repository: ${{ github.repository }}
           run-id: ${{ env.PARENT_RUN_ID }}
@@ -111,15 +111,15 @@ jobs:
           test -s prepared/artifacts/spanish-v2/tokenizer.json
           python - <<'PY'
           import torch
-          p="lumen-parent/checkpoints/lumen-v2-140700/step_140700.pt"
+          p="lumen-parent/checkpoints/lumen-v2-155700/step_155700.pt"
           s=torch.load(p,map_location="cpu",weights_only=False)
-          assert s["step"] == 140700
+          assert s["step"] == 155700
           assert s["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
           assert s["pilot_all_rows"] is True
           assert s["training_config"]["batch"] == 8 and s["training_config"]["max_len"] == 128
           assert s["tokenizer_sha256"] == "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
           assert s.get("optimizer") and s.get("scheduler_transition") and s.get("rng")
-          assert int(s["scheduler_transition"]["current_step"]) in (140700,140701)
+          assert int(s["scheduler_transition"]["current_step"]) in (155700,155701)
           print("Exact parent verified:",s["step"],"tokens_seen:",s["tokens_seen"])
           PY
       - name: Write baseline profile
@@ -144,14 +144,14 @@ jobs:
           PROFILE: ${{ matrix.profile }}
         run: |
           set -euo pipefail
-          python -m train.train --steps 100 --resume lumen-parent/checkpoints/lumen-v2-140700/step_140700.pt \
+          python -m train.train --steps 100 --resume lumen-parent/checkpoints/lumen-v2-155700/step_155700.pt \
             --phase 1 --pilot-all-rows --no-sleep \
             --data prepared/data/spanish-v2-plus-personality-250k.jsonl \
             --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
             --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
             --batch 8 --max-len 128 --seed 42 --runtime-profile config/runtime_profile.json \
-            --lr 3e-5 --warmup 100 --total-steps 155700 \
-            --scheduler-transition --restart-scheduler-transition --transition-start 140700 --transition-end 155700 \
+            --lr 3e-5 --warmup 100 --total-steps 170700 \
+            --scheduler-transition --restart-scheduler-transition --transition-start 155700 --transition-end 170700 \
             --warmup-transition 100 --transition-plateau-steps 6000 --transition-min-lr-ratio 0.5 \
             --log-every 20 --checkpoint-every 100000 --recovery-checkpoint-every 0 \
             --parameter-check-every 100 --ckpt-dir /tmp/lumen-organ-control \
@@ -195,7 +195,7 @@ jobs:
           assert name in variants
           p.update(variants[name])
           json.dump(p,open("config/runtime_profile.json","w"),indent=2,sort_keys=True)
-          json.dump({"name":name,"steps":100,"seed":42,"parent_step":140700,"changes":variants[name],
+          json.dump({"name":name,"steps":100,"seed":42,"parent_step":155700,"changes":variants[name],
                      "runtime_profile":p,"all_organs_retained":True},
                     open(f"artifacts/results/{name}/hypothesis.json","w"),indent=2,sort_keys=True)
           print(json.dumps({"name":name,"changes":variants[name]},indent=2))
@@ -206,14 +206,14 @@ jobs:
           PROFILE: ${{ matrix.profile }}
         run: |
           set -euo pipefail
-          python -m train.train --steps 100 --resume lumen-parent/checkpoints/lumen-v2-140700/step_140700.pt \
+          python -m train.train --steps 100 --resume lumen-parent/checkpoints/lumen-v2-155700/step_155700.pt \
             --phase 1 --pilot-all-rows --no-sleep \
             --data prepared/data/spanish-v2-plus-personality-250k.jsonl \
             --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
             --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
             --batch 8 --max-len 128 --seed 42 --runtime-profile config/runtime_profile.json \
-            --lr 3e-5 --warmup 100 --total-steps 155700 \
-            --scheduler-transition --restart-scheduler-transition --transition-start 140700 --transition-end 155700 \
+            --lr 3e-5 --warmup 100 --total-steps 170700 \
+            --scheduler-transition --restart-scheduler-transition --transition-start 155700 --transition-end 170700 \
             --warmup-transition 100 --transition-plateau-steps 6000 --transition-min-lr-ratio 0.5 \
             --log-every 20 --checkpoint-every 100000 --recovery-checkpoint-every 0 \
             --parameter-check-every 100 --ckpt-dir /tmp/lumen-organ-candidate \
@@ -254,7 +254,7 @@ jobs:
             "speedup":round(c["total_seconds"]/n["total_seconds"],6) if ok else None,
             "backward_speedup":round(c["backward_seconds"]/n["backward_seconds"],6) if ok and n["backward_seconds"] else None,
             "loss_delta_percent":round(100*(n["mean_loss"]/c["mean_loss"]-1),5) if ok and c["mean_loss"] else None,
-            "parent_step":140700,"final_step":140800,"seed":42,
+            "parent_step":155700,"final_step":155800,"seed":42,
             "measurement":"five 20-step windows; matched training metrics, not a holdout"}
           json.dump(report,open(root/"comparison.json","w"),indent=2)
           print(json.dumps(report,indent=2))

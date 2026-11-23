@@ -1,10 +1,10 @@
-name: LUMEN vs Transformer — paired continuation 219700/219750 to 300000
+name: LUMEN vs Transformer — bloques emparejados de 10k hasta 400k
 
 on:
   push:
     branches: [main]
     paths:
-      - "docs/LAUNCH_PAIRED_219700_300000.txt"
+      - "docs/LAUNCH_PAIRED_219700_400000.txt"
   workflow_dispatch:
 
 permissions:
@@ -12,20 +12,12 @@ permissions:
   actions: read
 
 concurrency:
-  group: lumen-transformer-paired-219700-300000
+  group: lumen-transformer-paired-219700-400000
   cancel-in-progress: false
 
 env:
   SOURCE_RUN_ID: "45230206330"
   DATA_RUN_ID: "45149684913"
-  OMP_NUM_THREADS: "4"
-  MKL_NUM_THREADS: "4"
-  OMP_DYNAMIC: "FALSE"
-  MKL_DYNAMIC: "FALSE"
-  OMP_WAIT_POLICY: "ACTIVE"
-  OMP_PROC_BIND: "close"
-  OMP_PLACES: "cores"
-  KMP_BLOCKTIME: "0"
   PYTHONUNBUFFERED: "1"
 
 jobs:
@@ -37,31 +29,30 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14.10"
-      - name: Install validation dependencies
+      - name: Install project and test dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install numpy tokenizers tqdm pytest
-      - name: Compile and run tests
+          python -m pip install -r requirements.txt pytest
+      - name: Compile and run full test suite
         run: |
           python -m compileall -q model train scripts
           PYTHONPATH=. pytest -q tests
 
-  train-lumen:
+  prepare:
     needs: validate
     runs-on: ubuntu-24.04
-    timeout-minutes: 720
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14.10"
-      - name: Install CPU training runtime
+      - name: Install checkpoint inspection runtime
         run: |
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install numpy tokenizers tqdm
-      - name: Download promoted LUMEN parent artifact
+      - name: Download promoted LUMEN parent
         uses: actions/download-artifact@v7
         with:
           name: lumen-approved-neuroplasticity-step235700-45230206330
@@ -69,144 +60,7 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.SOURCE_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Download frozen corpus, tokenizer, token cache and holdout
-        uses: actions/download-artifact@v7
-        with:
-          name: ronin-v2-plus-personality-250k-45149684913
-          path: prepared
-          repository: ${{ github.repository }}
-          run-id: ${{ env.DATA_RUN_ID }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Resolve and verify promoted LUMEN checkpoint and embedded runtime profile
-        run: |
-          set -euo pipefail
-          test -s prepared/data/spanish-v2-plus-personality-250k.jsonl
-          test -s prepared/data/spanish-v2-plus-personality-token-cache.pt
-          test -s prepared/artifacts/spanish-v2/tokenizer.json
-          python - <<'PY'
-          import hashlib, json, torch
-          from pathlib import Path
-          root=Path("lumen-parent")
-          data=Path("prepared/data/spanish-v2-plus-personality-250k.jsonl")
-          tokenizer=Path("prepared/artifacts/spanish-v2/tokenizer.json")
-          sha=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-          matches=[]
-          for p in root.rglob("*.pt"):
-              try: s=torch.load(p,map_location="cpu",weights_only=False)
-              except Exception: continue
-              if isinstance(s,dict) and int(s.get("step",-1))==219700 and s.get("architecture_id")=="ronin_lumen_v3_3_neuroplasticity":
-                  matches.append((p,s))
-          if len(matches)!=1:
-              raise SystemExit(f"Expected one LUMEN step-219700 checkpoint by internal metadata; found {[str(p) for p,_ in matches]}")
-          src,s=matches[0]
-          assert s.get("seed")==42 and s.get("phase")==1 and s.get("pilot_all_rows") is True
-          assert s.get("v32_ze") is False
-          assert s.get("training_config",{}).get("batch")==8
-          assert s.get("training_config",{}).get("max_len")==128
-          assert s.get("training_config",{}).get("lr")==3e-5
-          assert s.get("training_config",{}).get("total_steps")==235700
-          assert s.get("scheduler_transition") and s.get("optimizer") and s.get("rng")
-          tr=s["scheduler_transition"]
-          assert int(tr.get("current_step",-1)) in (219700,219701), tr
-          assert int(tr.get("start_step",-1))==185700 and int(tr.get("end_step",-1))==235700, tr
-          assert s.get("data_sha256")==sha(data)
-          assert s.get("tokenizer_sha256")==sha(tokenizer)
-          profile=s.get("runtime_profile")
-          assert isinstance(profile,dict) and profile, "Checkpoint does not contain its runtime profile"
-          plasticity=profile.get("plasticity",{})
-          assert float(plasticity.get("inhibition_scale",-1))==0.80, plasticity
-          assert float(plasticity.get("eligibility_retention",-1))==0.98, plasticity
-          for key in ("delta_reuse_write_update","delta_share_causal_masks","delta_always_apply_eligibility","delta_trace_norm_diagnostics_on_demand"):
-              assert profile.get(key) is True, (key,profile.get(key))
-          assert profile.get("delta_pre_normalize") is False
-          assert profile.get("homeostasis_fused_scatter") is False
-          assert int(profile.get("delta_parallel_refinements",-1))==2
-          Path("resolved").mkdir(exist_ok=True)
-          Path("config").mkdir(exist_ok=True)
-          import shutil
-          shutil.copy2(src,"resolved/lumen-219700.pt")
-          Path("config/lumen-runtime-profile.json").write_text(json.dumps(profile,indent=2)+"\n")
-          print("Promoted LUMEN parent:",src,"internal_step=219700")
-          print("Architecture:",s["architecture_id"])
-          print("Original transition:",tr)
-          print("Runtime profile extracted from the checkpoint; plasticity and Delta fast paths verified.")
-          print("data_sha256:",sha(data))
-          print("tokenizer_sha256:",sha(tokenizer))
-          PY
-      - name: Continue LUMEN from 219700 to 300000, preserving optimizer and RNG
-        run: |
-          set -euo pipefail
-          mkdir -p checkpoints/lumen logs
-          CHECKPOINT="resolved/lumen-219700.pt"
-          CURRENT=219700
-          for TARGET in 229700 239700 249700 259700 269700 279700 289700 299700 300000; do
-            STEPS=$((TARGET-CURRENT))
-            RESTART=()
-            if [ "$CURRENT" -eq 219700 ]; then RESTART=(--restart-scheduler-transition); fi
-            echo "LUMEN continuation: $CURRENT -> $TARGET ($STEPS updates)"
-            OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.train \
-              --steps "$STEPS" --resume "$CHECKPOINT" \
-              --phase 1 --pilot-all-rows \
-              --data prepared/data/spanish-v2-plus-personality-250k.jsonl \
-              --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
-              --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
-              --batch 8 --max-len 128 --seed 42 \
-              --runtime-profile config/lumen-runtime-profile.json \
-              --lr 3e-5 --warmup 100 --total-steps 300000 \
-              --scheduler-transition "${RESTART[@]}" \
-              --transition-start 219700 --transition-end 300000 \
-              --warmup-transition 100 --transition-plateau-steps 0 \
-              --transition-min-lr-ratio 0.5 \
-              --log-every 100 --checkpoint-every 1000 \
-              --recovery-checkpoint-every 100 --parameter-check-every 100 \
-              --threads 4 --interop-threads 2 \
-              --ckpt-dir checkpoints/lumen --wall-clock-file lumen-wall.json \
-              2>&1 | tee -a logs/lumen-219700-300000.log
-            CHECKPOINT="checkpoints/lumen/step_${TARGET}.pt"
-            test -s "$CHECKPOINT"
-            CURRENT="$TARGET"
-          done
-      - name: Verify final LUMEN step 300000
-        run: |
-          python - <<'PY'
-          import torch
-          s=torch.load("checkpoints/lumen/step_300000.pt",map_location="cpu",weights_only=False)
-          assert int(s["step"])==300000
-          assert s["architecture_id"]=="ronin_lumen_v3_3_neuroplasticity"
-          assert s["optimizer"] and s["rng"] and s["scheduler_transition"]
-          assert s["runtime_profile"]["plasticity"]["eligibility_retention"]==0.98
-          assert s["runtime_profile"]["delta_reuse_write_update"] is True
-          assert s["runtime_profile"]["delta_share_causal_masks"] is True
-          print("Verified promoted LUMEN lineage at step 300000; optimizer, RNG, organs and runtime profile preserved.")
-          PY
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: lumen-approved-neuroplasticity-step300000-${{ github.run_id }}
-          path: |
-            checkpoints/lumen/
-            logs/lumen-219700-300000.log
-            lumen-wall.json
-            config/lumen-runtime-profile.json
-          if-no-files-found: warn
-          retention-days: 90
-          compression-level: 6
-
-  train-transformer:
-    needs: validate
-    runs-on: ubuntu-24.04
-    timeout-minutes: 720
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.14.10"
-      - name: Install CPU training runtime
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install numpy tokenizers tqdm
-      - name: Download promoted Transformer parent artifact
+      - name: Download promoted Transformer parent
         uses: actions/download-artifact@v7
         with:
           name: transformer-control-step235700-45230206330
@@ -222,114 +76,426 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.DATA_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Resolve and verify promoted Transformer checkpoint
+      - name: Resolve and verify both promoted parents and immutable data
         run: |
           set -euo pipefail
           test -s prepared/data/spanish-v2-plus-personality-250k.jsonl
           test -s prepared/data/spanish-v2-plus-personality-token-cache.pt
           test -s prepared/artifacts/spanish-v2/tokenizer.json
           python - <<'PY'
-          import hashlib, torch
+          import hashlib, json, shutil, torch
           from pathlib import Path
-          root=Path("transformer-parent")
-          data=Path("prepared/data/spanish-v2-plus-personality-250k.jsonl")
-          tokenizer=Path("prepared/artifacts/spanish-v2/tokenizer.json")
-          sha=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-          matches=[]
-          for p in root.rglob("*.pt"):
-              try: s=torch.load(p,map_location="cpu",weights_only=False)
-              except Exception: continue
-              if isinstance(s,dict) and int(s.get("step",-1))==219750 and s.get("architecture_id")=="decoder_transformer_4l_d192_h4_ff576_tied_v1":
-                  matches.append((p,s))
-          if len(matches)!=1:
-              raise SystemExit(f"Expected one Transformer step-219750 checkpoint by internal metadata; found {[str(p) for p,_ in matches]}")
-          src,s=matches[0]
-          cfg=s.get("training_config",{})
-          assert s.get("seed")==42
-          assert cfg.get("batch")==8 and cfg.get("max_len")==128
-          assert cfg.get("lr")==7.5e-5 and cfg.get("total_steps")==235700
-          tr=s.get("scheduler_transition")
-          assert tr and s.get("optimizer") and s.get("scheduler") and s.get("rng")
-          assert int(tr.get("current_step",-1)) in (219750,219751), tr
-          assert int(tr.get("start_step",-1))==185700 and int(tr.get("end_step",-1))==235700, tr
-          assert s.get("data_sha256")==sha(data)
-          assert s.get("tokenizer_sha256")==sha(tokenizer)
-          Path("resolved").mkdir(exist_ok=True)
-          import shutil
-          shutil.copy2(src,"resolved/transformer-219750.pt")
-          print("Promoted Transformer parent:",src,"internal_step=219750")
-          print("Architecture:",s["architecture_id"])
-          print("Original transition:",tr)
-          print("data_sha256:",sha(data))
-          print("tokenizer_sha256:",sha(tokenizer))
+          sha=lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
+          def resolve(root, step, arch):
+              found=[]
+              for p in Path(root).rglob("*.pt"):
+                  try: s=torch.load(p,map_location="cpu",weights_only=False)
+                  except Exception: continue
+                  if isinstance(s,dict) and int(s.get("step",-1))==step and s.get("architecture_id")==arch:
+                      found.append((p,s))
+              if len(found)!=1: raise SystemExit(f"Expected exactly one {arch} step {step}, found {[str(p) for p,_ in found]}")
+              return found[0]
+          lp,ls=resolve("lumen-parent",219700,"ronin_lumen_v3_3_neuroplasticity")
+          tp,ts=resolve("transformer-parent",219750,"decoder_transformer_4l_d192_h4_ff576_tied_v1")
+          data="prepared/data/spanish-v2-plus-personality-250k.jsonl"
+          tok="prepared/artifacts/spanish-v2/tokenizer.json"
+          assert ls.get("seed")==42 and ls.get("phase")==1 and ls.get("pilot_all_rows") is True
+          assert ls.get("v32_ze") is False
+          lc=ls.get("training_config",{})
+          assert lc.get("batch")==8 and lc.get("max_len")==128 and lc.get("lr")==3e-5 and lc.get("total_steps")==235700
+          lt=ls.get("scheduler_transition")
+          assert lt and int(lt.get("current_step",-1)) in (219700,219701)
+          assert int(lt.get("start_step",-1))==185700 and int(lt.get("end_step",-1))==235700
+          assert ls.get("optimizer") and ls.get("rng")
+          assert ls.get("data_sha256")==sha(data) and ls.get("tokenizer_sha256")==sha(tok)
+          profile=ls.get("runtime_profile")
+          assert isinstance(profile,dict) and profile
+          pl=profile.get("plasticity",{})
+          assert float(pl.get("inhibition_scale",-1))==0.8 and float(pl.get("eligibility_retention",-1))==0.98
+          for k in ("delta_reuse_write_update","delta_share_causal_masks","delta_always_apply_eligibility","delta_trace_norm_diagnostics_on_demand"): assert profile.get(k) is True,(k,profile.get(k))
+          assert profile.get("delta_pre_normalize") is False and profile.get("homeostasis_fused_scatter") is False
+          assert int(profile.get("delta_parallel_refinements",-1))==2
+          assert ts.get("seed")==42
+          tc=ts.get("training_config",{})
+          assert tc.get("batch")==8 and tc.get("max_len")==128 and tc.get("lr")==7.5e-5 and tc.get("total_steps")==235700
+          tt=ts.get("scheduler_transition")
+          assert tt and int(tt.get("current_step",-1)) in (219750,219751)
+          assert int(tt.get("start_step",-1))==185700 and int(tt.get("end_step",-1))==235700
+          assert ts.get("optimizer") and ts.get("scheduler") and ts.get("rng")
+          assert ts.get("data_sha256")==sha(data) and ts.get("tokenizer_sha256")==sha(tok)
+          b=Path("bundle"); (b/"parent").mkdir(parents=True,exist_ok=True)
+          (b/"data").mkdir(parents=True,exist_ok=True); (b/"artifacts").mkdir(parents=True,exist_ok=True); (b/"config").mkdir(parents=True,exist_ok=True)
+          shutil.copy2(lp,b/"parent/lumen-219700.pt"); shutil.copy2(tp,b/"parent/transformer-219750.pt")
+          shutil.copy2(data,b/"data/spanish-v2-plus-personality-250k.jsonl")
+          shutil.copy2("prepared/data/spanish-v2-plus-personality-token-cache.pt",b/"data/spanish-v2-plus-personality-token-cache.pt")
+          shutil.copy2(tok,b/"artifacts/tokenizer.json")
+          (b/"config/lumen-runtime-profile.json").write_text(json.dumps(profile,indent=2)+"\\n")
+          print("Both parents, exact global steps, architectures, optimizer/RNG, scheduler, shared data hashes and approved LUMEN profile verified.")
           PY
-      - name: Continue Transformer from 219750 to 300000, preserving optimizer and RNG
-        run: |
-          set -euo pipefail
-          mkdir -p checkpoints/transformer logs
-          CHECKPOINT="resolved/transformer-219750.pt"
-          CURRENT=219750
-          for TARGET in 229750 239750 249750 259750 269750 279750 289750 299750 300000; do
-            STEPS=$((TARGET-CURRENT))
-            RESTART=()
-            if [ "$CURRENT" -eq 219750 ]; then RESTART=(--restart-scheduler-transition); fi
-            echo "Transformer continuation: $CURRENT -> $TARGET ($STEPS updates)"
-            OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.transformer_baseline \
-              --steps "$STEPS" --resume "$CHECKPOINT" \
-              --data prepared/data/spanish-v2-plus-personality-250k.jsonl \
-              --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
-              --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
-              --batch 8 --max-len 128 --seed 42 --threads 4 \
-              --lr 7.5e-5 --warmup 100 --total-steps 300000 \
-              --scheduler-transition "${RESTART[@]}" \
-              --transition-start 219750 --transition-end 300000 \
-              --warmup-transition 100 --transition-plateau-steps 0 \
-              --transition-min-lr-ratio 0.5 \
-              --parameter-check-every 100 \
-              --ckpt-dir checkpoints/transformer --wall-clock-file transformer-wall.json \
-              2>&1 | tee -a logs/transformer-219750-300000.log
-            CHECKPOINT="checkpoints/transformer/step_${TARGET}.pt"
-            test -s "$CHECKPOINT"
-            CURRENT="$TARGET"
-          done
-      - name: Verify final Transformer step 300000
-        run: |
-          python - <<'PY'
-          import torch
-          s=torch.load("checkpoints/transformer/step_300000.pt",map_location="cpu",weights_only=False)
-          assert int(s["step"])==300000
-          assert s["architecture_id"]=="decoder_transformer_4l_d192_h4_ff576_tied_v1"
-          assert s["optimizer"] and s["rng"] and s["scheduler_transition"]
-          print("Verified Transformer control lineage at step 300000; optimizer and RNG preserved.")
-          PY
-      - uses: actions/upload-artifact@v7
-        if: always()
+      - name: Publish immutable inputs for every block
+        uses: actions/upload-artifact@v7
         with:
-          name: transformer-control-step300000-${{ github.run_id }}
-          path: |
-            checkpoints/transformer/
-            logs/transformer-219750-300000.log
-            transformer-wall.json
-          if-no-files-found: warn
+          name: paired-inputs-${{ github.run_id }}
+          path: bundle/
+          if-no-files-found: error
           retention-days: 90
-          compression-level: 6
+          compression-level: 1
 
+  lumen-229700:
+    needs: [prepare]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 229700
+      parent_step: 219700
+      steps: 10000
+      first_block: true
+  lumen-239700:
+    needs: [lumen-229700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 239700
+      parent_step: 229700
+      steps: 10000
+      first_block: false
+  lumen-249700:
+    needs: [lumen-239700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 249700
+      parent_step: 239700
+      steps: 10000
+      first_block: false
+  lumen-259700:
+    needs: [lumen-249700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 259700
+      parent_step: 249700
+      steps: 10000
+      first_block: false
+  lumen-269700:
+    needs: [lumen-259700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 269700
+      parent_step: 259700
+      steps: 10000
+      first_block: false
+  lumen-279700:
+    needs: [lumen-269700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 279700
+      parent_step: 269700
+      steps: 10000
+      first_block: false
+  lumen-289700:
+    needs: [lumen-279700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 289700
+      parent_step: 279700
+      steps: 10000
+      first_block: false
+  lumen-299700:
+    needs: [lumen-289700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 299700
+      parent_step: 289700
+      steps: 10000
+      first_block: false
+  lumen-309700:
+    needs: [lumen-299700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 309700
+      parent_step: 299700
+      steps: 10000
+      first_block: false
+  lumen-319700:
+    needs: [lumen-309700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 319700
+      parent_step: 309700
+      steps: 10000
+      first_block: false
+  lumen-329700:
+    needs: [lumen-319700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 329700
+      parent_step: 319700
+      steps: 10000
+      first_block: false
+  lumen-339700:
+    needs: [lumen-329700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 339700
+      parent_step: 329700
+      steps: 10000
+      first_block: false
+  lumen-349700:
+    needs: [lumen-339700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 349700
+      parent_step: 339700
+      steps: 10000
+      first_block: false
+  lumen-359700:
+    needs: [lumen-349700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 359700
+      parent_step: 349700
+      steps: 10000
+      first_block: false
+  lumen-369700:
+    needs: [lumen-359700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 369700
+      parent_step: 359700
+      steps: 10000
+      first_block: false
+  lumen-379700:
+    needs: [lumen-369700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 379700
+      parent_step: 369700
+      steps: 10000
+      first_block: false
+  lumen-389700:
+    needs: [lumen-379700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 389700
+      parent_step: 379700
+      steps: 10000
+      first_block: false
+  lumen-399700:
+    needs: [lumen-389700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 399700
+      parent_step: 389700
+      steps: 10000
+      first_block: false
+  lumen-400000:
+    needs: [lumen-399700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "lumen"
+      target_step: 400000
+      parent_step: 399700
+      steps: 300
+      first_block: false
+  transformer-229700:
+    needs: [prepare]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 229700
+      parent_step: 219750
+      steps: 9950
+      first_block: true
+  transformer-239700:
+    needs: [transformer-229700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 239700
+      parent_step: 229700
+      steps: 10000
+      first_block: false
+  transformer-249700:
+    needs: [transformer-239700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 249700
+      parent_step: 239700
+      steps: 10000
+      first_block: false
+  transformer-259700:
+    needs: [transformer-249700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 259700
+      parent_step: 249700
+      steps: 10000
+      first_block: false
+  transformer-269700:
+    needs: [transformer-259700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 269700
+      parent_step: 259700
+      steps: 10000
+      first_block: false
+  transformer-279700:
+    needs: [transformer-269700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 279700
+      parent_step: 269700
+      steps: 10000
+      first_block: false
+  transformer-289700:
+    needs: [transformer-279700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 289700
+      parent_step: 279700
+      steps: 10000
+      first_block: false
+  transformer-299700:
+    needs: [transformer-289700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 299700
+      parent_step: 289700
+      steps: 10000
+      first_block: false
+  transformer-309700:
+    needs: [transformer-299700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 309700
+      parent_step: 299700
+      steps: 10000
+      first_block: false
+  transformer-319700:
+    needs: [transformer-309700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 319700
+      parent_step: 309700
+      steps: 10000
+      first_block: false
+  transformer-329700:
+    needs: [transformer-319700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 329700
+      parent_step: 319700
+      steps: 10000
+      first_block: false
+  transformer-339700:
+    needs: [transformer-329700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 339700
+      parent_step: 329700
+      steps: 10000
+      first_block: false
+  transformer-349700:
+    needs: [transformer-339700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 349700
+      parent_step: 339700
+      steps: 10000
+      first_block: false
+  transformer-359700:
+    needs: [transformer-349700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 359700
+      parent_step: 349700
+      steps: 10000
+      first_block: false
+  transformer-369700:
+    needs: [transformer-359700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 369700
+      parent_step: 359700
+      steps: 10000
+      first_block: false
+  transformer-379700:
+    needs: [transformer-369700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 379700
+      parent_step: 369700
+      steps: 10000
+      first_block: false
+  transformer-389700:
+    needs: [transformer-379700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 389700
+      parent_step: 379700
+      steps: 10000
+      first_block: false
+  transformer-399700:
+    needs: [transformer-389700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 399700
+      parent_step: 389700
+      steps: 10000
+      first_block: false
+  transformer-400000:
+    needs: [transformer-399700]
+    uses: ./.github/workflows/train-paired-block.yml
+    with:
+      model: "transformer"
+      target_step: 400000
+      parent_step: 399700
+      steps: 300
+      first_block: false
   paired-summary:
-    needs: [validate, train-lumen, train-transformer]
+    needs: [lumen-400000, transformer-400000]
     if: always()
     runs-on: ubuntu-24.04
     steps:
-      - name: Report paired continuation outcomes
+      - name: Report final paired status
         env:
-          VALIDATE_RESULT: ${{ needs.validate.result }}
-          LUMEN_RESULT: ${{ needs.train-lumen.result }}
-          TRANSFORMER_RESULT: ${{ needs.train-transformer.result }}
+          LUMEN_RESULT: ${{ needs.lumen-400000.result }}
+          TRANSFORMER_RESULT: ${{ needs.transformer-400000.result }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          echo "Paired continuation 219700/219750 -> 300000: run $RUN_ID"
-          echo "Validation: $VALIDATE_RESULT"
+          echo "Run $RUN_ID — paired continuation 219700/219750 -> 400000"
           echo "LUMEN: $LUMEN_RESULT"
           echo "Transformer: $TRANSFORMER_RESULT"
-          test "$VALIDATE_RESULT" = success
           test "$LUMEN_RESULT" = success
           test "$TRANSFORMER_RESULT" = success

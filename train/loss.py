@@ -3,6 +3,16 @@ import torch
 from torch.nn import functional as F
 
 
+def repetition_loss_shared_normalization(logits):
+    """Exact triple-token repetition probability with one shared log-softmax."""
+    log_probs = F.log_softmax(logits, dim=-1)
+    log_triple = torch.logsumexp(
+        log_probs[:, :-2] + log_probs[:, 1:-1] + log_probs[:, 2:],
+        dim=-1,
+    )
+    return log_triple.exp().mean()
+
+
 def perdida_total(output, targets, model, use_jepa=True, use_rep=True,
                   use_free_energy=False, beta=0.01, pad_id=0):
     logits = output["logits"]
@@ -31,16 +41,7 @@ def perdida_total(output, targets, model, use_jepa=True, use_rep=True,
 
     repetition_loss = logits.new_zeros(())
     if use_rep and steps >= 3:
-        # Exact log-domain form of sum_v p_t(v) p_{t+1}(v) p_{t+2}(v).
-        # Avoids materializing three full B x T x V softmax tensors.
-        # Each timestep participates in up to three adjacent triples. Normalize
-        # the full logits tensor once, then reuse those log-probabilities.
-        log_probs = F.log_softmax(logits, dim=-1)
-        log_triple = torch.logsumexp(
-            log_probs[:, :-2] + log_probs[:, 1:-1] + log_probs[:, 2:],
-            dim=-1,
-        )
-        repetition_loss = log_triple.exp().mean()
+        repetition_loss = repetition_loss_shared_normalization(logits)
 
     complexity = output.get("free_energy_complexity", logits.new_zeros(()))
     if not use_free_energy:

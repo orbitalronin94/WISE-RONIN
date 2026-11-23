@@ -463,6 +463,14 @@ def main():
         allowed_missing = {f"homeo.{i}.effective_m" for i in range(len(model.homeo))}
         allowed_missing |= {"pain.loss_ema", "pain.pain", "pain.last_regression",
                             "pleasure.loss_ema", "pleasure.pleasure", "pleasure.last_improvement"}
+        # Step-140700 V3.2 parents predate persistent eligibility traces.
+        # The model constructor initializes these new buffers to zero; keep
+        # those defaults while restoring every tensor that exists in the parent.
+        allowed_missing |= {
+            f"delta_layers.{i}.{name}"
+            for i in range(len(model.delta_layers))
+            for name in ("eligibility_trace", "eligibility_modulator")
+        }
         missing = set(incompatible.missing_keys)
         unexpected = set(incompatible.unexpected_keys)
         if missing - allowed_missing or unexpected:
@@ -471,8 +479,10 @@ def main():
                 f"unexpected={sorted(unexpected)}"
             )
         if missing:
-            LOG.warning("Migrated legacy checkpoint: initialized post-gate activity EMA for %d homeostasis layers",
-                        len(missing))
+            LOG.warning(
+                "Checkpoint compatibility migration: retained constructor defaults "
+                "for %d approved new buffers: %s", len(missing), sorted(missing)
+            )
         optimizer.load_state_dict(state["optimizer"])
         for group in optimizer.param_groups:
             group["foreach"] = not args.disable_foreach

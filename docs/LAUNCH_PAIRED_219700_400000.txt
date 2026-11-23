@@ -2,26 +2,30 @@ RECUPERACIÓN Y CONTINUACIÓN EMPAREJADA — 229.700 → 400.000
 Fecha: 2026-11-23
 Repositorio: orbitalronin94/WISE-RONIN
 
-CHECKPOINTS DE PARTIDA
-- LUMEN: checkpoint final exacto step 229700, artefacto lumen-step-229700-45262377661, run 45262377661.
-- Transformer: checkpoint final exacto step 229700, artefacto transformer-step-229700-45262377661, run 45262377661.
-- Ambos bloques 219700/219750 → 229700 terminaron correctamente.
-- El fallo posterior no fue del entrenamiento: el workflow no incluyó el directorio checkpoint/ en el artefacto, aunque los jobs posteriores intentaban descargar previous/checkpoint/step_PARENT.pt.
-- Se recuperan los checkpoints finales de ambos modelos; no se repite el tramo ya completado.
+CHECKPOINTS DE PARTIDA — USAR EL CHECK POSTERIOR DEL PRIMER BLOQUE COMPLETADO
+- LUMEN: checkpoint final exacto step 229700, artefacto lumen-step-229700-45262377661.
+- Transformer: checkpoint final exacto step 229700, artefacto transformer-step-229700-45262377661.
+- Ambos proceden del run 45262377661 y son el resultado posterior a sus respectivos bloques de 10.000 pasos.
+- No usar los artefactos step_239700 de ese run: son artefactos vacíos de 241/260 bytes. Los jobs 229700 sí completaron; los jobs 239700 fallaron antes de ejecutar el entrenamiento por incompatibilidad de la transición de scheduler.
+- El run 45272793646 también falló en preparación por asumir erróneamente que ambos schedulers tenían start_step=219700.
+- Se continúa desde 229700; no se repite el tramo ya completado ni se parte de los checkpoints antiguos 219700/219750.
 
 PLAN DE BLOQUES
 - Ambos modelos parten exactamente de 229700.
 - 229700 → 239700 → 249700 → 259700 → 269700 → 279700 → 289700 → 299700 → 309700 → 319700 → 329700 → 339700 → 349700 → 359700 → 369700 → 379700 → 389700 → 399700.
 - Último bloque: 399700 → 400000 (300 pasos).
 - Los bloques de 10.000 son jobs independientes y secuenciales por modelo; LUMEN y Transformer avanzan en paralelo.
-- Cada job publica el checkpoint en dos ubicaciones: checkpoints/<modelo>/step_N.pt y checkpoint/step_N.pt. La segunda es la ruta canónica que consumen los jobs siguientes.
-- Cada bloque publica también logs y wall-clock; retención 90 días. Si falla un bloque, la cadena se detiene y el último checkpoint válido queda recuperable.
+- Cada job publica el checkpoint en checkpoints/<modelo>/step_N.pt y en checkpoint/step_N.pt. La segunda ruta es obligatoria y canónica para el siguiente bloque.
+- Antes de publicar, comprobar que el archivo canónico existe, se puede cargar y contiene exactamente el step esperado. El siguiente job descarga el artefacto del job padre, comprueba que existe previous/checkpoint/step_PARENT.pt, carga el checkpoint y verifica step, arquitectura, optimizer, RNG y scheduler antes de iniciar.
+- El siguiente bloque depende del éxito del job anterior; si falla entrenamiento, validación o publicación, la cadena se detiene. Nunca se inicia un bloque con un artefacto incompleto o un parent alternativo.
+- Cada job publica logs, wall-clock y checkpoint con retención 90 días.
 
 CONFIGURACIÓN
 - LR LUMEN: 5e-5.
-- LR Transformer: 5e-5 para mantener comparación emparejada con el mismo LR.
-- Se conservan pesos, optimizer, RNG y datos. Se inicia una nueva transición coseno desde el LR efectivo del checkpoint 229700 hacia 5e-5, hasta el paso 400000; los momentos del optimizer no se reinician.
-- El metadato training_config.lr de cada checkpoint recuperado se alinea con 5e-5 para que el trainer valide el cambio explícito de régimen. Los pesos y estados del optimizer/RNG no se modifican.
+- LR Transformer: 5e-5.
+- Se conservan pesos, optimizer, RNG y corpus. La transición coseno se reinicia una sola vez en el primer bloque reanudado, preservando los momentos del optimizer.
+- Origen de scheduler original validado por separado: LUMEN start_step=219700; Transformer start_step=219750. Ambos deben acabar en 400000. No forzar un origen común ficticio.
+- Se ajusta el metadato training_config.lr a 5e-5 en la copia recuperada para validar el nuevo régimen; no se alteran pesos, optimizer ni RNG.
 - Corpus congelado ronin-v2-plus-personality-250k; tokenizer v2 (4096 IDs); token cache.
 - Batch 8; contexto 128; seed 42.
 - LUMEN conserva su runtime profile aprobado, plasticidad y fast paths Delta.
@@ -35,6 +39,4 @@ VALIDACIÓN
 
 WORKFLOWS
 - .github/workflows/continue-paired-219700-300000.yml: orquestador de la reanudación desde 229700.
-- .github/workflows/train-paired-block.yml: un bloque independiente.
-
-RETRIGGER: LR 5e-5 transition restarts only on the first resumed block; subsequent blocks preserve its scheduler state.
+- .github/workflows/train-paired-block.yml: un bloque independiente, con publicación y validación de parent entre bloques.

@@ -155,6 +155,11 @@ jobs:
     if: always()
     runs-on: ubuntu-24.04
     steps:
+      - name: Checkout frozen main runtime profile
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: baseline-main
       - name: Checkout candidate registry
         uses: actions/checkout@v7
         with:

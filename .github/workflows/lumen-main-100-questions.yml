@@ -1,0 +1,79 @@
+name: LUMEN main — 100 open-ended questions
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/lumen-main-100-questions.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: lumen-main-100-questions
+  cancel-in-progress: false
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU inference runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers
+      - name: Download frozen tokenizer and corpus artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-v2-plus-personality-250k-45149684913
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: "45149684913"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download promoted LUMEN main checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-approved-neuroplasticity-step235700-45230206330
+          path: lumen
+          repository: ${{ github.repository }}
+          run-id: "45230206330"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify exact checkpoint and 100 fixed questions
+        run: |
+          set -euo pipefail
+          test -s prepared/artifacts/spanish-v2/tokenizer.json
+          test -s lumen/checkpoints/lumen/latest_good.pt
+          python - <<'PY'
+          import json, torch
+          from pathlib import Path
+          rows=[json.loads(x) for x in Path("data/freeform_identity_general_100.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(rows)==100 and len({r["id"] for r in rows})==100
+          state=torch.load("lumen/checkpoints/lumen/latest_good.pt",map_location="cpu",weights_only=False)
+          assert int(state.get("step",-1))==219700, state.get("step")
+          assert state.get("model")
+          assert rows[0]["prompt"]=="¿Quién eres?"
+          print("Verified promoted LUMEN step 219700 and 100 unique questions, including ¿Quién eres?.")
+          PY
+      - name: Generate answers
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          OMP_NUM_THREADS: "4"
+          MKL_NUM_THREADS: "4"
+          PYTHONUNBUFFERED: "1"
+        run: python scripts/freeform_lumen_main_100.py
+      - name: Upload all prompts and answers
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lumen-main-219700-100-open-questions-${{ github.run_id }}
+          path: results/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Report
+        if: always()
+        run: |
+          test -s results/lumen_main_219700_100_questions.json
+          echo "LUMEN main answered 100 open-ended questions."

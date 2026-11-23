@@ -154,26 +154,32 @@ def main():
         shutil.copyfileobj(train.open("r",encoding="utf-8"),dst)
         # 1) Source-scoped Spanish public-domain literature: train partition only.
         lit=Path(args.literature_dir)/"train.txt"
-        if lit.exists():
-            doc_n=chunk_n=0
-            with lit.open(encoding="utf-8",errors="replace") as f:
-                for di,raw in enumerate(f):
-                    text=re.sub(r"\s+"," ",raw).strip()
-                    if len(text)<100: continue
-                    doc_n+=1; ids=tok.encode(text).ids
-                    for off in range(0,len(ids),126):
-                        piece=tok.decode(ids[off:off+126],skip_special_tokens=True).strip()
-                        if len(piece)<60: continue
-                        row={"id":f"heretic-literature-{di:06d}-{off//126:04d}","prompt":"",
-                             "completion":piece,"task":"raw_text_pretraining","language":"es",
-                             "source":"RONIN-IA Spanish public-domain literature train",
-                             "source_id":str(di),"license":"public-domain text; source manifests CLiGS/ELTeC",
-                             "source_manifest":"RONIN-IA:data/datasets/admitted/literature-es-v1/manifest.json"}
-                        if write_row(dst,row,seen_pairs,seen_text): chunk_n+=1; added+=1
-                        else: dropped["literature_exact_duplicate"]+=1
-            new_counts["literature_documents"]=doc_n; new_counts["literature_chunks"]=chunk_n
+        lit_manifest=Path(args.literature_dir)/"dataset-manifest.json"
+        if lit.exists() and lit_manifest.exists():
+            lm=json.loads(lit_manifest.read_text(encoding="utf-8"))
+            if lm.get("document_count")!=608 or lm.get("validation_test_included") is not False:
+                raise RuntimeError("Literature artifact is not the expected 608-document train-only partition")
+            segments=[x.strip() for x in re.split(r"\n\s*\n",lit.read_text(encoding="utf-8",errors="replace")) if x.strip()]
+            chunk_n=0
+            for di,text in enumerate(segments):
+                text=re.sub(r"\s+"," ",text).strip()
+                if len(text)<100: continue
+                ids=tok.encode(text).ids
+                for off in range(0,len(ids),126):
+                    piece=tok.decode(ids[off:off+126],skip_special_tokens=True).strip()
+                    if len(piece)<60: continue
+                    row={"id":f"ronin-literature-{di:06d}-{off//126:04d}","prompt":"",
+                         "completion":piece,"task":"raw_text_pretraining","language":"es",
+                         "source":"RONIN-IA Spanish public-domain literature train",
+                         "source_id":str(di),"license":"public-domain text; source manifests CLiGS/ELTeC",
+                         "source_manifest":"RONIN-IA:data/datasets/admitted/literature-es-v1/manifest.json"}
+                    if write_row(dst,row,seen_pairs,seen_text): chunk_n+=1; added+=1
+                    else: dropped["literature_exact_duplicate"]+=1
+            new_counts["literature_documents"]=lm["document_count"]
+            new_counts["literature_text_segments"]=len(segments)
+            new_counts["literature_chunks"]=chunk_n
         else:
-            raise RuntimeError("Literature train.txt missing from admitted artifact")
+            raise RuntimeError("Literature train.txt or dataset-manifest.json missing from admitted artifact")
         # 2) mPersonas Spanish: one final assistant turn per validated conversation.
         persona_n=0
         for row in persona_rows(args.persona_limit):

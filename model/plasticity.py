@@ -48,6 +48,6 @@ class PlasticityProfile:
             raise ValueError("eligibility_retention must be in [0.90,0.99]")
         if not 0.0 <= result.attention_gain <= 1.0:
             raise ValueError("attention_gain must be in [0,1]")
-        if name == "neutral" and any(result.__dict__[k] != v for k, v in presets[name].items()):
+        if name == "neutral" and result != cls():
             raise ValueError("neutral profile must remain the exact identity")
         return result

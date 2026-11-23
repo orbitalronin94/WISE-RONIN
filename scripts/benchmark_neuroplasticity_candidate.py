@@ -122,7 +122,9 @@ def run_training(root: Path, label: str, profile: dict, args, out: Path) -> dict
         "logged_steps": len(records),
         "log_file": log_path.name,
         "profile_file": profile_path.name,
-        "nonfinite_marker": "NONFINITE" in raw or "nan" in raw.lower() or "inf" in raw.lower(),
+        "sleep_skipped": "Sleep skipped" in raw,
+        "sleep_calls": raw.count("sleep_called:"),
+        "nonfinite_marker": "NONFINITE" in raw or bool(re.search(r"\\b(?:nan|inf)\\b", raw, re.IGNORECASE)),
     }
     if proc.returncode == 0 and len(records) == 100 and not result["nonfinite_marker"]:
         losses = [r["loss"] for r in records]
@@ -173,6 +175,13 @@ def main():
     else:
         candidate = run_training(args.candidate_root, "candidate", candidate_profile, args, args.output)
         reasons = []
+        if args.candidate in {"17_prioritized_replay", "18_sleep_downscaling"}:
+            if candidate.get("sleep_skipped"):
+                candidate["status"] = "not_exercised"
+                candidate["reason"] = "no había registros consolidados; el órgano de sueño no llegó a actuar"
+            elif candidate.get("sleep_calls", 0) < 1:
+                candidate["status"] = "not_exercised"
+                candidate["reason"] = "el plan de 100 pasos no ejecutó ningún ciclo de sueño"
         if candidate["status"] != "ok":
             reasons.append("no completó 100 pasos válidos o produjo métricas no finitas")
         else:

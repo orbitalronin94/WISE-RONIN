@@ -50,6 +50,13 @@ def main():
         | {"artifact_path": str(p.parent.relative_to(args.root))}
         for p in files
     ]
+    names = [r.get("candidate") for r in reports]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    unknown = sorted(set(names) - set(EXPECTED_CANDIDATES))
+    if duplicates:
+        raise ValueError(f"duplicate candidate reports: {duplicates}")
+    if unknown:
+        raise ValueError(f"unexpected candidate reports: {unknown}")
     by_name = {r.get("candidate"): r for r in reports}
     missing = [name for name in EXPECTED_CANDIDATES if name not in by_name]
     pending_missing = [
@@ -123,10 +130,13 @@ def main():
         ],
         "combination_conflicts": conflicts,
         "combined_profile": combined,
-        "training_authorized": bool(approved) and not conflicts and not missing,
+        # A 100-step screen is never sufficient authorization for a training run.
+        # Every apparent winner must first survive longer paired replication and holdout.
+        "training_authorized": False,
         "training_note": (
-            "La configuración combina únicamente los candidatos aprobados. "
-            "La base de señales compartidas es común a todos los candidatos de esta rama; el perfil base se toma del main congelado."
+            "Este torneo es solo cribado. Ningún resultado autoriza entrenamiento ni merge: "
+            "los candidatos que pasen requieren réplica emparejada más larga, revisión de "
+            "interacciones y validación de estabilidad/holdout."
         ),
     }
     (args.root / "approved_candidates.json").write_text(
@@ -137,8 +147,8 @@ def main():
     lines = [
         "# Resultado — torneo de 20 hipótesis sobre mecanismos pendientes",
         "",
-        f"- Artefactos recibidos: **{len(reports)}/18**",
-        f"- Evaluaciones contabilizadas: **{len(approved) + len(pending)}/18**",
+        f"- Artefactos recibidos: **{len(reports)}/20**",
+        f"- Evaluaciones contabilizadas: **{len(reports) + len(missing)}/20**",
         f"- Aprobados: **{len(approved)}**",
         f"- Pendientes: **{len(pending)}**",
         f"- Perfil combinado sin conflictos: **{'sí' if combined is not None else 'no'}**",
@@ -184,9 +194,9 @@ def main():
         "",
         "## Nota metodológica",
         "",
-        "El control ejecuta main; cada candidato ejecuta el HEAD de esta PR con la base de señales compartidas "
-        "y un único delta funcional. Por tanto, un aprobado acredita ese paquete (base compartida + delta), "
-        "no una atribución causal aislada del delta respecto a la base compartida.",
+        "El control ejecuta main; cada candidata ejecuta el mismo código de entrenamiento con el perfil congelado "
+        "de main más un único delta funcional. La comparación estima el efecto de ese delta bajo este "
+        "checkpoint y este cribado; no demuestra causalidad general ni estabilidad a largo plazo.",
         "",
         "ELM queda fuera de este torneo: es un probe analítico offline, no modifica el camino de entrenamiento "
         "autoregresivo y no puede mejorar la loss del trainer en esta comparación. Requiere un benchmark auxiliar.",

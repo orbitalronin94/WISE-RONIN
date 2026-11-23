@@ -10,6 +10,7 @@ class MemoriaElastica(nn.Module):
         self.dim = dim
         self.small_pe = float(small_pe)
         self.large_pe = float(large_pe)
+        self.bmm_read = False
         self.mlp = nn.Sequential(
             nn.Linear(dim, hidden), nn.GELU(), nn.Linear(hidden, dim)
         )
@@ -70,11 +71,17 @@ class MemoriaElastica(nn.Module):
             slow = torch.zeros_like(x)
         else:
             bank = self.lenta[valid]
-            weights = torch.softmax(
-                torch.einsum("btd,sd->bts", x, bank) / (self.dim ** 0.5),
-                dim=-1,
-            )
-            slow = torch.einsum("bts,sd->btd", weights, bank)
+            if self.bmm_read:
+                flat_x = x.reshape(-1, self.dim)
+                scores = torch.matmul(flat_x, bank.transpose(0, 1)).reshape(x.shape[0], x.shape[1], -1)
+                weights = torch.softmax(scores / (self.dim ** 0.5), dim=-1)
+                slow = torch.matmul(weights, bank)
+            else:
+                weights = torch.softmax(
+                    torch.einsum("btd,sd->bts", x, bank) / (self.dim ** 0.5),
+                    dim=-1,
+                )
+                slow = torch.einsum("bts,sd->btd", weights, bank)
             if self.training:
                 with torch.no_grad():
                     usage = torch.zeros_like(self.usage_ema)

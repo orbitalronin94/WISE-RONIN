@@ -181,7 +181,7 @@ Las hipótesis exploran número de hilos intra/inter-op, MKLDNN, AdamW foreach, 
 
 **Restricción arquitectónica no negociable:** no se elimina, desactiva ni reduce ningún órgano. Los perfiles candidatos solo pueden cambiar parámetros de ejecución; glucosa, dolor, placer, homeostasis, Delta, memoria, chunking, cabezas, objetivo de entrenamiento y fastpaths ya aprobados permanecen idénticos. El workflow valida además que ninguna candidata modifique los ajustes protegidos.
 
-Gate de cribado: al menos **3 % más pasos/segundo**, regresión de loss final no superior a **0,01**, empeoramiento de actividad muerta no superior a **0,5 puntos porcentuales**, ejecución completa y diagnósticos de las cuatro capas. Un aprobado solo pasa a validación larga repetida; no se promociona automáticamente a producción. No es un holdout ni una afirmación de generalización.
+Gate de cribado: se conserva **cualquier mejora positiva de pasos/segundo (>0 %)**, siempre que la regresión de loss final no supere **0,01**, el empeoramiento de actividad muerta no supere **0,5 puntos porcentuales**, la ejecución sea completa y existan diagnósticos de las cuatro capas. Toda mejora positiva pasa a validación repetida; ninguna se descarta solo porque otra sea mayor. Solo se mergean las mejoras reproducibles y compatibles entre sí. No es un holdout ni una afirmación de generalización.
 
 ## Integración progresiva de neuroplasticidad
 

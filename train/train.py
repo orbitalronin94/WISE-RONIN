@@ -324,6 +324,12 @@ def main():
         LOG.warning("runtime profile not found; using explicit/default CLI CPU settings: %s", args.runtime_profile)
     args.runtime_profile_settings = dict(runtime_profile)
     organ_profile = runtime_profile.get("organs", {})
+    sleep_downscale = float(runtime_profile.get("sleep_downscale", 1.0))
+    replay_compression = float(runtime_profile.get("replay_compression", 1.0))
+    if not 0.90 <= sleep_downscale <= 1.0:
+        raise ValueError("sleep_downscale must be in [0.90,1]")
+    if not 0.1 <= replay_compression <= 1.0:
+        raise ValueError("replay_compression must be in [0.1,1]")
     pain_budget_gain = float(organ_profile.get("pain_budget_gain", 0.10))
     pleasure_budget_gain = float(organ_profile.get("pleasure_budget_gain", 0.05))
     if not 0.0 <= pain_budget_gain <= 1.0 or not 0.0 <= pleasure_budget_gain <= 1.0:
@@ -360,6 +366,7 @@ def main():
         layer.share_causal_masks = bool(runtime_profile.get("delta_share_causal_masks", False))
     for organ in model.homeo:
         organ.fused_scatter_add = bool(runtime_profile.get("homeostasis_fused_scatter", False))
+    model.memoria.one_shot_enabled = plasticity_profile.one_shot_enabled
     LOG.info("plasticity_profile: %s", plasticity_profile)
     LOG.info("lumen_fastpaths: %s", {
         "delta_pre_normalize": bool(runtime_profile.get("delta_pre_normalize", False)),
@@ -818,7 +825,7 @@ def main():
                 if not sleep_done and model.memoria.occupancy() >= 0.8:
                     records_before_sleep = int((model.memoria.contador_lenta > 0).sum().item())
                     sleep_started = time.perf_counter()
-                    sleep_loss = sueno(model, device="cpu")
+                    sleep_loss = sueno(model, device="cpu", compression_ratio=replay_compression, downscale=sleep_downscale)
                     sleep_duration = time.perf_counter() - sleep_started
                     profile["sleep"] += sleep_duration
                     LOG.info("sleep_called: step=%d, duration_s=%.3f", step, sleep_duration)

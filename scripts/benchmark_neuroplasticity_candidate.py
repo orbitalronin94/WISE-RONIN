@@ -12,22 +12,14 @@ import subprocess
 import sys
 import time
 
-BASE_PROFILE = {
-    "threads": 4,
-    "interop_threads": 2,
-    "mkldnn_enabled": True,
-    "foreach": False,
-    "cpu_affinity": True,
-    "delta_pre_normalize": False,
-    "homeostasis_fused_scatter": False,
-    "delta_parallel_refinements": 2,
-    "organs": {
-        "pain": {"response": 0.30, "decay": 0.55},
-        "pleasure": {"response": 0.75},
-        "pain_budget_gain": 0.10,
-        "pleasure_budget_gain": 0.1125,
-    },
-}
+def load_main_profile(root: Path) -> dict:
+    """Use main's committed runtime profile verbatim as the paired control."""
+    path = root / "config/lumen_cpu_profile.json"
+    profile = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(profile, dict):
+        raise ValueError(f"main runtime profile must be an object: {path}")
+    return profile
+
 
 def candidate_delta(name: str) -> dict:
     candidates = {
@@ -114,19 +106,28 @@ def run_training(root: Path, label: str, profile: dict, args, out: Path) -> dict
         values = (float(loss), float(dead))
         if all(math.isfinite(x) for x in values):
             records.append({"step": int(step), "loss": values[0], "dead_percent": values[1]})
+    profile_totals = [
+        float(value) for value in re.findall(
+            r"profile_1: .*?total=([0-9.]+)s", raw
+        )
+    ]
+    step_wall = sum(profile_totals)
     result = {
         "label": label,
         "exit_code": proc.returncode,
-        "elapsed_seconds": round(elapsed, 4),
-        "steps_per_second": round(100.0 / elapsed, 6) if elapsed > 0 else None,
+        "process_elapsed_seconds": round(elapsed, 4),
+        "step_wall_seconds": round(step_wall, 4),
+        "steps_per_second": round(len(records) / step_wall, 6) if step_wall > 0 else None,
         "logged_steps": len(records),
+        "profiled_steps": len(profile_totals),
         "log_file": log_path.name,
         "profile_file": profile_path.name,
         "sleep_skipped": "Sleep skipped" in raw,
         "sleep_calls": raw.count("sleep_called:"),
         "nonfinite_marker": "NONFINITE" in raw or bool(re.search(r"\b(?:nan|inf)\b", raw, re.IGNORECASE)),
     }
-    if proc.returncode == 0 and len(records) == 100 and not result["nonfinite_marker"]:
+    if (proc.returncode == 0 and len(records) == 100
+            and len(profile_totals) == 100 and not result["nonfinite_marker"]):
         losses = [r["loss"] for r in records]
         windows = [sum(losses[i:i+20]) / 20 for i in range(0, 100, 20)]
         result.update({
@@ -142,6 +143,7 @@ def run_training(root: Path, label: str, profile: dict, args, out: Path) -> dict
             "status": "error",
             "reason": (
                 f"exit_code={proc.returncode}; logged_steps={len(records)}/100; "
+                f"profiled_steps={len(profile_totals)}/100; "
                 f"nonfinite_marker={result['nonfinite_marker']}"
             ),
         })
@@ -159,8 +161,16 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
 
     delta = candidate_delta(args.candidate)
-    candidate_profile = deep_merge(BASE_PROFILE, delta)
-    control = run_training(args.baseline_root, "main-control", BASE_PROFILE, args, args.output)
+    base_profile = load_main_profile(args.baseline_root)
+    candidate_profile = deep_merge(base_profile, delta)
+    # Alternate order by candidate number to balance filesystem/page-cache warmup.
+    candidate_first = int(args.candidate[:2]) % 2 == 0
+    if candidate_first:
+        candidate = run_training(args.candidate_root, "candidate", candidate_profile, args, args.output)
+        control = run_training(args.baseline_root, "main-control", base_profile, args, args.output)
+    else:
+        control = run_training(args.baseline_root, "main-control", base_profile, args, args.output)
+        candidate = None
     if control["status"] != "ok":
         report = {
             "candidate": args.candidate,
@@ -171,9 +181,11 @@ def main():
             "candidate_result": None,
             "profile_delta": delta,
             "candidate_profile": candidate_profile,
+            "baseline_profile": base_profile,
         }
     else:
-        candidate = run_training(args.candidate_root, "candidate", candidate_profile, args, args.output)
+        if candidate is None:
+            candidate = run_training(args.candidate_root, "candidate", candidate_profile, args, args.output)
         reasons = []
         if args.candidate in {"17_prioritized_replay", "18_sleep_downscaling"}:
             if candidate.get("sleep_skipped"):
@@ -213,8 +225,11 @@ def main():
             "profile_delta": delta,
             "candidate_profile": candidate_profile,
             "comparison_contract": {
-                "baseline": "main",
+                "baseline": "main source and its committed config/lumen_cpu_profile.json",
                 "candidate": "PR head; shared-signal foundation plus one candidate delta",
+                "runtime_profile_source": "loaded verbatim from main/config/lumen_cpu_profile.json, then deep-merged with one candidate delta",
+                "throughput_metric": "sum of trainer profile_1 per-step wall times; excludes process startup and data/model loading",
+                "run_order": "alternates by candidate number to balance cache warmup",
                 "parent_checkpoint_step": 155700,
                 "training_steps_each": 100,
                 "same_runner_sequential_pair": True,

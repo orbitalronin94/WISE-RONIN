@@ -47,9 +47,13 @@ CANDIDATES = {
         },
     },
 }
-ALLOWED_PROFILE_KEYS = {
-    "threads", "interop_threads", "mkldnn_enabled", "foreach", "cpu_affinity",
-    "profile_id", "benchmark_metadata",
+ALLOWED_PROFILE_KEYS = {"threads", "interop_threads", "mkldnn_enabled", "foreach", "cpu_affinity"}
+PROTECTED_PROFILE_KEYS = {
+    "organs", "plasticity", "sleep_downscale", "sleep_interval_steps",
+    "replay_compression", "delta_parallel_refinements", "delta_pre_normalize",
+    "delta_reuse_write_update", "delta_always_apply_eligibility",
+    "delta_trace_norm_diagnostics_on_demand", "delta_share_causal_masks",
+    "homeostasis_fused_scatter",
 }
 PARENT_STEP = 170700
 TRAIN_STEPS = 100
@@ -71,19 +75,11 @@ def deep_merge(base: dict, delta: dict) -> dict:
 def assert_execution_only(profile: dict) -> None:
     unexpected = set(profile) - ALLOWED_PROFILE_KEYS
     if unexpected:
-        raise ValueError(f"non-runtime profile keys are forbidden: {sorted(unexpected)}")
-    if any(key in profile for key in ("organs", "plasticity", "sleep_downscale",
-                                      "sleep_interval_steps", "replay_compression",
-                                      "delta_parallel_refinements", "delta_pre_normalize",
-                                      "delta_reuse_write_update", "delta_always_apply_eligibility",
-                                      "delta_trace_norm_diagnostics_on_demand",
-                                      "delta_share_causal_masks", "homeostasis_fused_scatter")):
-        raise ValueError("organ/architecture behavior cannot be changed in a speed-only tournament")
+        raise ValueError(f"only runtime keys may vary; forbidden keys: {sorted(unexpected)}")
 
 
 def run_training(root: Path, label: str, profile: dict, candidate: dict,
                  args, output: Path) -> dict:
-    assert_execution_only(profile)
     profile_path = output / f"{label}.runtime_profile.json"
     profile_path.write_text(json.dumps(profile, indent=2, sort_keys=True) + "\n")
     log_path = output / f"{label}.log"
@@ -200,7 +196,10 @@ def main():
     baseline_profile = json.loads((args.repo_root / "config/lumen_cpu_profile.json").read_text())
     candidate_profile = deep_merge(baseline_profile, candidate["profile"])
     # Both profiles retain the exact same Delta fastpaths and every LUMEN organ.
-    assert_execution_only(candidate_profile)
+    assert_execution_only(candidate["profile"])
+    for key in PROTECTED_PROFILE_KEYS:
+        if candidate_profile.get(key) != baseline_profile.get(key):
+            raise ValueError(f"protected organ/architecture setting changed: {key}")
     # Alternate order to reduce systematic page-cache and thermal bias.
     if int(args.candidate[:2]) % 2 == 0:
         candidate_result = run_training(args.repo_root, "candidate", candidate_profile,

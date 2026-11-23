@@ -356,6 +356,7 @@ def main():
     plasticity_profile = PlasticityProfile.from_config(runtime_profile.get("plasticity", {}))
     for layer in model.delta_layers:
         layer.plasticity_profile = plasticity_profile
+        layer.tagging.decay = plasticity_profile.eligibility_retention
         layer.pre_normalize_sequence = bool(runtime_profile.get("delta_pre_normalize", False))
         refinements = int(runtime_profile.get("delta_parallel_refinements", layer.parallel_refinements))
         if not 1 <= refinements <= 6:

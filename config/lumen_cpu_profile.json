@@ -1,21 +1,25 @@
 {
   "threads": 4,
   "interop_threads": 2,
-  "mkldnn_enabled": true,
+  "mkldnn_enabled": false,
   "foreach": false,
   "cpu_affinity": true,
   "delta_pre_normalize": false,
   "homeostasis_fused_scatter": false,
-  "profile_id": "measured_cpu_winner_4x2_v1",
+  "profile_id": "screening_winner_mkldnn_off_4x2_v1",
   "benchmark_metadata": {
-    "source": "existing GitHub Actions CPU profiling and matched training logs",
+    "source": "GitHub Actions run 45158484545, 20 matched 100-step hypotheses",
+    "run_url": "https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45158484545",
+    "parent_step": 140700,
+    "final_step": 140800,
+    "seed": 42,
     "intraop_threads": 4,
     "interop_threads": 2,
-    "mkldnn_enabled": true,
+    "mkldnn_enabled": false,
     "foreach": false,
     "cpu_affinity": true,
     "delta_pre_normalize": false,
     "homeostasis_fused_scatter": false,
-    "selection_note": "Restore measured four-thread profile; both experimental fastpaths were slower than control."
+    "selection_note": "Top-ranked screening candidate: 2.3813% lower wall time and 2.1948% lower backward time than its matched control; mean training loss delta -0.00001%. Provisional only: below the predeclared 3% promotion threshold, 100-step screen, not a holdout. Validate with longer repeated benchmarks before treating as a robust speed improvement."
   }
 }

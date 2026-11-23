@@ -8,6 +8,7 @@ class PlasticityProfile:
 
     name: str = "neutral"
     threshold_scale: float = 1.0
+    inhibition_scale: float = 1.0
     modulator_gain: float = 1.0
     eligibility_retention: float = 0.95
     attention_gain: float = 0.0
@@ -25,7 +26,7 @@ class PlasticityProfile:
         name = str(config.get("mode", "neutral"))
         presets = {
             "neutral": {},
-            "disinhibition": {"threshold_scale": 0.85},
+            "disinhibition": {"threshold_scale": 0.85, "inhibition_scale": 0.8},
             "modulator_gain": {"modulator_gain": 1.5, "eligibility_retention": 0.96},
             "plasticity_window": {"eligibility_retention": 0.98, "tagging_enabled": True},
             "attentional_gate": {"attention_gain": 0.4},
@@ -33,7 +34,7 @@ class PlasticityProfile:
         if name not in presets:
             raise ValueError(f"unknown plasticity mode: {name}")
         values = {**presets[name], **{k: v for k, v in config.items() if k != "mode"}}
-        allowed = {"threshold_scale", "modulator_gain", "eligibility_retention", "attention_gain", "tagging_enabled", "intrinsic_threshold_enabled", "simulated_pruning_enabled", "one_shot_enabled", "ltd_enabled"}
+        allowed = {"threshold_scale", "inhibition_scale", "modulator_gain", "eligibility_retention", "attention_gain", "tagging_enabled", "intrinsic_threshold_enabled", "simulated_pruning_enabled", "one_shot_enabled", "ltd_enabled"}
         if set(values) - allowed:
             raise ValueError(f"unknown plasticity factors: {sorted(set(values) - allowed)}")
         boolean_keys = {"tagging_enabled", "intrinsic_threshold_enabled", "simulated_pruning_enabled", "one_shot_enabled", "ltd_enabled"}
@@ -44,6 +45,8 @@ class PlasticityProfile:
         result = cls(name=name, **numeric, **flags)
         if not 0.5 <= result.threshold_scale <= 1.5:
             raise ValueError("threshold_scale must be in [0.5,1.5]")
+        if not 0.5 <= result.inhibition_scale <= 1.5:
+            raise ValueError("inhibition_scale must be in [0.5,1.5]")
         if not 0.5 <= result.modulator_gain <= 2.0:
             raise ValueError("modulator_gain must be in [0.5,2.0]")
         if not 0.90 <= result.eligibility_retention <= 0.99:

@@ -33,15 +33,12 @@ def perdida_total(output, targets, model, use_jepa=True, use_rep=True,
     if use_rep and steps >= 3:
         # Exact log-domain form of sum_v p_t(v) p_{t+1}(v) p_{t+2}(v).
         # Avoids materializing three full B x T x V softmax tensors.
-        logits_0 = logits[:, :-2]
-        logits_1 = logits[:, 1:-1]
-        logits_2 = logits[:, 2:]
-        log_z0 = torch.logsumexp(logits_0, dim=-1)
-        log_z1 = torch.logsumexp(logits_1, dim=-1)
-        log_z2 = torch.logsumexp(logits_2, dim=-1)
-        log_triple = (
-            torch.logsumexp(logits_0 + logits_1 + logits_2, dim=-1)
-            - log_z0 - log_z1 - log_z2
+        # Each timestep participates in up to three adjacent triples. Normalize
+        # the full logits tensor once, then reuse those log-probabilities.
+        log_probs = F.log_softmax(logits, dim=-1)
+        log_triple = torch.logsumexp(
+            log_probs[:, :-2] + log_probs[:, 1:-1] + log_probs[:, 2:],
+            dim=-1,
         )
         repetition_loss = log_triple.exp().mean()
 

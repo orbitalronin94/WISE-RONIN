@@ -120,9 +120,11 @@ def main():
     if pending:
         for r in pending:
             reasons = r.get("reasons") or [r.get("reason", "sin motivo registrado")]
+            artifact_path = r.get("artifact_path")
+            log_note = f"Logs: {artifact_path}/." if artifact_path else "Sin artefacto; revisar ejecución."
             lines.append(
                 f"- **{r.get('candidate', 'desconocido')}** — {'; '.join(reasons)}. "
-                f"Logs: {r.get('artifact_path')}/."
+                f"{log_note}"
             )
     else:
         lines.append("- Ninguno.")

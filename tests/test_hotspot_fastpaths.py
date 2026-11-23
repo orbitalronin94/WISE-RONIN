@@ -98,3 +98,29 @@ def test_delta_on_demand_trace_diagnostics_preserves_computation():
     torch.testing.assert_close(surprise_new, surprise_ref, atol=2e-6, rtol=2e-5)
     torch.testing.assert_close(candidate.state, reference.state, atol=2e-6, rtol=2e-5)
     torch.testing.assert_close(candidate.eligibility_trace, reference.eligibility_trace, atol=2e-6, rtol=2e-5)
+
+
+def test_delta_always_apply_eligibility_matches_conditional_path():
+    torch.manual_seed(31)
+    reference = EstadoDelta(dim=32, parallel_refinements=2)
+    candidate = copy.deepcopy(reference)
+    reference.always_apply_eligibility = False
+    candidate.always_apply_eligibility = True
+    with torch.no_grad():
+        trace = torch.randn_like(reference.eligibility_trace) * 0.01
+        reference.eligibility_trace.copy_(trace)
+        candidate.eligibility_trace.copy_(trace)
+        reference.eligibility_modulator.fill_(0.2)
+        candidate.eligibility_modulator.fill_(0.2)
+    x_ref = torch.randn(2, 13, 32, requires_grad=True)
+    x_new = x_ref.detach().clone().requires_grad_(True)
+    energy = torch.rand(2, 13, 1)
+    out_ref, surprise_ref = reference(x_ref, energy, reset_state=True)
+    out_new, surprise_new = candidate(x_new, energy, reset_state=True)
+    torch.testing.assert_close(out_new, out_ref, atol=2e-6, rtol=2e-5)
+    torch.testing.assert_close(surprise_new, surprise_ref, atol=2e-6, rtol=2e-5)
+    torch.testing.assert_close(candidate.state, reference.state, atol=2e-6, rtol=2e-5)
+    (out_ref.square().mean() + surprise_ref.mean()).backward()
+    (out_new.square().mean() + surprise_new.mean()).backward()
+    torch.testing.assert_close(x_new.grad, x_ref.grad, atol=3e-6, rtol=3e-5)
+    _compare_grads(reference, candidate, atol=3e-6, rtol=3e-5)

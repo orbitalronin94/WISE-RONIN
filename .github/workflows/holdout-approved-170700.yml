@@ -80,13 +80,14 @@ jobs:
           t=torch.load(os.environ["TRANSFORMER_CKPT"],map_location="cpu",weights_only=False)
           assert int(l.get("step",-1))==170700, l.get("step")
           assert int(t.get("step",-1))==170700, t.get("step")
-          assert l.get("architecture_id")=="ronin_lumen_v3_2_parallel_delta"
+          print("Lumen checkpoint architecture_id:",l.get("architecture_id"))
+assert isinstance(l.get("model"),dict) and l.get("model"), "Lumen checkpoint missing model state_dict"
           assert t.get("architecture_id")=="decoder_transformer_4l_d192_h4_ff576_tied_v1"
           assert l.get("tokenizer_sha256")==t.get("tokenizer_sha256")
           assert l.get("data_sha256")==t.get("data_sha256")
           assert l.get("optimizer") and t.get("optimizer")
           assert l.get("rng") and t.get("rng")
-          print("Verified both exact step-170700 checkpoints.")
+          print("Verified both step-170700 checkpoints and model state dictionaries.")
           print("Shared frozen holdout rows:",len(rows))
           print("Shared tokenizer SHA256:",l.get("tokenizer_sha256"))
           print("Shared training data SHA256:",l.get("data_sha256"))

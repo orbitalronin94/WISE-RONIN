@@ -1,0 +1,119 @@
+name: LUMEN vs Transformer — identity and general freeform holdout at 170700
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/identity-general-freeform-170700.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: identity-general-freeform-170700
+  cancel-in-progress: false
+
+env:
+  SOURCE_RUN_ID: "45177953462"
+  DATA_RUN_ID: "45149684913"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  paired-freeform:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU evaluation runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+      - name: Download frozen tokenizer and training artifact metadata
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-v2-plus-personality-250k-45149684913
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.DATA_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact Lumen step 170700
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-approved-neuroplasticity-step170700-45177953462
+          path: lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact Transformer step 170700
+        uses: actions/download-artifact@v7
+        with:
+          name: transformer-control-step170700-45177953462
+          path: transformer
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify the two promoted checkpoints and 100-question set
+        run: |
+          set -euo pipefail
+          test -s prepared/artifacts/spanish-v2/tokenizer.json
+          test -s data/freeform_identity_general_100.jsonl
+          LUMEN_CKPT="$(find lumen -name step_170700.pt -print -quit)"
+          TRANSFORMER_CKPT="$(find transformer -name step_170700.pt -print -quit)"
+          test -n "$LUMEN_CKPT" && test -s "$LUMEN_CKPT"
+          test -n "$TRANSFORMER_CKPT" && test -s "$TRANSFORMER_CKPT"
+          export LUMEN_CKPT TRANSFORMER_CKPT
+          python - <<'PY'
+          import json, os, torch
+          from pathlib import Path
+          rows=[json.loads(x) for x in Path("data/freeform_identity_general_100.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(rows)==100, f"Expected exactly 100 prompts, got {len(rows)}"
+          assert len({r["id"] for r in rows})==100
+          l=torch.load(os.environ["LUMEN_CKPT"],map_location="cpu",weights_only=False)
+          t=torch.load(os.environ["TRANSFORMER_CKPT"],map_location="cpu",weights_only=False)
+          assert int(l.get("step",-1))==170700
+          assert int(t.get("step",-1))==170700
+          assert isinstance(l.get("model"),dict) and l["model"]
+          assert isinstance(t.get("model"),dict) and t["model"]
+          assert l.get("tokenizer_sha256")==t.get("tokenizer_sha256")
+          print("Both exact checkpoints verified at step 170700.")
+          print("100 fixed prompts verified; categories:", sorted({r["source"] for r in rows}))
+          print("Shared tokenizer SHA256:",l.get("tokenizer_sha256"))
+          PY
+          echo "LUMEN_CKPT=$LUMEN_CKPT" >> "$GITHUB_ENV"
+          echo "TRANSFORMER_CKPT=$TRANSFORMER_CKPT" >> "$GITHUB_ENV"
+      - name: Generate paired answers from both models
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/freeform_identity_general_holdout.py \
+            --holdout data/freeform_identity_general_100.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --lumen "$LUMEN_CKPT" \
+            --transformer "$TRANSFORMER_CKPT" \
+            --expected-step 170700 \
+            --sample-size 100 --seed 170700 --max-new-tokens 64 \
+            --out-dir results --threads 4 --max-len 128
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: identity-general-freeform-100-step170700-${{ github.run_id }}
+          path: |
+            results/step170700_identity_general_100.json
+            results/step170700_identity_general_100.md
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Report paired freeform evaluation
+        if: always()
+        run: |
+          echo "Paired identity/general freeform run: ${{ github.run_id }}"
+          test -s results/step170700_identity_general_100.json

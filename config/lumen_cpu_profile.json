@@ -6,12 +6,12 @@
   "cpu_affinity": true,
   "delta_pre_normalize": false,
   "delta_parallel_refinements": 2,
-  "delta_reuse_write_update": false,
-  "delta_always_apply_eligibility": false,
-  "delta_trace_norm_diagnostics_on_demand": false,
-  "delta_share_causal_masks": false,
+  "delta_reuse_write_update": true,
+  "delta_always_apply_eligibility": true,
+  "delta_trace_norm_diagnostics_on_demand": true,
+  "delta_share_causal_masks": true,
   "homeostasis_fused_scatter": false,
-  "profile_id": "screening_winner_mkldnn_off_4x2_v1",
+  "profile_id": "screening_winner_plus_delta_exact_fastpaths_v2",
   "benchmark_metadata": {
     "source": "GitHub Actions run 45158484545, 20 matched 100-step hypotheses",
     "run_url": "https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45158484545",
@@ -25,6 +25,6 @@
     "cpu_affinity": true,
     "delta_pre_normalize": false,
     "homeostasis_fused_scatter": false,
-    "selection_note": "Existing CPU profile retained. Delta fastpaths are now wired to this profile but remain disabled by default until the corrected checkpoint-migration benchmark completes; do not infer a speedup or quality gain from wiring alone."
+    "selection_note": "Enables only Delta fastpaths intended to preserve outputs/state/gradients while reducing duplicate einsum work, host synchronization and repeated mask allocation. They remain experimental until PR validation and paired throughput measurement. homeostasis_fused_scatter remains disabled because prior screening did not show a win."
   }
 }

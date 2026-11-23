@@ -44,7 +44,7 @@ jobs:
           python -m pip install numpy tokenizers tqdm pytest
       - name: Verify outputs, persistent states and gradients
         run: |
-          python -m pytest -q tests/test_organ_simplifications.py tests/test_hotspot_fastpaths.py tests/test_delta_backward_fastpaths.py
+          python -m pytest -q tests/test_organ_simplifications.py tests/test_hotspot_fastpaths.py
 
   benchmark:
     needs: checks

@@ -78,7 +78,7 @@ def main():
         ],
         "combination_conflicts": conflicts,
         "combined_profile": combined,
-        "training_authorized": bool(approved) and not conflicts,
+        "training_authorized": bool(approved) and not conflicts and not missing,
         "training_note": (
             "La configuración combina únicamente los candidatos aprobados. "
             "La base de señales compartidas es común a todos los candidatos de esta rama; el perfil base se toma del main congelado."

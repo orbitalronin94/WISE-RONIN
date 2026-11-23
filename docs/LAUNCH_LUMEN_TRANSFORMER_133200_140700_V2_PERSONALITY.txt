@@ -1,0 +1,9 @@
+LAUNCH CONFIRMATION — paired 133200 -> 140700
+Corpus: frozen Spanish v2 200,000-row paired training sample plus exactly 50,000 Spanish verifiable-personality examples adapted to the Lumen-Ronin identity.
+Excluded: M-Personas, Spanish literature additions, synthetic behavior/lexical curricula, all other v3 additions.
+Tokenizer: unchanged v2 tokenizer, vocab 4096, SHA-256 d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe.
+Parents: Lumen step 133200 from run 45082812702; Transformer step 133200 synchronized in run 45123727239.
+Training: 7,500 additional steps per model, batch 8, max_len 128, seed 42, preserve weights and optimizer moments, paired corpus and token cache.
+Runtime: Ubuntu 24.04, Python 3.14.10, Node 24 compatible GitHub Actions (checkout/setup-python v7; artifact actions v6).
+Final evaluation: untouched original Spanish v2 holdout, 2,431 questions.
+No preliminary test run is requested; proceed directly with the paired training workflow.

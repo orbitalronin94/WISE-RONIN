@@ -92,3 +92,8 @@ Las nuevas memorias persistentes se inicializan a valores neutros al migrar chec
 No se ha implementado poda física de conexiones, un modelo spiking pre/post, síntesis proteica biológica, ni replay hipocampal de secuencias comprimidas. La memoria actual almacena vectores de contexto, no trayectorias neuronales. Para esos casos el nombre de la hipótesis no debe confundirse con equivalencia mecanística.
 
 El perfil neutro conserva identidad en sus factores. Cada mecanismo debe pasar pruebas de propiedades, migración y el benchmark emparejado antes de poder activarse en una configuración de entrenamiento promovida.
+
+
+### Perfiles personalizados para ablaciones
+
+El modo `custom` permite evaluar un único factor aislado (o una combinación declarada explícitamente) sin activar el preset completo. Sus valores siguen sujetos a los mismos límites. El modo `neutral` continúa siendo identidad exacta y rechaza cualquier override: así el torneo puede distinguir un control genuinamente neutro de una ablación personalizada.

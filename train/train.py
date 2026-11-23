@@ -348,6 +348,10 @@ def main():
         if not 1 <= refinements <= 6:
             raise ValueError("delta_parallel_refinements must be between 1 and 6")
         layer.parallel_refinements = refinements
+        layer.trace_summary_no_grad = bool(runtime_profile.get("delta_trace_summary_no_grad", False))
+        layer.trace_norm_diagnostics = bool(runtime_profile.get("delta_trace_norm_diagnostics", True))
+        layer.state_update_bmm = bool(runtime_profile.get("delta_state_update_bmm", False))
+        layer.summary_update_bmm = bool(runtime_profile.get("delta_summary_update_bmm", False))
     for organ in model.homeo:
         organ.fused_scatter_add = bool(runtime_profile.get("homeostasis_fused_scatter", False))
     LOG.info("lumen_fastpaths: delta_pre_normalize=%s homeostasis_fused_scatter=%s",

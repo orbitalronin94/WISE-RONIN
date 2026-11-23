@@ -1,0 +1,47 @@
+AUTORIZACIÓN Y ESPECIFICACIÓN — CONTINUACIÓN EMPAREJADA 219.700/219.750 → 300.000
+Fecha: 2026-11-23
+Repositorio: orbitalronin94/WISE-RONIN
+
+DECISIÓN
+Promover los checkpoints verificados por el holdout de run 45257284512 como nuevos padres experimentales y continuar ambos modelos hasta el paso global 300.000.
+
+PADRES PROMOVIDOS
+- LUMEN: step interno 219700; arquitectura ronin_lumen_v3_3_neuroplasticity.
+  Run de origen: 45230206330.
+  Artefacto: 14857727162 (lumen-approved-neuroplasticity-step235700-45230206330).
+- Transformer: step interno 219750; arquitectura decoder_transformer_4l_d192_h4_ff576_tied_v1.
+  Run de origen: 45230206330.
+  Artefacto: 14854630840 (transformer-control-step235700-45230206330).
+
+HOLDOUT QUE FUNDAMENTA LA PROMOCIÓN
+- Run: 45257284512.
+- Artefacto: 14859702424.
+- Holdout congelado: 2.431 preguntas.
+- LUMEN: 831/2431 (34,18 %), NLL media 5,7440759.
+- Transformer: 805/2431 (33,11 %), NLL media 5,5147196.
+- Diferencia: LUMEN +26 aciertos (+1,07 puntos porcentuales); Transformer NLL inferior en 0,2293563.
+- Conteos emparejados: ambos correctos 456; solo LUMEN 313; solo Transformer 289; ambos incorrectos 1198.
+- Los padres difieren en 50 actualizaciones. Esta limitación debe conservarse en toda documentación.
+
+CONTINUACIÓN
+- LUMEN: 219700 → 300000 (+80300).
+- Transformer: 219750 → 300000 (+80250).
+- Corpus congelado: artefacto ronin-v2-plus-personality-250k-45149684913; 250.000 filas (200k v2 + 50k personalidad).
+- Tokenizer v2 de 4096 IDs; batch 8; contexto 128; seed 42.
+- No incorporar corpus v3: training_authorized continúa false.
+- Preservar pesos, estado AdamW y RNG de cada padre.
+- Reiniciar scheduler de transición desde cada LR guardado hacia el horizonte global 300000; LUMEN conserva LR base 3e-5 y Transformer 7.5e-5; warmup 100, plateau 0, ratio mínimo 0.5.
+- LUMEN debe extraer y validar el runtime_profile embebido en su checkpoint; no sustituirlo por defaults. Mantener el perfil de plasticidad y los fast paths Delta verificados.
+- Entrenar en bloques de 10.000 pasos como máximo, con checkpoints recuperables.
+- Verificar los checkpoints internos step_300000.pt y su arquitectura, optimizer, RNG y scheduler antes de considerar completado el tramo.
+
+NO AUTORIZADO
+- No cambiar arquitectura, órganos, tokenizer, corpus, batch, contexto ni seed.
+- No introducir mecanismos experimentales nuevos.
+- No fusionar PRs experimentales.
+- No afirmar que LUMEN gana en NLL: el holdout actual favorece al Transformer en esa métrica.
+
+WORKFLOW
+.github/workflows/continue-paired-219700-300000.yml
+
+La promoción es una decisión de continuidad experimental, no una afirmación de superioridad general.

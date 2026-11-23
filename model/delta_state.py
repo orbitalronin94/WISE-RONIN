@@ -4,6 +4,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from .plasticity import PlasticityProfile
+from .neuroplasticity import IntrinsicThreshold, SimulatedSynapticPruner, SynapticTaggingCapture
 
 
 @lru_cache(maxsize=32)
@@ -22,6 +23,9 @@ class EstadoDelta(nn.Module):
             raise ValueError("Delta memory rank must be >= 1")
         self.parallel_refinements = max(1, int(parallel_refinements))
         self.plasticity_profile = PlasticityProfile()
+        self.tagging = SynapticTaggingCapture((self.rank, self.dim), decay=0.95, threshold=0.005)
+        self.intrinsic_threshold = IntrinsicThreshold(initial=float(tau), target=0.05, rate=0.0005)
+        self.simulated_pruner = SimulatedSynapticPruner((self.rank, self.dim))
         self.parallel_scan = True
         self.pre_normalize_sequence = False
         # Exact-equivalence simplifications toggled only by benchmark profiles.
@@ -65,7 +69,10 @@ class EstadoDelta(nn.Module):
         """Apply bounded threshold and attention modulation to one shared surprise tensor."""
         profile = self.plasticity_profile
         attended = surprise * (1.0 + profile.attention_gain * surprise.detach().clamp(0.0, 1.0))
-        return (attended >= self.tau.clamp_min(0.0) * profile.threshold_scale).to(dtype)
+        threshold = self.tau.clamp_min(0.0)
+        if profile.intrinsic_threshold_enabled:
+            threshold = self.intrinsic_threshold.threshold.to(device=surprise.device, dtype=surprise.dtype)
+        return (attended >= threshold * profile.threshold_scale).to(dtype)
 
     def _project_sequence(self, x):
         projected = F.linear(x, torch.cat(
@@ -145,8 +152,18 @@ class EstadoDelta(nn.Module):
             )
             trace_norm = trace_update.norm().clamp_min(1e-8)
             trace_update = trace_update * (0.05 / trace_norm).clamp(max=1.0)
+            if self.plasticity_profile.simulated_pruning_enabled:
+                mask = self.simulated_pruner.observe(
+                    trace_update.abs(), self.eligibility_trace.abs() + trace_update.abs()
+                )
+                trace_update = trace_update * mask
             retention = self.plasticity_profile.eligibility_retention
             self.eligibility_trace.mul_(retention).add_(trace_update, alpha=1.0 - retention)
+            if self.plasticity_profile.tagging_enabled:
+                resource = float(self.eligibility_modulator.abs().mul(4.0).clamp(0.0, 1.0).item())
+                self.tagging.update(trace_update, resource)
+            if self.plasticity_profile.intrinsic_threshold_enabled:
+                self.intrinsic_threshold.update(gate.detach())
             if not self.trace_norm_diagnostics_on_demand or collect_diagnostics:
                 self.last_eligibility_norm = float(self.eligibility_trace.norm().item())
 
@@ -177,11 +194,11 @@ class EstadoDelta(nn.Module):
         # Apply the previous batch's eligible trace only when delayed feedback
         # has assigned it value. The trace itself remains bounded and detached.
         modulation = self.eligibility_modulator.to(device=x.device, dtype=x.dtype) * self.plasticity_profile.modulator_gain
-        if self.always_apply_eligibility:
+        if self.always_apply_eligibility or bool(modulation.detach().abs().item() > 0):
             trace = self.eligibility_trace.to(device=x.device, dtype=x.dtype)
-            state = state + modulation * trace.unsqueeze(0)
-        elif bool(modulation.detach().abs().item() > 0):
-            trace = self.eligibility_trace.to(device=x.device, dtype=x.dtype)
+            if self.plasticity_profile.tagging_enabled:
+                captured = self.tagging.captured.to(device=x.device, dtype=x.dtype)
+                trace = trace * captured
             state = state + modulation * trace.unsqueeze(0)
         k_all, v_all, q_all = self._project_sequence(x)
 

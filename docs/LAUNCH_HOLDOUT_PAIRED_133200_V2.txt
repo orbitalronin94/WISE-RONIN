@@ -1,0 +1,2 @@
+Launch paired v2 holdout at exact global step 133200 for Lumen and Transformer.
+Lumen uses its saved latest_good.pt at step 133200. Transformer resumes from its exact step-133000 checkpoint for 200 deterministic steps, preserving optimizer, scheduler and RNG. Both are evaluated against the same frozen 2,431-question Spanish corpus v2 holdout and tokenizer.

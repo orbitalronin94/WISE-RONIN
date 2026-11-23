@@ -72,7 +72,7 @@ class EstadoDelta(nn.Module):
         threshold = self.tau.clamp_min(0.0)
         if profile.intrinsic_threshold_enabled:
             threshold = self.intrinsic_threshold.threshold.to(device=surprise.device, dtype=surprise.dtype)
-        return (attended >= threshold * profile.threshold_scale).to(dtype)
+        return (attended >= threshold * profile.threshold_scale * profile.inhibition_scale).to(dtype)
 
     def _project_sequence(self, x):
         projected = F.linear(x, torch.cat(

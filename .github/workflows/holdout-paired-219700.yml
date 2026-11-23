@@ -114,6 +114,7 @@ jobs:
             --lumen resolved/lumen-219700.pt \
             --transformer resolved/transformer-219750.pt \
             --expected-lumen-step 219700 \
+            --expected-transformer-step 219750 \
             --out results/step219700_lumen_vs_step219750_transformer_holdout.json \
             --threads 4 --max-len 128
       - uses: actions/upload-artifact@v7

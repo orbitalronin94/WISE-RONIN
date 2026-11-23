@@ -421,6 +421,7 @@ def main():
         allowed_parent_arches = {
             "ronin_lumen_v3_1_residual_homeostasis",
             "ronin_lumen_v3_2_parallel_delta",
+            "ronin_lumen_v3_3_neuroplasticity",
             "ronin_lumen_v3_pilot",
             "legacy_preversioned",
         }

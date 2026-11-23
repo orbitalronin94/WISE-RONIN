@@ -61,6 +61,12 @@ class EstadoDelta(nn.Module):
         ).clamp(-1.0, 1.0)
         self.eligibility_modulator.copy_(0.25 * value)
 
+    def _plasticity_gate(self, surprise, dtype):
+        """Apply bounded threshold and attention modulation to one shared surprise tensor."""
+        profile = self.plasticity_profile
+        attended = surprise * (1.0 + profile.attention_gain * surprise.detach().clamp(0.0, 1.0))
+        return (attended >= self.tau.clamp_min(0.0) * profile.threshold_scale).to(dtype)
+
     def _project_sequence(self, x):
         projected = F.linear(x, torch.cat(
             (self.proj_k.weight, self.proj_v.weight, self.proj_q.weight), dim=0
@@ -112,9 +118,7 @@ class EstadoDelta(nn.Module):
             decay = torch.sigmoid(self.a * surprise + self.b).squeeze(-1).clamp(0.90, 0.9999)
             error_unit = F.normalize(error, dim=-1, eps=1e-6)
             write_lr = torch.tanh(surprise) * e_delta.clamp(0.0, 1.0)
-            profile = self.plasticity_profile
-            attended_surprise = surprise * (1.0 + profile.attention_gain * surprise.detach().clamp(0.0, 1.0))
-            gate = (attended_surprise >= self.tau.clamp_min(0.0) * profile.threshold_scale).to(x.dtype)
+            gate = self._plasticity_gate(surprise, x.dtype)
             write_vectors = error_unit * (write_lr * gate)
 
         prefix = torch.cumprod(decay, dim=1).clamp_min(1e-12)
@@ -202,9 +206,7 @@ class EstadoDelta(nn.Module):
             decay = torch.sigmoid(self.a * surprise_t + self.b).clamp(0.90, 0.9999)
             error_unit = F.normalize(error, dim=-1, eps=1e-6)
             write_lr = torch.tanh(surprise_t) * e_delta[:, t].clamp(0.0, 1.0)
-            profile = self.plasticity_profile
-            attended_surprise = surprise_t * (1.0 + profile.attention_gain * surprise_t.detach().clamp(0.0, 1.0))
-            gate = (attended_surprise >= self.tau.clamp_min(0.0) * profile.threshold_scale).to(x.dtype)
+            gate = self._plasticity_gate(surprise_t, x.dtype)
             if collect_diagnostics:
                 write_rates.append(gate.mean().detach())
             current_state = current_state * decay.unsqueeze(-1)

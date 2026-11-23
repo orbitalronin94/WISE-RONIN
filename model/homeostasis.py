@@ -9,6 +9,7 @@ class Homeostasis(nn.Module):
         self.dim, self.m_target, self.eta, self.k_top = dim, m_target, eta, k_top
         # Optional fused residual scatter path; parity-checked against the reference path.
         self.fused_scatter_add = False
+        self.reuse_input_activity = False
         self.bias = nn.Parameter(torch.zeros(dim))
         # Input activity is retained as a diagnostic, not as the control signal.
         self.register_buffer("m", torch.zeros(dim))
@@ -21,12 +22,16 @@ class Homeostasis(nn.Module):
         self.last_gate_activity_per_unit = None
 
     def forward(self, x, collect_diagnostics=True):
-        if collect_diagnostics:
-            self.last_input_positive = float((x.detach() > 0).float().mean().item())
+        input_active = None
         if self.training:
             with torch.no_grad():
                 input_active = (x > 0).float().mean(dim=(0, 1))
                 self.m.mul_(0.99).add_(input_active, alpha=0.01)
+        if collect_diagnostics:
+            if self.reuse_input_activity and input_active is not None:
+                self.last_input_positive = float(input_active.mean().item())
+            else:
+                self.last_input_positive = float((x.detach() > 0).float().mean().item())
 
         y = x - self.bias
         k = min(self.k_top, self.dim)

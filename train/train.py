@@ -351,7 +351,7 @@ def main():
     for layer in model.delta_layers:
         layer.reuse_write_update = bool(runtime_profile.get("delta_reuse_write_update", False))
         layer.always_apply_eligibility = bool(runtime_profile.get("delta_always_apply_eligibility", False))
-        layer.trace_norm_diagnostics = bool(runtime_profile.get("delta_trace_norm_diagnostics", True))
+        layer.trace_norm_diagnostics_on_demand = bool(runtime_profile.get("delta_trace_norm_diagnostics_on_demand", False))
         layer.share_causal_masks = bool(runtime_profile.get("delta_share_causal_masks", False))
     for organ in model.homeo:
         organ.fused_scatter_add = bool(runtime_profile.get("homeostasis_fused_scatter", False))

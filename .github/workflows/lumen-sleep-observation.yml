@@ -1,0 +1,68 @@
+name: LUMEN — observe real sleep at step 229700
+
+on:
+  push:
+    paths:
+      - ".github/workflows/lumen-sleep-observation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-sleep-observation-229700
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy
+
+      - name: Download latest completed LUMEN checkpoint (step 229700)
+        uses: actions/download-artifact@v4
+        with:
+          name: lumen-step-229700-45262377661
+          path: artifacts/checkpoint
+          repository: ${{ github.repository }}
+          run-id: 45262377661
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download frozen tokenizer and inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: paired-inputs-45262377661
+          path: artifacts/inputs
+          repository: ${{ github.repository }}
+          run-id: 45262377661
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify and run real sleep observation
+        run: python scripts/observe_lumen_sleep.py
+
+      - name: Upload before/after generations and sleep diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-sleep-observation-step229700-${{ github.run_id }}
+          path: artifacts/sleep-observation/
+          if-no-files-found: warn
+          retention-days: 90

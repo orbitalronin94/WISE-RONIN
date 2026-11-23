@@ -10,7 +10,7 @@ permissions:
   actions: read
 concurrency:
   group: lumen-main-100-questions
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   generate:
     runs-on: ubuntu-24.04

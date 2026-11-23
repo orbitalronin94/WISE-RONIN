@@ -6,6 +6,11 @@ on:
     paths:
       - ".github/workflows/benchmark-neuroplasticity-18.yml"
       - "scripts/benchmark_neuroplasticity_candidate.py"
+      - "scripts/aggregate_neuroplasticity_benchmarks.py"
+      - "model/**"
+      - "train/**"
+      - "config/**"
+      - "tests/**"
   workflow_dispatch:
 
 permissions:

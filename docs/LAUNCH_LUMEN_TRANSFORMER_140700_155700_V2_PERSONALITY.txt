@@ -1,0 +1,1 @@
+Launch paired continuation from exact step 140700 to step 155700 using the frozen v2 plus 50k Lumen-personality corpus. In parallel after shared data preparation, run the unofficial 100-question free-form probe on the exact current step-140700 Lumen and Transformer checkpoints. The corpus-v3 admission audit remains separate and unchanged.

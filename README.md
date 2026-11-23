@@ -187,6 +187,7 @@ Los microbenchmarks de 100 o 500 pasos sirven para filtrar hipótesis de entrena
 - [Arquitectura actual](docs/ARQUITECTURA_ACTUAL_ES.md) — anatomía del modelo y configuración realmente activa.
 - [Crónica experimental](docs/CRONICA_EXPERIMENTAL_ES.md) — linaje desde cero, cada continuación y sus holdouts.
 - [Neurociencia y decisiones de arquitectura](docs/NEUROCIENCIA_Y_ARQUITECTURA_ES.md) — referencias, analogías y límites.
+- [Cerebro a Código: hipótesis falsables](docs/CEREBRO_A_CODIGO_HIPOTESIS_ES.md) — seis líneas de investigación traducidas a experimentos, con referencias DOI verificadas, límites y criterios de rechazo.
 - [Glucosa, dolor y placer](docs/PAIN_PLEASURE_ORGANS_ES.md) — evolución de los reguladores afectivos.
 - [Experimento de neuroplasticidad](docs/EXPERIMENTO_NEUROPLASTICIDAD_ES.md) — rama aislada, chunking adaptativo, trazas de elegibilidad y protocolo Lumen vs Transformer desde cero.
 - [Documento maestro V1](DOCUMENTO_MAESTRO_RONIN_LUMEN_V1.md) — especificación de diseño.

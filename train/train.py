@@ -348,11 +348,23 @@ def main():
         if not 1 <= refinements <= 6:
             raise ValueError("delta_parallel_refinements must be between 1 and 6")
         layer.parallel_refinements = refinements
+        # Exact-equivalence/runtime Delta fastpaths are controlled by the
+        # frozen runtime profile; defaults preserve the promoted baseline.
+        layer.reuse_write_update = bool(runtime_profile.get("delta_reuse_write_update", False))
+        layer.always_apply_eligibility = bool(runtime_profile.get("delta_always_apply_eligibility", False))
+        layer.trace_norm_diagnostics_on_demand = bool(runtime_profile.get("delta_trace_norm_diagnostics_on_demand", False))
+        layer.share_causal_masks = bool(runtime_profile.get("delta_share_causal_masks", False))
     for organ in model.homeo:
         organ.fused_scatter_add = bool(runtime_profile.get("homeostasis_fused_scatter", False))
-    LOG.info("lumen_fastpaths: delta_pre_normalize=%s homeostasis_fused_scatter=%s",
-             bool(runtime_profile.get("delta_pre_normalize", False)),
-             bool(runtime_profile.get("homeostasis_fused_scatter", False)))
+    LOG.info("lumen_fastpaths: %s", {
+        "delta_pre_normalize": bool(runtime_profile.get("delta_pre_normalize", False)),
+        "delta_parallel_refinements": refinements,
+        "delta_reuse_write_update": bool(runtime_profile.get("delta_reuse_write_update", False)),
+        "delta_always_apply_eligibility": bool(runtime_profile.get("delta_always_apply_eligibility", False)),
+        "delta_trace_norm_diagnostics_on_demand": bool(runtime_profile.get("delta_trace_norm_diagnostics_on_demand", False)),
+        "delta_share_causal_masks": bool(runtime_profile.get("delta_share_causal_masks", False)),
+        "homeostasis_fused_scatter": bool(runtime_profile.get("homeostasis_fused_scatter", False)),
+    })
 
     if args.dummy_m1:
         data_hash, tokenizer, phase_data = "dummy-m1-no-corpus", None, None
@@ -459,6 +471,15 @@ def main():
         allowed_missing = {f"homeo.{i}.effective_m" for i in range(len(model.homeo))}
         allowed_missing |= {"pain.loss_ema", "pain.pain", "pain.last_regression",
                             "pleasure.loss_ema", "pleasure.pleasure", "pleasure.last_improvement"}
+        # Step-155700 v3.2 parents predate persistent Delta eligibility buffers.
+        # The model registers these buffers as zeros, so retaining their neutral
+        # initialization is an exact, parameter-free state migration.
+        allowed_missing |= {
+            f"delta_layers.{i}.eligibility_trace" for i in range(len(model.delta_layers))
+        }
+        allowed_missing |= {
+            f"delta_layers.{i}.eligibility_modulator" for i in range(len(model.delta_layers))
+        }
         missing = set(incompatible.missing_keys)
         unexpected = set(incompatible.unexpected_keys)
         if missing - allowed_missing or unexpected:
@@ -467,8 +488,10 @@ def main():
                 f"unexpected={sorted(unexpected)}"
             )
         if missing:
-            LOG.warning("Migrated legacy checkpoint: initialized post-gate activity EMA for %d homeostasis layers",
-                        len(missing))
+            LOG.warning(
+                "Checkpoint state migration: initialized %d new persistent buffers to their neutral defaults: %s",
+                len(missing), sorted(missing),
+            )
         optimizer.load_state_dict(state["optimizer"])
         for group in optimizer.param_groups:
             group["foreach"] = not args.disable_foreach

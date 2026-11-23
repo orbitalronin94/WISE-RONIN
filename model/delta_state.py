@@ -3,6 +3,7 @@ from functools import lru_cache
 import torch
 from torch import nn
 from torch.nn import functional as F
+from .plasticity import PlasticityProfile
 
 
 @lru_cache(maxsize=32)
@@ -20,6 +21,7 @@ class EstadoDelta(nn.Module):
         if self.rank < 1:
             raise ValueError("Delta memory rank must be >= 1")
         self.parallel_refinements = max(1, int(parallel_refinements))
+        self.plasticity_profile = PlasticityProfile()
         self.parallel_scan = True
         self.pre_normalize_sequence = False
         # Exact-equivalence simplifications toggled only by benchmark profiles.
@@ -110,7 +112,9 @@ class EstadoDelta(nn.Module):
             decay = torch.sigmoid(self.a * surprise + self.b).squeeze(-1).clamp(0.90, 0.9999)
             error_unit = F.normalize(error, dim=-1, eps=1e-6)
             write_lr = torch.tanh(surprise) * e_delta.clamp(0.0, 1.0)
-            gate = (surprise >= self.tau.clamp_min(0.0)).to(x.dtype)
+            profile = self.plasticity_profile
+            attended_surprise = surprise * (1.0 + profile.attention_gain * surprise.detach().clamp(0.0, 1.0))
+            gate = (attended_surprise >= self.tau.clamp_min(0.0) * profile.threshold_scale).to(x.dtype)
             write_vectors = error_unit * (write_lr * gate)
 
         prefix = torch.cumprod(decay, dim=1).clamp_min(1e-12)
@@ -137,7 +141,8 @@ class EstadoDelta(nn.Module):
             )
             trace_norm = trace_update.norm().clamp_min(1e-8)
             trace_update = trace_update * (0.05 / trace_norm).clamp(max=1.0)
-            self.eligibility_trace.mul_(0.95).add_(trace_update, alpha=0.05)
+            retention = self.plasticity_profile.eligibility_retention
+            self.eligibility_trace.mul_(retention).add_(trace_update, alpha=1.0 - retention)
             if not self.trace_norm_diagnostics_on_demand or collect_diagnostics:
                 self.last_eligibility_norm = float(self.eligibility_trace.norm().item())
 
@@ -167,7 +172,7 @@ class EstadoDelta(nn.Module):
         state = self.state.to(dtype=x.dtype)
         # Apply the previous batch's eligible trace only when delayed feedback
         # has assigned it value. The trace itself remains bounded and detached.
-        modulation = self.eligibility_modulator.to(device=x.device, dtype=x.dtype)
+        modulation = self.eligibility_modulator.to(device=x.device, dtype=x.dtype) * self.plasticity_profile.modulator_gain
         if self.always_apply_eligibility:
             trace = self.eligibility_trace.to(device=x.device, dtype=x.dtype)
             state = state + modulation * trace.unsqueeze(0)
@@ -197,7 +202,9 @@ class EstadoDelta(nn.Module):
             decay = torch.sigmoid(self.a * surprise_t + self.b).clamp(0.90, 0.9999)
             error_unit = F.normalize(error, dim=-1, eps=1e-6)
             write_lr = torch.tanh(surprise_t) * e_delta[:, t].clamp(0.0, 1.0)
-            gate = (surprise_t >= self.tau.clamp_min(0.0)).to(x.dtype)
+            profile = self.plasticity_profile
+            attended_surprise = surprise_t * (1.0 + profile.attention_gain * surprise_t.detach().clamp(0.0, 1.0))
+            gate = (attended_surprise >= self.tau.clamp_min(0.0) * profile.threshold_scale).to(x.dtype)
             if collect_diagnostics:
                 write_rates.append(gate.mean().detach())
             current_state = current_state * decay.unsqueeze(-1)

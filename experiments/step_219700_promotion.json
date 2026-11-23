@@ -1,0 +1,64 @@
+{
+  "status": "promoted_as_paired_continuation_parent",
+  "promotion_date": "2026-11-23",
+  "paired_checkpoints": {
+    "lumen": {
+      "global_step": 219700,
+      "architecture_id": "ronin_lumen_v3_3_neuroplasticity",
+      "source_run_id": 45230206330,
+      "source_artifact_id": 14857727162,
+      "source_artifact_name": "lumen-approved-neuroplasticity-step235700-45230206330"
+    },
+    "transformer": {
+      "global_step": 219750,
+      "architecture_id": "decoder_transformer_4l_d192_h4_ff576_tied_v1",
+      "source_run_id": 45230206330,
+      "source_artifact_id": 14854630840,
+      "source_artifact_name": "transformer-control-step235700-45230206330"
+    }
+  },
+  "holdout": {
+    "workflow_run_id": 45257284512,
+    "workflow_url": "https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45257284512",
+    "artifact_id": 14859702424,
+    "artifact_name": "ronin-step219700-vs-219750-paired-v2-personality-holdout-45257284512",
+    "questions": 2431,
+    "method": "mean conditional token NLL over each answer choice; same frozen tokenizer/context; no updates",
+    "lumen": {
+      "correct": 831,
+      "accuracy": 0.3418342245989305,
+      "mean_answer_nll": 5.7440758912664345
+    },
+    "transformer": {
+      "correct": 805,
+      "accuracy": 0.33113986096256643,
+      "mean_answer_nll": 5.514681,
+      "note": "Exact mean NLL is preserved in the holdout result artifact."
+    },
+    "paired_counts": {
+      "both_correct": 456,
+      "lumen_only_correct": 313,
+      "transformer_only_correct": 289,
+      "both_wrong": 1198
+    },
+    "checkpoint_gap_updates": 50
+  },
+  "continuation": {
+    "target_global_step": 300000,
+    "lumen_additional_updates": 80300,
+    "transformer_additional_updates": 80250,
+    "workflow_path": ".github/workflows/continue-paired-219700-300000.yml",
+    "workflow_run_id": null,
+    "data_run_id": 45149684913,
+    "data_artifact_name": "ronin-v2-plus-personality-250k-45149684913",
+    "corpus_policy": "Frozen v2 plus personality 250k; v3 excluded because its training gate remains closed.",
+    "seed": 42,
+    "batch": 8,
+    "context_length": 128,
+    "optimizer_state": "preserved",
+    "rng_state": "preserved",
+    "scheduler": "Restart a matched cosine transition from each promoted checkpoint to global step 300000; LUMEN and Transformer retain their respective approved base learning rates.",
+    "lumen_runtime_profile": "Extracted from the promoted checkpoint and verified; retains the approved plasticity profile and Delta exact fast paths."
+  },
+  "promotion_reason": "Both checkpoints passed internal step, architecture, shared corpus/tokenizer hash, optimizer and RNG provenance checks and were evaluated together on the same untouched 2431-question holdout. Promoted as continuation parents, not as a claim of universal model superiority."
+}

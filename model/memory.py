@@ -1,6 +1,7 @@
 """Ternary PE-gated elastic editing and append-only slow-memory creation."""
 import torch
 from torch import nn
+from .neuroplasticity import OneShotGate
 
 
 class MemoriaElastica(nn.Module):
@@ -10,6 +11,8 @@ class MemoriaElastica(nn.Module):
         self.dim = dim
         self.small_pe = float(small_pe)
         self.large_pe = float(large_pe)
+        self.one_shot_enabled = False
+        self.one_shot_gate = OneShotGate(base=0.05, maximum=0.20, gain=1.0)
         self.mlp = nn.Sequential(
             nn.Linear(dim, hidden), nn.GELU(), nn.Linear(hidden, dim)
         )
@@ -49,7 +52,10 @@ class MemoriaElastica(nn.Module):
     def forward(self, x, sorpresa, e_mem):
         pe = sorpresa.detach().squeeze(-1)
         small = pe < self.small_pe
-        large = pe > self.large_pe
+        fast_rate = self.one_shot_gate(pe) if self.one_shot_enabled else torch.zeros_like(pe)
+        # High uncertainty can open a bounded local write path; the global
+        # optimizer learning rate is never modified.
+        large = pe > self.large_pe * (1.0 - fast_rate)
 
         elastic = self.mlp(x)
         if self.training and elastic.requires_grad:

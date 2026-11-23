@@ -67,12 +67,12 @@ jobs:
           PARENT="${{ inputs.parent_step }}"
           STEPS="${{ inputs.steps }}"
           if [ "$MODEL" = "lumen" ]; then
-            CKPT="inputs/parent/lumen-219700.pt"
+            CKPT="inputs/parent/${MODEL}-$PARENT.pt"
             OUTDIR="checkpoints/lumen"
             WALL="lumen-wall.json"
             LOG="logs/lumen-$PARENT-$TARGET.log"
           else
-            CKPT="inputs/parent/transformer-219750.pt"
+            CKPT="inputs/parent/${MODEL}-$PARENT.pt"
             OUTDIR="checkpoints/transformer"
             WALL="transformer-wall.json"
             LOG="logs/transformer-$PARENT-$TARGET.log"
@@ -96,8 +96,6 @@ jobs:
           assert s.get("optimizer") and s.get("rng") and s.get("scheduler_transition")
           print("Verified parent",step,arch)
           PY
-          RESTART=()
-          if [ "${{ inputs.first_block }}" = "true" ]; then RESTART=(--restart-scheduler-transition); fi
           if [ "$MODEL" = "lumen" ]; then
             OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.train \
               --steps "$STEPS" --resume "$CKPT" \
@@ -107,8 +105,7 @@ jobs:
               --token-cache inputs/data/spanish-v2-plus-personality-token-cache.pt \
               --batch 8 --max-len 128 --seed 42 \
               --runtime-profile inputs/config/lumen-runtime-profile.json \
-              --lr 3e-5 --warmup 100 --total-steps 400000 \
-              --scheduler-transition "${RESTART[@]}" \
+              --lr 5e-5 --warmup 100 --total-steps 400000 \
               --transition-start 219700 --transition-end 400000 \
               --warmup-transition 100 --transition-plateau-steps 0 \
               --transition-min-lr-ratio 0.5 \
@@ -124,8 +121,7 @@ jobs:
               --tokenizer inputs/artifacts/tokenizer.json \
               --token-cache inputs/data/spanish-v2-plus-personality-token-cache.pt \
               --batch 8 --max-len 128 --seed 42 --threads 4 \
-              --lr 7.5e-5 --warmup 100 --total-steps 400000 \
-              --scheduler-transition "${RESTART[@]}" \
+              --lr 5e-5 --warmup 100 --total-steps 400000 \
               --transition-start 219700 --transition-end 400000 \
               --warmup-transition 100 --transition-plateau-steps 0 \
               --transition-min-lr-ratio 0.5 \
@@ -158,6 +154,7 @@ jobs:
           name: ${{ inputs.model }}-step-${{ inputs.target_step }}-${{ github.run_id }}
           path: |
             checkpoints/
+            checkpoint/
             ${{ inputs.model }}-wall.json
             logs/
           if-no-files-found: warn

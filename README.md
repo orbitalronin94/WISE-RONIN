@@ -176,7 +176,13 @@ La propuesta incluye un contexto compartido de sorpresa/incertidumbre; una seña
 
 **La intención es que, tarde o temprano, podamos incorporar todos los cambios que demuestren ser útiles**, aunque algunos necesiten varias rondas de diseño, optimización y validación. No se activarán todos por decreto: cada candidato debe demostrar menor loss y mayor throughput en una comparación emparejada, sin empeorar estabilidad. Los que no pasen quedan pendientes con sus logs y podrán revisarse contra una referencia posterior. Después se evaluará la composición conjunta y su estabilidad en entrenamiento y holdout.
 
-La PR sigue en borrador mientras se completan esos gates. Por tanto, esta hoja de ruta no significa que todos los mecanismos estén ya activos ni que hayan demostrado una mejora. El alcance, el protocolo y el estado detallado están en [Integración progresiva de neuroplasticidad](docs/INTEGRACION_PROGRESSIVA_NEUROPLASTICIDAD_ES.md) y en la [PR #71](https://github.com/orbitalronin94/WISE-RONIN/pull/71).
+**Resultado del torneo de 18 candidatos (run 45175046624):** las 18 evaluaciones emparejadas finalizaron y solo 2 superaron todos los criterios: `07_disinhibition_gain` (escala de inhibición 0,80) y `09_eligibility_window` (retención de elegibilidad 0,98). Los otros 16 quedan pendientes, conservando artefactos y motivos; no se activan. La aprobación corresponde al paquete de base compartida más cada delta, no a una atribución causal aislada del delta.
+
+El piloto integrado de 1.000 pasos se ejecutó desde el checkpoint original 155.700 hasta 156.700, usando únicamente esos dos mecanismos aprobados. Finalizó correctamente, guardó checkpoint y logs, y registró `dead=0,00 %` en el último paso. Es un piloto de integración, no una prueba de superioridad en holdout.
+
+La PR #71 se fusionó mediante squash en `main` (commit `4e42507f146106937b4b2c6ae7f2d53cd6a8e70c`). El siguiente experimento continúa **Lumen y Transformer durante 15.000 pasos desde sus checkpoints originales 155.700**, con el mismo corpus v2 + personalidad, tokenizer, seed y configuración de batch/longitud. Solo Lumen recibe los dos mecanismos aprobados; Transformer permanece como control. El resultado decisivo será el holdout emparejado posterior.
+
+La intención sigue siendo incorporar progresivamente todos los mecanismos que demuestren utilidad. Los pendientes no se descartan: podrán corregirse y volver a competir contra una referencia actualizada. El alcance, protocolo y registro de hipótesis están en [Integración progresiva de neuroplasticidad](docs/INTEGRACION_PROGRESSIVA_NEUROPLASTICIDAD_ES.md) y en la [PR #71](https://github.com/orbitalronin94/WISE-RONIN/pull/71).
 
 ## Cómo se investiga
 

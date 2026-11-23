@@ -54,3 +54,41 @@ Tras superar los gates individuales se ejecuta una prueba integrada de 100 pasos
 ## Integridad experimental
 
 El benchmark de 100 pasos es un filtro de ingeniería, no evidencia de generalización. No se usa el holdout para ajustar parámetros. Los resultados se conservan incluso si no hay ganador. No se promueve ni se modifica el checkpoint de referencia durante esta campaña.
+
+
+## Torneo de 18 cambios: comparación directa contra main
+
+Workflow: `.github/workflows/benchmark-neuroplasticity-18.yml`.
+
+Cada candidato dispone de un runner independiente. Dentro de ese runner se ejecuta primero el control de `main` y después el candidato, ambos desde el mismo checkpoint promovido de paso 155.700, mismo corpus v2 + personalidad de 250k, tokenizer/cache, semilla 42, secuencia RNG, batch 8, contexto 128 y perfil CPU. El candidato activa un solo delta funcional sobre la base de señales compartidas de esta PR. No se usa holdout.
+
+La matriz inicial contiene:
+
+1. `01_shared_signal_core`: productor compartido de señales en perfil neutro.
+2. `02_pain_response`: respuesta del órgano dolor.
+3. `03_pleasure_response`: respuesta del órgano placer.
+4. `04_pain_budget_gain`: modulación del presupuesto por dolor.
+5. `05_pleasure_budget_gain`: modulación del presupuesto por placer.
+6. `06_ltp_threshold`: umbral de escritura/LTP.
+7. `07_disinhibition_gain`: ganancia de desinhibición.
+8. `08_modulator_gain`: ganancia del modulador de tercer factor.
+9. `09_eligibility_window`: retención temporal de elegibilidad.
+10. `10_attention_gate`: ganancia atencional dependiente de sorpresa.
+11. `11_tagging_capture`: tagging/captura.
+12. `12_intrinsic_threshold`: umbral intrínseco adaptativo.
+13. `13_simulated_pruning`: máscara de poda no destructiva.
+14. `14_tag_protected_ltd`: LTD condicionada por recompensa negativa y tags.
+15. `15_one_shot_memory`: escritura one-shot acotada en memoria.
+16. `16_homeostatic_scaling`: escalado homeostático multiplicativo por canal.
+17. `17_prioritized_replay`: replay priorizado/comprimido; se fuerza el ciclo de sueño dentro del bloque para medirlo.
+18. `18_sleep_downscaling`: downscaling durante sueño; se fuerza el ciclo dentro del bloque para medirlo.
+
+El gate de promoción de esta campaña exige simultáneamente: loss media de 100 pasos menor, pasos/segundo mayor, última ventana de 20 pasos no peor, dead máximo no mayor y ausencia de NaN/Inf. Los empates no pasan. Cada candidato conserva `main-control.log`, `candidate.log`, perfiles y `comparison.json` en su artefacto.
+
+### Aprobados y pendientes
+
+El workflow agrega automáticamente `AGGREGATE.md` y `approved_candidates.json`. Solo los aprobados se incluyen en el perfil combinado para el siguiente entrenamiento. Los demás permanecen pendientes con su motivo y logs; no se borran ni se etiquetan como descartados. Si ninguno pasa, no se activa ningún candidato.
+
+**Dependencia compartida:** el productor común de señales forma parte de todos los candidatos de esta PR; el candidato 01 mide su coste/beneficio en neutro. Por tanto, la aprobación de un órgano acredita el paquete «base compartida + delta del órgano», no una atribución causal aislada del delta respecto a la base.
+
+ELM sigue fuera de este torneo de entrenamiento: es un probe analítico offline y no modifica el camino autoregresivo. Se evaluará con un protocolo auxiliar propio, sin fingir que puede bajar la loss del trainer.

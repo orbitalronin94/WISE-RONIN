@@ -1,0 +1,143 @@
+name: LUMEN vs Transformer — 100 open-ended answers at step 185700
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/freeform-random100-step185700.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-transformer-freeform-random100-step185700
+  cancel-in-progress: false
+
+env:
+  SOURCE_RUN_ID: "45200252793"
+  DATA_RUN_ID: "45149684913"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  PYTHONUNBUFFERED: "1"
+  SAMPLE_SEED: "20261123"
+
+jobs:
+  paired-freeform:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU inference runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+      - name: Download frozen v2 corpus, tokenizer and untouched holdout
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-v2-plus-personality-250k-45149684913
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.DATA_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact LUMEN step-185700 checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-approved-neuroplasticity-step185700-45200252793
+          path: lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact Transformer step-185700 checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: transformer-control-step185700-45200252793
+          path: transformer
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Reproduce the exact same 100-question sample as the multiple-choice holdout
+        run: |
+          set -euo pipefail
+          test -s prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl
+          test -s prepared/artifacts/spanish-v2/tokenizer.json
+          LUMEN_CKPT="$(find lumen -name step_185700.pt -print -quit)"
+          TRANSFORMER_CKPT="$(find transformer -name step_185700.pt -print -quit)"
+          test -n "$LUMEN_CKPT" && test -s "$LUMEN_CKPT"
+          test -n "$TRANSFORMER_CKPT" && test -s "$TRANSFORMER_CKPT"
+          export LUMEN_CKPT TRANSFORMER_CKPT
+          python - <<'PY'
+          import json, os, random, torch
+          from pathlib import Path
+          source=Path("prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl")
+          rows=[json.loads(x) for x in source.read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(rows)==2431, f"Expected 2431 rows, got {len(rows)}"
+          eligible=[r for r in rows if isinstance(r.get("prompt"),str) and r["prompt"].strip()]
+          sample=random.Random(int(os.environ["SAMPLE_SEED"])).sample(eligible,100)
+          Path("prepared/random100_holdout.jsonl").write_text(
+              "".join(json.dumps(r,ensure_ascii=False)+"\\n" for r in sample),encoding="utf-8")
+          l=torch.load(os.environ["LUMEN_CKPT"],map_location="cpu",weights_only=False)
+          t=torch.load(os.environ["TRANSFORMER_CKPT"],map_location="cpu",weights_only=False)
+          assert int(l.get("step",-1))==185700, l.get("step")
+          assert int(t.get("step",-1))==185700, t.get("step")
+          assert isinstance(l.get("model"),dict) and l["model"]
+          assert isinstance(t.get("model"),dict) and t["model"]
+          assert l.get("tokenizer_sha256")==t.get("tokenizer_sha256")
+          assert l.get("data_sha256")==t.get("data_sha256")
+          print("Verified paired step-185700 checkpoints and 100 shared question IDs.")
+          print("Sample IDs:",[r.get("id") for r in sample])
+          PY
+          echo "LUMEN_CKPT=$LUMEN_CKPT" >> "$GITHUB_ENV"
+          echo "TRANSFORMER_CKPT=$TRANSFORMER_CKPT" >> "$GITHUB_ENV"
+      - name: Generate 100 open-ended answers from both models
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p results/freeform-step185700
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/freeform_generation_holdout.py \
+            --holdout prepared/random100_holdout.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --lumen "$LUMEN_CKPT" \
+            --transformer "$TRANSFORMER_CKPT" \
+            --out-dir results/freeform-step185700 \
+            --sample-size 100 --seed 20261123 --expected-step 185700 \
+            --threads 4 --max-len 128 --max-new-tokens 96
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("results/freeform-step185700")
+          src=p/"step31000_freeform_100.json"
+          data=json.loads(src.read_text(encoding="utf-8"))
+          data["step"]=185700
+          data["sample_seed"]=20261123
+          data["evaluation_note"]="Open-ended greedy generations on the exact same 100 questions as the paired random-100 multiple-choice holdout. Options and gold answers are stripped before generation. Qualitative probe, not an automatic accuracy score."
+          data["decoding"]="greedy argmax; no repetition penalty; max_new_tokens=96; max_len=128"
+          (p/"step185700_freeform_100.json").write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\\n",encoding="utf-8")
+          md=(p/"step31000_freeform_100.md").read_text(encoding="utf-8")
+          md=md.replace("31k","185.7k").replace("31.000","185.700").replace("step31000","step185700")
+          md=md.replace("máximo de 64 tokens","máximo de 96 tokens")
+          md += "\\n\\n> Muestra idéntica a la prueba multiple-choice aleatoria de 100 preguntas. Las opciones y la respuesta correcta se eliminan antes de generar. Evaluación cualitativa; no equivale a una puntuación automática de exactitud.\\n"
+          (p/"step185700_freeform_100.md").write_text(md,encoding="utf-8")
+          src.unlink()
+          (p/"step31000_freeform_100.md").unlink()
+          PY
+      - name: Upload all paired open-ended prompts and answers
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ronin-step185700-freeform-random100-${{ github.run_id }}
+          path: results/freeform-step185700/
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Report free-form run
+        if: always()
+        run: |
+          echo "Paired open-ended 100-question holdout at step 185700: ${{ github.run_id }}"
+          test -s results/freeform-step185700/step185700_freeform_100.json
+          test -s results/freeform-step185700/step185700_freeform_100.md

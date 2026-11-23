@@ -34,7 +34,7 @@ Para evitar una búsqueda infinita, la campaña debe declarar un presupuesto má
 
 ## Compartición de cálculos
 
-Las señales comunes se calculan una sola vez por paso y se exponen mediante un contexto inmutable: error/sorpresa, actividad efectiva por unidad, elegibilidad, incertidumbre, señal de mejora/regresión y presupuesto disponible. Los órganos consumen esas señales; no mantienen copias ni vuelven a calcularlas. Las actualizaciones específicas siguen siendo independientes y cada señal incluye productor, forma, dtype y contador de paso para detectar datos obsoletos.
+Las señales compartidas se calculan una sola vez y cada estado conserva un único productor. En esta implementación, `SignalContext` transporta sorpresa e incertidumbre por forward; `Presupuesto.check_loss_signal` produce una sola señal de mejora/regresión que consumen glucosa, dolor y placer. La actividad efectiva sigue siendo propiedad de cada órgano homeostático y la elegibilidad sigue siendo estado local de cada Delta: no se duplican en el contexto si no hay varios consumidores que necesiten la misma lectura. Las actualizaciones específicas siguen siendo independientes. Cualquier ampliación del contexto debe conservar productor, forma, dtype y contador de paso para detectar datos obsoletos.
 
 Se incluyen pruebas que verifican:
 - una única producción de cada señal por paso;

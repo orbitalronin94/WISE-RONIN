@@ -283,3 +283,26 @@ No se concluye que Lumen «tenga» ya los mecanismos 7–12, que el Transformer 
 
 
 **Aclaración bibliográfica sobre sueño:** el DOI 10.1016/j.tics.2013.12.005 sí es correcto para Huber & Born (2014), pero el título completo es *Sleep, synaptic connectivity, and hippocampal memory during early development* (no el título abreviado sin «during early development»). La revisión general de SHY de Tononi & Cirelli (2014) es otro artículo distinto, DOI 10.1016/j.neuron.2013.12.025. Se conservan ambos porque respaldan aspectos relacionados, pero no son intercambiables.
+
+
+## Decisión experimental del piloto integrado de 1.000 pasos
+
+La siguiente prueba solicitada para LUMEN no será una secuencia de ablaciones previas: será un **piloto integrado**, con las doce familias de mecanismos activadas conjuntamente en LUMEN y un Transformer de control entrenado en paralelo desde el checkpoint pareado promovido de mayor paso. El objetivo es comprobar si el sistema completo puede aprender y mantenerse estable, y medir si la optimización del núcleo permite recuperar pasos por segundo.
+
+La integración no convierte las hipótesis en hechos. Cada órgano tendrá una bandera/configuración explícita, telemetría de activación y contadores de coste; los mecanismos lentos (sueño, replay, poda y LTD) se ejecutarán en ciclos programados, no necesariamente en cada actualización. Las reglas irreversibles de poda/olvido se mantendrán primero como máscaras reversibles/propuestas hasta validar que no dañan la retención. ELM y one-shot se probarán como rutas auxiliares, sin reemplazar el objetivo autoregresivo ni modificar de forma opaca el optimizador principal.
+
+### Condiciones de aceptación del piloto
+
+- Mismo checkpoint de partida cuando la arquitectura lo permita, corpus v3 limpio y autorizado, tokenizer, semilla, batch, contexto y presupuesto de tokens iguales.
+- 1.000 actualizaciones para cada modelo, ejecutadas en paralelo en el mismo tipo de runner cuando sea posible.
+- Informar pasos/segundo, tiempo de forward, backward, mantenimiento y overhead; reportar tanto coste total como coste sin fases periódicas.
+- Verificar ausencia de NaN/Inf, deriva de normas, actividad efectiva, unidades inactivas, memoria ocupada, tags protegidos y eventos de replay/poda/LTD.
+- Evaluar con el mismo holdout protegido; no tocarlo durante selección ni desarrollo.
+- No atribuir una mejora causal a un órgano individual a partir de este único ensayo conjunto. Si el paquete falla, conservar logs y reducir el fallo a una siguiente matriz de pruebas.
+
+### Orden de trabajo actualizado
+
+1. Validar migración y equivalencia de los fastpaths Delta.
+2. Medir y reducir el coste recurrente Delta/autograd antes de introducir mantenimiento adicional.
+3. Implementar los órganos que faltan y conectar los existentes con instrumentación explícita.
+4. Ejecutar el piloto conjunto LUMEN vs Transformer de 1.000 pasos, solo después de autorizar corpus v3.

@@ -604,7 +604,6 @@ def main():
     if args.compile_mode:
         compiled_model = torch.compile(model, mode=args.compile_mode)
         LOG.info("torch_compile enabled: mode=%s; diagnostic forwards remain eager", args.compile_mode)
-    activity_windows = [deque(maxlen=100) for _ in model.homeo]
     glucose_loss_window = deque(maxlen=args.log_every)
     profile = {"forward": 0.0, "backward": 0.0, "sleep": 0.0, "wall": 0.0}
     block_started = time.perf_counter()
@@ -635,9 +634,6 @@ def main():
         forward_model = (model if collect_diagnostics or compiled_model is None else compiled_model)
         output = forward_model(tokens, reset_state=True, collect_diagnostics=collect_diagnostics)
         profile["forward"] += time.perf_counter() - forward_started
-        for index, organ in enumerate(model.homeo):
-            if organ.last_gate_activity_per_unit is not None:
-                activity_windows[index].append(organ.last_gate_activity_per_unit.detach().cpu())
         loss, metrics = perdida_total(
             output, tokens, model,
             use_jepa=not args.no_jepa,
@@ -744,8 +740,6 @@ def main():
                     pleasure_state["pleasure"], pleasure_state["improvement"],
                     model.presupuesto.affect_scale,
                 )
-            dead_by_layer = [organ.neuronas_muertas() for organ in model.homeo]
-            dead = max(dead_by_layer, default=1.0)
             entropy = float(model.presupuesto.entropy(output["energy"]).detach())
             ze_conflict = 0.0
             ze_erase = 0
@@ -754,12 +748,12 @@ def main():
                 ze_erase = int(model.ze.erase_count.item())
             LOG.info(
                 "step=%d loss=%.5f token=%.5f latent=%.5f div=%.5f "
-                "router=%.5f rep=%.5f F_complexity=%.5f dead=%.2f%% "
+                "router=%.5f rep=%.5f "
                 "energy_entropy=%.4f PE_mean=%.4f PE_max=%.4f slow_mem=%.3f ZE_conflict=%.4f ZE_erase=%d tokens_seen=%d lr=%.3e",
                 step, loss.item(), metrics["L_token"].item(),
                 metrics["L_latente"].item(), metrics["L_div"].item(),
                 metrics["L_router"].item(), metrics["L_rep"].item(),
-                metrics["F_complexity"].item(), dead * 100, entropy,
+                entropy,
                 float(output["surprise"].mean().detach()), float(output["surprise"].max().detach()),
                 model.memoria.occupancy(), ze_conflict, ze_erase,
                 tokens_seen, scheduler.get_last_lr()[0],
@@ -782,7 +776,6 @@ def main():
                     "gate_positive_rate": homeo.last_gate_positive,
                     "homeostasis_output_norm": homeo.last_output_norm,
                     "effective_activity_mean": float(homeo.effective_m.mean().detach()),
-                    "effective_dead_fraction": homeo.neuronas_muertas(),
                     "homeostasis_bias_norm": float(homeo.bias.detach().norm()),
                     "homeostasis_bias_min": float(homeo.bias.detach().min()),
                     "homeostasis_bias_max": float(homeo.bias.detach().max()),
@@ -796,41 +789,10 @@ def main():
                 f"out+={record['output_positive_rate']:.3f},"
                 f"gate+={record['gate_positive_rate']:.3f},"
                 f"homeo_out={record['homeostasis_output_norm']:.3e},"
-                f"dead={record['effective_dead_fraction']:.1%},"
                 f"bias_norm={record['homeostasis_bias_norm']:.3e}"
                 for record in layer_records
             )
             LOG.info("layer_diagnostics step=%d %s", step, layer_diag)
-            LOG.info("effective_dead_by_layer step=%d values=%s", step,
-                     ",".join(f"{value:.3f}" for value in dead_by_layer))
-        if step % 250 == 0:
-            rolling_dead = []
-            for window in activity_windows:
-                if len(window) < 100:
-                    rolling_dead.append(None)
-                else:
-                    mean_activity = torch.stack(list(window)).mean(dim=0)
-                    rolling_dead.append(float((mean_activity < 1e-4).float().mean().item()))
-            LOG.info(
-                "health_250: step=%d loss=%.5f dead_by_layer=%s gate_plus=%s wall_seconds=%.1f",
-                step, loss.item(),
-                ",".join("na" if value is None else f"{value:.4f}" for value in rolling_dead),
-                ",".join(f"{organ.last_gate_positive:.4f}" for organ in model.homeo),
-                time.perf_counter() - block_started,
-            )
-            if rolling_dead and rolling_dead[0] is not None and rolling_dead[0] > 0.20:
-                LOG.warning("WARNING layer0_dead>20%% step=%d dead=%.2f%%",
-                            step, rolling_dead[0] * 100)
-            over_limit = [i for i, value in enumerate(rolling_dead)
-                          if value is not None and value > 0.40]
-            if over_limit:
-                save_checkpoint(
-                    Path(args.ckpt_dir) / f"step_{step}_STOP.pt",
-                    model, optimizer, scheduler, step, args, data_hash, local_rng,
-                    tokens_seen, tokenizer_hash, layer_diagnostics_history, sleep_events,
-                )
-                raise RuntimeError(f"STOP: rolling dead-neuron fraction >40% in layers {over_limit}")
-
         if not args.no_sleep and not args.dummy_m1:
             if args.v32_ze:
                 if not sleep_done and model.memoria.occupancy() >= 0.8:

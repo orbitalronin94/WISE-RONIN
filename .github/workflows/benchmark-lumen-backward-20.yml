@@ -12,7 +12,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: lumen-backward-20-\${{ github.run_id }}
+  group: lumen-backward-20-${{ github.run_id }}
   cancel-in-progress: false
 env:
   PARENT_RUN_ID: "45136184396"
@@ -72,7 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: \${{ github.ref }}
+          ref: ${{ github.ref }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14.10"
@@ -86,17 +86,17 @@ jobs:
         with:
           name: ronin-v2-plus-personality-250k-45136184396
           path: prepared
-          repository: \${{ github.repository }}
-          run-id: \${{ env.PREPARED_RUN_ID }}
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download exact promoted Lumen step-140700 checkpoint
         uses: actions/download-artifact@v7
         with:
           name: ronin-lumen-step140700-v2-personality-45136184396
           path: lumen-parent
-          repository: \${{ github.repository }}
-          run-id: \${{ env.PARENT_RUN_ID }}
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify identical benchmark inputs and parent
         run: |
           set -euo pipefail
@@ -119,7 +119,7 @@ jobs:
           PY
       - name: Write matched control runtime profile
         env:
-          PROFILE: \${{ matrix.profile }}
+          PROFILE: ${{ matrix.profile }}
         run: |
           mkdir -p "artifacts/results/$PROFILE" config
           cat > config/runtime_profile.json <<'JSON'
@@ -141,7 +141,7 @@ jobs:
           cp config/runtime_profile.json "artifacts/results/$PROFILE/control_profile.json"
       - name: Run 100-step matched control
         env:
-          PROFILE: \${{ matrix.profile }}
+          PROFILE: ${{ matrix.profile }}
         run: |
           set -euo pipefail
           python -m train.train \
@@ -162,7 +162,7 @@ jobs:
             2>&1 | tee "artifacts/results/$PROFILE/control.log"
       - name: Apply one hypothesis or combination
         env:
-          PROFILE: \${{ matrix.profile }}
+          PROFILE: ${{ matrix.profile }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -215,7 +215,7 @@ jobs:
           PY
       - name: Run 100-step candidate from same parent and seed
         env:
-          PROFILE: \${{ matrix.profile }}
+          PROFILE: ${{ matrix.profile }}
         run: |
           set -euo pipefail
           python -m train.train \
@@ -237,7 +237,7 @@ jobs:
       - name: Extract timing, loss and health evidence
         if: always()
         env:
-          PROFILE: \${{ matrix.profile }}
+          PROFILE: ${{ matrix.profile }}
         run: |
           python - <<'PY'
           import json, os, pathlib, re, statistics
@@ -276,8 +276,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: lumen-backward20-\${{ matrix.profile }}-\${{ github.run_id }}
-          path: artifacts/results/\${{ matrix.profile }}/
+          name: lumen-backward20-${{ matrix.profile }}-${{ github.run_id }}
+          path: artifacts/results/${{ matrix.profile }}/
           if-no-files-found: warn
           retention-days: 90
           compression-level: 6
@@ -290,14 +290,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: \${{ github.ref }}
+          ref: ${{ github.ref }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14.10"
       - name: Download all 20 reports
         uses: actions/download-artifact@v7
         with:
-          pattern: lumen-backward20-*-\${{ github.run_id }}
+          pattern: lumen-backward20-*-${{ github.run_id }}
           path: artifacts/all
           merge-multiple: false
       - name: Rank candidates against matched controls
@@ -325,7 +325,7 @@ jobs:
       - name: Upload aggregate ranking
         uses: actions/upload-artifact@v7
         with:
-          name: lumen-backward-20-hypotheses-report-\${{ github.run_id }}
+          name: lumen-backward-20-hypotheses-report-${{ github.run_id }}
           path: artifacts/lumen_backward_20_hypotheses.json
           if-no-files-found: error
           retention-days: 90

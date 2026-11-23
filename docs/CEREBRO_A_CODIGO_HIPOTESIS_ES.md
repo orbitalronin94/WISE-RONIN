@@ -280,3 +280,6 @@ No se concluye que Lumen «tenga» ya los mecanismos 7–12, que el Transformer 
 - Foster & Wilson (2006), DOI [10.1038/nature04587](https://doi.org/10.1038/nature04587).
 - Collingridge et al. (2010), DOI [10.1038/nrn2867](https://doi.org/10.1038/nrn2867).
 - Malenka & Bear (2004), DOI [10.1038/nrn1475](https://doi.org/10.1038/nrn1475).
+
+
+**Aclaración bibliográfica sobre sueño:** el DOI 10.1016/j.tics.2013.12.005 sí es correcto para Huber & Born (2014), pero el título completo es *Sleep, synaptic connectivity, and hippocampal memory during early development* (no el título abreviado sin «during early development»). La revisión general de SHY de Tononi & Cirelli (2014) es otro artículo distinto, DOI 10.1016/j.neuron.2013.12.025. Se conservan ambos porque respaldan aspectos relacionados, pero no son intercambiables.

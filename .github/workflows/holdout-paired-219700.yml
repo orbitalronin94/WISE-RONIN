@@ -112,19 +112,19 @@ jobs:
             --holdout prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl \
             --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
             --lumen resolved/lumen-219700.pt \
-            --transformer resolved/transformer-219700.pt \
-            --expected-lumen-step 219700 \\\n            --expected-transformer-step 219750 \
+            --transformer resolved/transformer-219750.pt \
+            --expected-lumen-step 219700 \
             --out results/step219700_lumen_vs_step219750_transformer_holdout.json \
             --threads 4 --max-len 128
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ronin-step219700-vs-219750-paired-v2-personality-holdout-${{ github.run_id }}
-          path: results/step219700_paired_v2_personality_holdout.json
+          path: results/step219700_lumen_vs_step219750_transformer_holdout.json
           if-no-files-found: warn
           retention-days: 90
       - name: Report holdout provenance
         if: always()
         run: |
           echo "Paired 219700 holdout run: ${{ github.run_id }}"
-          test -s results/step219700_paired_v2_personality_holdout.json
+          test -s results/step219700_lumen_vs_step219750_transformer_holdout.json

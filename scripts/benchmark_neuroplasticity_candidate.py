@@ -77,7 +77,7 @@ def run_training(root: Path, label: str, profile: dict, args, out: Path) -> dict
         "--token-cache", str((args.prepared_root / "data/spanish-v2-plus-personality-token-cache.pt").resolve()),
         "--batch", "8", "--max-len", "128", "--seed", "42",
         "--runtime-profile", str(profile_path.resolve()),
-        "--lr", "3e-5", "--warmup", "100", "--total-steps", "155700",
+        "--lr", "3e-5", "--warmup", "100", "--total-steps", "155800",
         "--scheduler-transition", "--restart-scheduler-transition",
         "--transition-start", "155700", "--transition-end", "155800",
         "--warmup-transition", "10", "--transition-plateau-steps", "0",

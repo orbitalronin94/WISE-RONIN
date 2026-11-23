@@ -240,3 +240,10 @@ Los microbenchmarks de 100 o 500 pasos sirven para filtrar hipótesis de entrena
 - Los resultados negativos, fallos y retrocesos forman parte de la investigación.
 
 **La promesa de Lumen no es que ya haya resuelto el aprendizaje. Es que se atreve a formular otra arquitectura, exponerla a controles y dejar que los resultados decidan.**
+
+
+## Optimización de throughput: ganador OpenMP (23-11-2026)
+
+En el torneo emparejado de 18 perfiles CPU ([run 45197657760](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45197657760)), la mejor configuración fue **OpenMP ACTIVE + PROC_BIND=close + PLACES=cores + KMP_BLOCKTIME=0**, manteniendo cuatro hilos intra-op, dos inter-op, el perfil de órganos y todos los mecanismos LUMEN. En la pareja de 100 pasos obtuvo **3,4415 pasos/s frente a 3,2161** del control (**+7,01 %**); loss final idéntica (2,9238), actividad muerta idéntica (0 %) y diagnósticos de las cuatro capas conservados. Es una medición de throughput, no una afirmación de mejor aprendizaje ni de generalización.
+
+Se integra únicamente este ganador; no se incorporan las otras 17 hipótesis del torneo. La configuración se aplica al entorno de ejecución de **ambos modelos**, LUMEN y Transformer, para que la comparación de calidad siga siendo emparejada. Ningún órgano, cálculo funcional o mecanismo se elimina, desactiva ni reduce. El siguiente entrenamiento continúa ambos checkpoints desde **170.700 hasta 185.700 (+15.000 pasos)** con el corpus, tokenizer, token cache, batch y scheduler congelados. Workflow: [LUMEN vs Transformer — OMP winner, 15k](.github/workflows/lumen-transformer-throughput-winner-15k.yml).

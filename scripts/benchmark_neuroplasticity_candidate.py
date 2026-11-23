@@ -12,6 +12,12 @@ import subprocess
 import sys
 import time
 
+def git_sha(root: Path) -> str:
+    return subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=root, text=True
+    ).strip()
+
+
 def load_main_profile(root: Path) -> dict:
     """Use main's committed runtime profile verbatim as the paired control."""
     path = root / "config/lumen_cpu_profile.json"
@@ -226,6 +232,8 @@ def main():
             "candidate_profile": candidate_profile,
             "comparison_contract": {
                 "baseline": "main source and its committed config/lumen_cpu_profile.json",
+                "baseline_sha": git_sha(args.baseline_root),
+                "candidate_sha": git_sha(args.candidate_root),
                 "candidate": "PR head; shared-signal foundation plus one candidate delta",
                 "runtime_profile_source": "loaded verbatim from main/config/lumen_cpu_profile.json, then deep-merged with one candidate delta",
                 "throughput_metric": "sum of trainer profile_1 per-step wall times; excludes process startup and data/model loading",

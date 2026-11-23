@@ -32,38 +32,38 @@ def candidate_delta(name: str) -> dict:
         "01_tagging_capture": {
                 "plasticity": {
                         "mode": "custom",
-                        "tagging_enabled": true
+                        "tagging_enabled": True
                 }
         },
         "02_intrinsic_threshold": {
                 "plasticity": {
                         "mode": "custom",
-                        "intrinsic_threshold_enabled": true
+                        "intrinsic_threshold_enabled": True
                 }
         },
         "03_simulated_pruning": {
                 "plasticity": {
                         "mode": "custom",
-                        "simulated_pruning_enabled": true
+                        "simulated_pruning_enabled": True
                 }
         },
         "04_tag_protected_ltd": {
                 "plasticity": {
                         "mode": "custom",
-                        "tagging_enabled": true,
-                        "ltd_enabled": true
+                        "tagging_enabled": True,
+                        "ltd_enabled": True
                 }
         },
         "05_one_shot_memory": {
                 "plasticity": {
                         "mode": "custom",
-                        "one_shot_enabled": true
+                        "one_shot_enabled": True
                 }
         },
         "06_homeostatic_scaling": {
                 "organs": {
                         "homeostasis": {
-                                "synaptic_scaling": true
+                                "synaptic_scaling": True
                         }
                 }
         },
@@ -78,39 +78,39 @@ def candidate_delta(name: str) -> dict:
         "09_tag_plus_intrinsic": {
                 "plasticity": {
                         "mode": "custom",
-                        "tagging_enabled": true,
-                        "intrinsic_threshold_enabled": true
+                        "tagging_enabled": True,
+                        "intrinsic_threshold_enabled": True
                 }
         },
         "10_tag_plus_pruning": {
                 "plasticity": {
                         "mode": "custom",
-                        "tagging_enabled": true,
-                        "simulated_pruning_enabled": true
+                        "tagging_enabled": True,
+                        "simulated_pruning_enabled": True
                 }
         },
         "11_tag_plus_one_shot": {
                 "plasticity": {
                         "mode": "custom",
-                        "tagging_enabled": true,
-                        "one_shot_enabled": true
+                        "tagging_enabled": True,
+                        "one_shot_enabled": True
                 }
         },
         "12_tag_plus_scaling": {
                 "plasticity": {
                         "mode": "custom",
-                        "tagging_enabled": true
+                        "tagging_enabled": True
                 },
                 "organs": {
                         "homeostasis": {
-                                "synaptic_scaling": true
+                                "synaptic_scaling": True
                         }
                 }
         },
         "13_tag_plus_replay": {
                 "plasticity": {
                         "mode": "custom",
-                        "tagging_enabled": true
+                        "tagging_enabled": True
                 },
                 "replay_compression": 0.5,
                 "sleep_interval_steps": 50
@@ -118,7 +118,7 @@ def candidate_delta(name: str) -> dict:
         "14_tag_plus_downscale": {
                 "plasticity": {
                         "mode": "custom",
-                        "tagging_enabled": true
+                        "tagging_enabled": True
                 },
                 "sleep_downscale": 0.99,
                 "sleep_interval_steps": 50
@@ -126,33 +126,33 @@ def candidate_delta(name: str) -> dict:
         "15_intrinsic_plus_pruning": {
                 "plasticity": {
                         "mode": "custom",
-                        "intrinsic_threshold_enabled": true,
-                        "simulated_pruning_enabled": true
+                        "intrinsic_threshold_enabled": True,
+                        "simulated_pruning_enabled": True
                 }
         },
         "16_one_shot_plus_scaling": {
                 "plasticity": {
                         "mode": "custom",
-                        "one_shot_enabled": true
+                        "one_shot_enabled": True
                 },
                 "organs": {
                         "homeostasis": {
-                                "synaptic_scaling": true
+                                "synaptic_scaling": True
                         }
                 }
         },
         "17_pruning_plus_ltd": {
                 "plasticity": {
                         "mode": "custom",
-                        "simulated_pruning_enabled": true,
-                        "tagging_enabled": true,
-                        "ltd_enabled": true
+                        "simulated_pruning_enabled": True,
+                        "tagging_enabled": True,
+                        "ltd_enabled": True
                 }
         },
         "18_scaling_plus_downscale": {
                 "organs": {
                         "homeostasis": {
-                                "synaptic_scaling": true
+                                "synaptic_scaling": True
                         }
                 },
                 "sleep_downscale": 0.99,
@@ -161,7 +161,7 @@ def candidate_delta(name: str) -> dict:
         "19_tag_replay_downscale": {
                 "plasticity": {
                         "mode": "custom",
-                        "tagging_enabled": true
+                        "tagging_enabled": True
                 },
                 "replay_compression": 0.5,
                 "sleep_downscale": 0.99,
@@ -170,15 +170,15 @@ def candidate_delta(name: str) -> dict:
         "20_all_pending": {
                 "plasticity": {
                         "mode": "custom",
-                        "tagging_enabled": true,
-                        "intrinsic_threshold_enabled": true,
-                        "simulated_pruning_enabled": true,
-                        "ltd_enabled": true,
-                        "one_shot_enabled": true
+                        "tagging_enabled": True,
+                        "intrinsic_threshold_enabled": True,
+                        "simulated_pruning_enabled": True,
+                        "ltd_enabled": True,
+                        "one_shot_enabled": True
                 },
                 "organs": {
                         "homeostasis": {
-                                "synaptic_scaling": true
+                                "synaptic_scaling": True
                         }
                 },
                 "replay_compression": 0.5,

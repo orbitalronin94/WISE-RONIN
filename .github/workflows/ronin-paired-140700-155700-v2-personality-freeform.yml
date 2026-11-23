@@ -121,12 +121,12 @@ jobs:
             }
           }
           JSON
-      - name: Train Lumen 15000 steps from 140700 on v2 plus 50k personality
+      - name: Train Lumen 10000 + 5000 steps from 140700 on v2 plus 50k personality
         run: |
           set -euo pipefail
           OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.train \
-            --steps 15000 --resume lumen-parent/checkpoints/lumen-v2-140700/step_140700.pt \
-            --phase 1 --pilot-all-rows --no-sleep --allow-corpus-transition \
+            --steps 10000 --resume lumen-parent/checkpoints/lumen-v2-140700/step_140700.pt \
+            --phase 1 --pilot-all-rows --no-sleep \
             --data prepared/data/spanish-v2-plus-personality-250k.jsonl \
             --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
             --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
@@ -140,6 +140,23 @@ jobs:
             --log-every 100 --checkpoint-every 500 --recovery-checkpoint-every 100 \
             --parameter-check-every 100 --ckpt-dir checkpoints/lumen-v2-155700 \
             2>&1 | tee logs/lumen-140700-155700-v2-personality.log
+          test -s checkpoints/lumen-v2-155700/step_150700.pt
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.train \
+            --steps 5000 --resume checkpoints/lumen-v2-155700/step_150700.pt \
+            --phase 1 --pilot-all-rows --no-sleep \
+            --data prepared/data/spanish-v2-plus-personality-250k.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/lumen_organ_delta2_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 155700 \
+            --scheduler-transition \
+            --transition-start 140700 --transition-end 155700 \
+            --warmup-transition 100 --transition-plateau-steps 6000 \
+            --transition-min-lr-ratio 0.5 \
+            --log-every 100 --checkpoint-every 500 --recovery-checkpoint-every 100 \
+            --parameter-check-every 100 --ckpt-dir checkpoints/lumen-v2-155700 \
+            2>&1 | tee -a logs/lumen-140700-155700-v2-personality.log
       - name: Verify final Lumen checkpoint
         run: |
           python - <<'PY'
@@ -204,13 +221,12 @@ jobs:
           assert int(s["scheduler_transition"]["current_step"]) in (140700,140701)
           print("Exact Transformer parent verified:",s["step"])
           PY
-      - name: Train Transformer 15000 steps from 140700 on identical corpus
+      - name: Train Transformer 10000 + 5000 steps from 140700 on identical corpus
         run: |
           set -euo pipefail
           mkdir -p checkpoints/transformer-v2-155700 logs
           OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.transformer_baseline \
-            --steps 15000 --resume transformer-parent/checkpoints/transformer-v2-140700/step_140700.pt \
-            --allow-corpus-transition \
+            --steps 10000 --resume transformer-parent/checkpoints/transformer-v2-140700/step_140700.pt \
             --data prepared/data/spanish-v2-plus-personality-250k.jsonl \
             --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
             --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
@@ -222,6 +238,20 @@ jobs:
             --transition-min-lr-ratio 0.5 \
             --parameter-check-every 100 --ckpt-dir checkpoints/transformer-v2-155700 \
             2>&1 | tee logs/transformer-140700-155700-v2-personality.log
+          test -s checkpoints/transformer-v2-155700/step_150700.pt
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.transformer_baseline \
+            --steps 5000 --resume checkpoints/transformer-v2-155700/step_150700.pt \
+            --data prepared/data/spanish-v2-plus-personality-250k.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
+            --batch 8 --max-len 128 --seed 42 --threads 4 \
+            --lr 7.5e-5 --warmup 100 --total-steps 155700 \
+            --scheduler-transition \
+            --transition-start 140700 --transition-end 155700 \
+            --warmup-transition 100 --transition-plateau-steps 6000 \
+            --transition-min-lr-ratio 0.5 \
+            --parameter-check-every 100 --ckpt-dir checkpoints/transformer-v2-155700 \
+            2>&1 | tee -a logs/transformer-140700-155700-v2-personality.log
       - name: Verify final Transformer checkpoint
         run: |
           python - <<'PY'

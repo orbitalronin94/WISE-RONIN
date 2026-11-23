@@ -11,6 +11,9 @@ class PlasticityProfile:
     modulator_gain: float = 1.0
     eligibility_retention: float = 0.95
     attention_gain: float = 0.0
+    tagging_enabled: bool = False
+    intrinsic_threshold_enabled: bool = False
+    simulated_pruning_enabled: bool = False
 
     @classmethod
     def from_config(cls, config=None):
@@ -28,10 +31,15 @@ class PlasticityProfile:
         if name not in presets:
             raise ValueError(f"unknown plasticity mode: {name}")
         values = {**presets[name], **{k: v for k, v in config.items() if k != "mode"}}
-        allowed = {"threshold_scale", "modulator_gain", "eligibility_retention", "attention_gain"}
+        allowed = {"threshold_scale", "modulator_gain", "eligibility_retention", "attention_gain", "tagging_enabled", "intrinsic_threshold_enabled", "simulated_pruning_enabled"}
         if set(values) - allowed:
             raise ValueError(f"unknown plasticity factors: {sorted(set(values) - allowed)}")
-        result = cls(name=name, **{k: float(v) for k, v in values.items()})
+        boolean_keys = {"tagging_enabled", "intrinsic_threshold_enabled", "simulated_pruning_enabled"}
+        if any(k in values and not isinstance(values[k], bool) for k in boolean_keys):
+            raise ValueError("plasticity mechanism flags must be booleans")
+        numeric = {k: float(v) for k, v in values.items() if k not in boolean_keys}
+        flags = {k: values[k] for k in boolean_keys if k in values}
+        result = cls(name=name, **numeric, **flags)
         if not 0.5 <= result.threshold_scale <= 1.5:
             raise ValueError("threshold_scale must be in [0.5,1.5]")
         if not 0.5 <= result.modulator_gain <= 2.0:
@@ -40,6 +48,6 @@ class PlasticityProfile:
             raise ValueError("eligibility_retention must be in [0.90,0.99]")
         if not 0.0 <= result.attention_gain <= 1.0:
             raise ValueError("attention_gain must be in [0,1]")
-        if name == "neutral" and result != cls():
+        if name == "neutral" and any(result.__dict__[k] != v for k, v in presets[name].items()):
             raise ValueError("neutral profile must remain the exact identity")
         return result

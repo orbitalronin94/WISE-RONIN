@@ -64,7 +64,7 @@ jobs:
       - name: Download latest promoted Lumen step-185700 checkpoint
         uses: actions/download-artifact@v7
         with:
-          name: lumen-approved-neuroplasticity-step200700-45200252793
+          name: lumen-approved-neuroplasticity-step185700-45200252793
           path: parent
           repository: ${{ github.repository }}
           run-id: ${{ env.PARENT_RUN_ID }}
@@ -114,7 +114,16 @@ jobs:
           profile = json.loads(Path(os.environ["PROFILE"]).read_text())
           assert profile.get("plasticity", {}).get("inhibition_scale") == 0.80
           assert profile.get("plasticity", {}).get("eligibility_retention") == 0.98
-          print("Verified promoted paired step 185700, exact data/tokenizer and the two approved mechanisms.")
+          profile.update({
+              "delta_reuse_write_update": True,
+              "delta_share_causal_masks": True,
+              "delta_always_apply_eligibility": True,
+              "delta_trace_norm_diagnostics_on_demand": True,
+              "delta_pre_normalize": False,
+              "homeostasis_fused_scatter": False,
+          })
+          Path(os.environ["PROFILE"]).write_text(json.dumps(profile, indent=2) + "\\n")
+          print("Verified promoted step 185700, data/tokenizer, approved plasticity and exact Delta fast paths.")
           print("data_sha256:", sha(data))
           print("tokenizer_sha256:", sha(tokenizer))
           PY
@@ -154,9 +163,9 @@ jobs:
             --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
             --batch 8 --max-len 128 --seed 42 \
             --runtime-profile "$PROFILE" \
-            --lr 3e-5 --warmup 100 --total-steps 185700 \
+            --lr 3e-5 --warmup 100 --total-steps 200700 \
             --scheduler-transition \
-            --transition-start 170700 --transition-end 185700 \
+            --transition-start 185700 --transition-end 200700 \
             --warmup-transition 100 --transition-plateau-steps 0 \
             --transition-min-lr-ratio 0.5 \
             --log-every 100 --checkpoint-every 1000 \
@@ -169,7 +178,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: lumen-approved-neuroplasticity-step185700-${{ github.run_id }}
+          name: lumen-approved-neuroplasticity-step200700-${{ github.run_id }}
           path: |
             checkpoints/lumen/
             lumen-wall.json
@@ -181,7 +190,6 @@ jobs:
           compression-level: 6
 
   train-transformer:
-    if: ${{ false }}
     needs: validate
     runs-on: ubuntu-24.04
     timeout-minutes: 300
@@ -195,7 +203,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           python -m pip install numpy tokenizers tqdm
-      - name: Download latest paired Transformer step-170700 checkpoint
+      - name: Download latest paired Transformer step-185700 checkpoint
         uses: actions/download-artifact@v7
         with:
           name: transformer-control-step185700-45200252793
@@ -245,9 +253,9 @@ jobs:
             --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
             --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
             --batch 8 --max-len 128 --seed 42 --threads 4 \
-            --lr 7.5e-5 --warmup 100 --total-steps 185700 \
+            --lr 7.5e-5 --warmup 100 --total-steps 200700 \
             --scheduler-transition --restart-scheduler-transition \
-            --transition-start 170700 --transition-end 185700 \
+            --transition-start 185700 --transition-end 200700 \
             --warmup-transition 100 --transition-plateau-steps 0 \
             --transition-min-lr-ratio 0.5 \
             --parameter-check-every 100 \
@@ -263,9 +271,9 @@ jobs:
             --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
             --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
             --batch 8 --max-len 128 --seed 42 --threads 4 \
-            --lr 7.5e-5 --warmup 100 --total-steps 185700 \
+            --lr 7.5e-5 --warmup 100 --total-steps 200700 \
             --scheduler-transition \
-            --transition-start 170700 --transition-end 185700 \
+            --transition-start 185700 --transition-end 200700 \
             --warmup-transition 100 --transition-plateau-steps 0 \
             --transition-min-lr-ratio 0.5 \
             --parameter-check-every 100 \
@@ -276,7 +284,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: transformer-control-step185700-${{ github.run_id }}
+          name: transformer-control-step200700-${{ github.run_id }}
           path: |
             checkpoints/transformer/
             transformer-wall.json
@@ -287,7 +295,6 @@ jobs:
           compression-level: 6
 
   paired-summary:
-    if: ${{ false }}
     needs: [train-lumen, train-transformer]
     if: always()
     runs-on: ubuntu-24.04

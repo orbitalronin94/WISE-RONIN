@@ -221,38 +221,41 @@ def main():
     for p in (train,validation,holdout,tokenizer):
         if not p.is_file(): raise RuntimeError(f"Missing v2 asset: {p}")
     if sha(tokenizer)!=bm["tokenizer_sha256"]: raise RuntimeError("v2 tokenizer hash mismatch")
-    # Exact dedup against the full v2 train plus protected evaluation splits.
-    seen_pairs=set(); seen_text=set(); eval_pairs=set()
-    legacy_identity_rows=0
-    for path in (train,validation,holdout):
+    # Exact dedup against protected evaluation and within additions.
+    # v2 is already internally deduplicated; cross-source dedup against its 9.3M
+    # training rows is recorded as pending for the separate global audit.
+    seen_pairs=set(); seen_text=set()
+    for path in (validation,holdout):
         for row in read_jsonl(path):
-            if path==train and row.get("task")=="self-identity":
-                legacy_identity_rows+=1
-                continue
             p=str(row.get("prompt","") or ""); c=str(row.get("completion","") or "")
             seen_pairs.add(digest(p+"\n"+c))
             if c: seen_text.add(digest(c))
-            if path!=train: eval_pairs.add(digest(p+"\n"+c))
     new_counts=Counter(); new_bytes=Counter(); added=0; dropped=Counter()
     base_identity_adapted=0; base_identity_generic_kept=0; base_identity_removed=0
+    base_identity_rows=0; base_rows_seen=0
     out_train=out/"train.jsonl"
     with out_train.open("w",encoding="utf-8",newline="\n") as dst:
-        for base_row in read_jsonl(train):
-            if base_row.get("task")=="self-identity":
-                adapted=adapt_legacy_identity_row(base_row)
-                if adapted is None:
-                    base_identity_removed+=1
-                    continue
-                if write_row(dst,adapted,seen_pairs,seen_text):
-                    if adapted.get("task")=="identity_and_behavior":
-                        base_identity_adapted+=1
+        with train.open(encoding="utf-8") as src:
+            for line in src:
+                if not line.strip(): continue
+                base_rows_seen+=1
+                if re.search(r'"task"\s*:\s*"self-identity"',line):
+                    base_identity_rows+=1
+                    base_row=json.loads(line)
+                    adapted=adapt_legacy_identity_row(base_row)
+                    if adapted is None:
+                        base_identity_removed+=1
+                        continue
+                    if write_row(dst,adapted,seen_pairs,seen_text):
+                        if adapted.get("task")=="identity_and_behavior":
+                            base_identity_adapted+=1
+                        else:
+                            base_identity_generic_kept+=1
+                        added+=1
                     else:
-                        base_identity_generic_kept+=1
-                    added+=1
+                        dropped["legacy_identity_duplicate"]+=1
                 else:
-                    dropped["legacy_identity_duplicate"]+=1
-            else:
-                dst.write(json.dumps(base_row,ensure_ascii=False,sort_keys=True,separators=(",",":"))+"\n")
+                    dst.write(line if line.endswith("\n") else line+"\n")
         new_counts["base_self_identity_source_rows"]=legacy_identity_rows
         new_counts["base_self_identity_adapted"]=base_identity_adapted
         new_counts["base_self_identity_generic_kept"]=base_identity_generic_kept
@@ -357,7 +360,7 @@ def main():
       "name":"Lumen-Ronin Spanish corpus v3","version":"3.0.0","status":"FROZEN_BUILD_OUTPUT",
       "language":"es","base_corpus":"WISE-RONIN Spanish shared corpus v2",
       "base_manifest":bm,"base_train_rows":bm["train_rows"],
-      "train_rows":sum(1 for _ in read_jsonl(out_train)),
+      "train_rows":base_rows_seen-base_identity_rows+added,
       "new_rows":added,"new_sources":dict(new_counts),"duplicates_dropped":dict(dropped),
       "validation_rows":sum(1 for _ in read_jsonl(out/"validation.jsonl")),
       "holdout_rows":sum(1 for _ in read_jsonl(out/"holdout_multiple_choice.jsonl")),
@@ -369,8 +372,8 @@ def main():
         "synthetic_curricula":{"source_repo":"orbitalronin94/MINIRONIN","source_records":1200000,"imported_per_dataset":args.curriculum_per_dataset,"datasets":24,"note":"Balanced slice across ten reviewed seed cases per dataset; not 24 independent 50k discoveries."},
         "spanish_literature":{"source_repo":"orbitalronin94/RONIN-IA","manifest":"data/datasets/admitted/literature-es-v1/manifest.json","train_documents_expected":608,"rights":"public-domain text; CLiGS Textbox, CLiGS ConSSA, ELTeC-spa","note":"Train partition only; validation and test are excluded."}
       },
-      "authorization":{"source_scoped":True,"global_near_duplicate_audit":"PENDING","holdout_exact_dedup":"PASS_BY_BUILD","training_authorized":False,
-                      "reason":"Build is frozen, but global near-duplicate/contamination review must pass before training."},
+      "authorization":{"source_scoped":True,"base_train_cross_source_exact_dedup":"PENDING","global_near_duplicate_audit":"PENDING","holdout_exact_dedup":"PASS_BY_BUILD","training_authorized":False,
+                      "reason":"Build is frozen, but cross-source exact/near-duplicate and global contamination review must pass before training."},
       "sha256":{"train.jsonl":sha(out_train),"validation.jsonl":sha(out/"validation.jsonl"),
                 "holdout_multiple_choice.jsonl":sha(out/"holdout_multiple_choice.jsonl"),
                 "tokenizer.json":sha(out/"tokenizer.json")},

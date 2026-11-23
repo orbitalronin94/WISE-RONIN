@@ -1,0 +1,163 @@
+name: Reusable — one 10k training block
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        required: true
+        type: string
+      target_step:
+        required: true
+        type: number
+      parent_step:
+        required: true
+        type: number
+      steps:
+        required: true
+        type: number
+      first_block:
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  train:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 720
+    env:
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      OMP_DYNAMIC: "FALSE"
+      MKL_DYNAMIC: "FALSE"
+      OMP_WAIT_POLICY: "ACTIVE"
+      OMP_PROC_BIND: "close"
+      OMP_PLACES: "cores"
+      KMP_BLOCKTIME: "0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU training runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy datasets tqdm tokenizers langid
+      - name: Download immutable corpus, tokenizer, cache and LUMEN runtime profile
+        uses: actions/download-artifact@v7
+        with:
+          name: paired-inputs-${{ github.run_id }}
+          path: inputs
+      - name: Download preceding block checkpoint
+        if: ${{ !inputs.first_block }}
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ inputs.model }}-step-${{ inputs.parent_step }}-${{ github.run_id }}
+          path: previous
+      - name: Resolve exact parent and execute this block
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL="${{ inputs.model }}"
+          TARGET="${{ inputs.target_step }}"
+          PARENT="${{ inputs.parent_step }}"
+          STEPS="${{ inputs.steps }}"
+          if [ "$MODEL" = "lumen" ]; then
+            CKPT="inputs/parent/lumen-219700.pt"
+            OUTDIR="checkpoints/lumen"
+            WALL="lumen-wall.json"
+            LOG="logs/lumen-$PARENT-$TARGET.log"
+          else
+            CKPT="inputs/parent/transformer-219750.pt"
+            OUTDIR="checkpoints/transformer"
+            WALL="transformer-wall.json"
+            LOG="logs/transformer-$PARENT-$TARGET.log"
+          fi
+          if [ "${{ inputs.first_block }}" != "true" ]; then
+            CKPT="previous/checkpoint/step_$PARENT.pt"
+            if [ -s "previous/$WALL" ]; then cp "previous/$WALL" "$WALL"; fi
+          fi
+          test -s "$CKPT"
+          test -s inputs/data/spanish-v2-plus-personality-250k.jsonl
+          test -s inputs/data/spanish-v2-plus-personality-token-cache.pt
+          test -s inputs/artifacts/tokenizer.json
+          mkdir -p "$OUTDIR" logs
+          python - "$CKPT" "$PARENT" "$MODEL" <<'PY'
+          import sys,torch
+          p,step,model=sys.argv[1],int(sys.argv[2]),sys.argv[3]
+          s=torch.load(p,map_location="cpu",weights_only=False)
+          arch="ronin_lumen_v3_3_neuroplasticity" if model=="lumen" else "decoder_transformer_4l_d192_h4_ff576_tied_v1"
+          assert int(s["step"])==step,(s.get("step"),step)
+          assert s["architecture_id"]==arch
+          assert s.get("optimizer") and s.get("rng") and s.get("scheduler_transition")
+          print("Verified parent",step,arch)
+          PY
+          RESTART=()
+          if [ "${{ inputs.first_block }}" = "true" ]; then RESTART=(--restart-scheduler-transition); fi
+          if [ "$MODEL" = "lumen" ]; then
+            OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.train \
+              --steps "$STEPS" --resume "$CKPT" \
+              --phase 1 --pilot-all-rows \
+              --data inputs/data/spanish-v2-plus-personality-250k.jsonl \
+              --tokenizer inputs/artifacts/tokenizer.json \
+              --token-cache inputs/data/spanish-v2-plus-personality-token-cache.pt \
+              --batch 8 --max-len 128 --seed 42 \
+              --runtime-profile inputs/config/lumen-runtime-profile.json \
+              --lr 3e-5 --warmup 100 --total-steps 400000 \
+              --scheduler-transition "${RESTART[@]}" \
+              --transition-start 219700 --transition-end 400000 \
+              --warmup-transition 100 --transition-plateau-steps 0 \
+              --transition-min-lr-ratio 0.5 \
+              --log-every 100 --checkpoint-every 1000 \
+              --recovery-checkpoint-every 100 --parameter-check-every 100 \
+              --threads 4 --interop-threads 2 \
+              --ckpt-dir "$OUTDIR" --wall-clock-file "$WALL" \
+              2>&1 | tee "$LOG"
+          else
+            OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.transformer_baseline \
+              --steps "$STEPS" --resume "$CKPT" \
+              --data inputs/data/spanish-v2-plus-personality-250k.jsonl \
+              --tokenizer inputs/artifacts/tokenizer.json \
+              --token-cache inputs/data/spanish-v2-plus-personality-token-cache.pt \
+              --batch 8 --max-len 128 --seed 42 --threads 4 \
+              --lr 7.5e-5 --warmup 100 --total-steps 400000 \
+              --scheduler-transition "${RESTART[@]}" \
+              --transition-start 219700 --transition-end 400000 \
+              --warmup-transition 100 --transition-plateau-steps 0 \
+              --transition-min-lr-ratio 0.5 \
+              --parameter-check-every 100 \
+              --ckpt-dir "$OUTDIR" --wall-clock-file "$WALL" \
+              2>&1 | tee "$LOG"
+          fi
+          FINAL="$OUTDIR/step_$TARGET.pt"
+          test -s "$FINAL"
+          python - "$FINAL" "$TARGET" "$MODEL" <<'PY'
+          import sys,torch
+          p,step,model=sys.argv[1],int(sys.argv[2]),sys.argv[3]
+          s=torch.load(p,map_location="cpu",weights_only=False)
+          arch="ronin_lumen_v3_3_neuroplasticity" if model=="lumen" else "decoder_transformer_4l_d192_h4_ff576_tied_v1"
+          assert int(s["step"])==step,(s.get("step"),step)
+          assert s["architecture_id"]==arch
+          assert s.get("optimizer") and s.get("rng") and s.get("scheduler_transition")
+          if model=="lumen":
+            assert s["runtime_profile"]["plasticity"]["eligibility_retention"]==0.98
+            assert s["runtime_profile"]["delta_reuse_write_update"] is True
+            assert s["runtime_profile"]["delta_share_causal_masks"] is True
+          print("Verified output block",step,arch)
+          PY
+      - name: Publish independently recoverable block artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.model }}-step-${{ inputs.target_step }}-${{ github.run_id }}
+          path: |
+            checkpoints/
+            ${{ inputs.model }}-wall.json
+            logs/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 1

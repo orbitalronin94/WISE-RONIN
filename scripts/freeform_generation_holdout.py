@@ -140,8 +140,34 @@ def main():
     transformer.load_state_dict(transformer_state["model"])
     transformer.eval()
 
+    # Dedicated self-identity probe, in addition to the 100 corpus questions.
+    # Both models receive exactly the same direct question.
+    identity_prompt = (
+        "Pregunta: ¿Quién eres? Explica qué tipo de modelo eres, "
+        "qué puedes hacer y cuáles son tus límites, sin inventar información.\\n"
+        "Responde con tus propias palabras.\\nRespuesta:"
+    )
+
     results = []
+    identity_result = None
     with torch.inference_mode():
+        identity_lumen, identity_lumen_ids, identity_lumen_stop = generate(
+            lumen, tokenizer, identity_prompt, is_lumen=True,
+            max_len=args.max_len, max_new_tokens=args.max_new_tokens,
+            bos_id=bos_id, eos_id=eos_id, pad_id=pad_id,
+        )
+        identity_transformer, identity_transformer_ids, identity_transformer_stop = generate(
+            transformer, tokenizer, identity_prompt, is_lumen=False,
+            max_len=args.max_len, max_new_tokens=args.max_new_tokens,
+            bos_id=bos_id, eos_id=eos_id, pad_id=pad_id,
+        )
+        identity_result = {
+            "prompt": identity_prompt,
+            "lumen": {"text": identity_lumen, "token_ids": identity_lumen_ids, "stop": identity_lumen_stop},
+            "transformer": {"text": identity_transformer, "token_ids": identity_transformer_ids, "stop": identity_transformer_stop},
+        }
+        print("identity_probe_completed", flush=True)
+
         for index, row in enumerate(sample, 1):
             prompt = freeform_prompt(row["prompt"])
             lumen_text, lumen_ids, lumen_stop = generate(
@@ -173,6 +199,7 @@ def main():
         "sample_seed": args.seed,
         "decoding": "greedy argmax; no repetition penalty; max_new_tokens=%d; max_len=%d" % (args.max_new_tokens, args.max_len),
         "prompt_policy": "random sample from Spanish multiple-choice holdout; all choices and gold answer removed; only context/question retained",
+        "identity_probe": identity_result,
         "results": results,
     }
     (out_dir / "step31000_freeform_100.json").write_text(
@@ -187,6 +214,22 @@ def main():
         "- Evaluación informal: no es una métrica de exactitud ni sustituye al holdout de elección múltiple.",
         "",
     ]
+    lines.extend([
+        "## Pregunta adicional: identidad del propio modelo",
+        "",
+        identity_prompt,
+        "",
+        "**LUMEN**",
+        "",
+        identity_result["lumen"]["text"] or "∅",
+        "",
+        "**Transformer**",
+        "",
+        identity_result["transformer"]["text"] or "∅",
+        "",
+        "---",
+        "",
+    ])
     for item in results:
         lines.extend([
             f"## {item['sample_index']}. {item['source_id']}",

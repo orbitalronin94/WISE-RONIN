@@ -47,3 +47,5 @@ La documentación distingue entre arquitectura implementada, configuración real
 ## Regla de lectura
 
 Una implementación que compila no equivale a una hipótesis validada. Un smoke test no equivale a entrenamiento. Un microbenchmark no equivale a holdout. Un checkpoint guardado tras un workflow fallido debe verificarse y evaluarse por separado. Los mecanismos opcionales solo se atribuyen a un entrenamiento si su workflow los habilitó.
+
+- [Torneo de 20 hipótesis sobre mecanismos pendientes](TORNEO_20_MECANISMOS_PENDIENTES_ES.md) — alcance, combinaciones y gate loss + throughput.

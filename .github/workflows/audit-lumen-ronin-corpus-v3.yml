@@ -32,7 +32,7 @@ jobs:
           python-version: "3.14.10"
 
       - name: Download frozen v2 baseline
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: wise-ronin-spanish-corpus-v2-45065384110
           path: inputs/v2
@@ -41,7 +41,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download frozen v3 candidate
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: lumen-ronin-spanish-corpus-v3-45132496748
           path: inputs/v3

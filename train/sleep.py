@@ -7,6 +7,13 @@ LOG = logging.getLogger("lumen.sleep")
 
 
 def sueno(model, pasos=None, lr=1e-4, device="cpu", compression_ratio=1.0, downscale=1.0):
+    """Replay consolidated slow memories.
+
+    With pasos=None, preserve the original three-update 1/3/7 replay schedule.
+    With pasos=N, perform exactly N optimizer updates over the same prioritized
+    consolidated-memory targets. This makes longer offline sleep experiments
+    explicit without changing ordinary training-time sleep behavior.
+    """
     memory = model.memoria
     valid = memory.contador_lenta > 0
     if not valid.any():
@@ -19,22 +26,23 @@ def sueno(model, pasos=None, lr=1e-4, device="cpu", compression_ratio=1.0, downs
         raise ValueError("replay compression ratio must be in [0.1,1]")
     if not 0.90 <= float(downscale) <= 1.0:
         raise ValueError("sleep downscale must be in [0.90,1]")
+    if pasos is not None and int(pasos) < 1:
+        raise ValueError("pasos must be a positive integer")
+
     valid_indices = torch.nonzero(valid, as_tuple=False).flatten()
     count = max(1, int(valid_indices.numel() * float(compression_ratio)))
-    # Prioritized compressed replay: retain the most-used consolidated slots.
     priorities = memory.usage_ema[valid_indices]
     chosen = torch.topk(priorities, k=min(count, priorities.numel()), sorted=True).indices
     selected_indices = valid_indices[chosen]
     targets = memory.lenta[selected_indices].detach().to(device)
     optimizer = torch.optim.AdamW(memory.mlp.parameters(), lr=lr)
-    # Cumulative replay offsets: first replay at 1, then +3, then +7 ticks.
-    replay_ticks = {1, 4, 11}
-    total, updates = 0.0, 0
-    for tick in range(1, 12):
-        if tick not in replay_ticks:
-            continue
-        indices = torch.arange(targets.size(0), device=device)
-        target = targets[indices]
+
+    # Legacy sleep retains the cumulative 1/3/7 spacing. Extended sleep uses
+    # the exact requested number of replay optimizer updates.
+    update_count = 3 if pasos is None else int(pasos)
+    total = 0.0
+    for update in range(update_count):
+        target = targets
         noise = torch.randn_like(target)
         prediction = memory.mlp(noise)
         loss = F.mse_loss(prediction, target)
@@ -42,15 +50,12 @@ def sueno(model, pasos=None, lr=1e-4, device="cpu", compression_ratio=1.0, downs
         loss.backward()
         optimizer.step()
         total += float(loss.detach())
-        updates += 1
 
     if downscale < 1.0:
-        # Bounded global downscaling applies only to replay-MLP weight matrices;
-        # the optimizer is local to this sleep phase and is discarded afterwards.
         with torch.no_grad():
             for parameter in memory.mlp.parameters():
                 if parameter.ndim >= 2:
                     parameter.mul_(float(downscale))
     model.reset_states()
     memory.reset_elastica()
-    return total / max(1, updates)
+    return total / max(1, update_count)

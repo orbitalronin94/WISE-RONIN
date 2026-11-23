@@ -28,7 +28,7 @@ def main():
     results = []
     with torch.inference_mode():
         for i, row in enumerate(rows, 1):
-            prompt = row["prompt"].strip() + "\\nRespuesta:"
+            prompt = row["prompt"].strip() + "\nRespuesta:"
             ids = [bos] + tokenizer.encode(prompt, add_special_tokens=False).ids
             generated = []
             stop = "max_new_tokens"
@@ -48,11 +48,11 @@ def main():
                 print(f"progress {i}/100", flush=True)
     Path("results").mkdir(exist_ok=True)
     payload = {"model":"LUMEN main","checkpoint_step":219700,"checkpoint_source_run":45230206330,"questions":100,"decoding":"greedy argmax; max_new_tokens=96; context=128; CPU; no repetition penalty","note":"Qualitative free-form probe; not an accuracy score or a substitute for the frozen multiple-choice holdout.","results":results}
-    Path("results/lumen_main_219700_100_questions.json").write_text(json.dumps(payload,ensure_ascii=False,indent=2)+"\\n",encoding="utf-8")
+    Path("results/lumen_main_219700_100_questions.json").write_text(json.dumps(payload,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
     lines=["# LUMEN main — 100 preguntas abiertas","", "- Checkpoint promovido: step 219.700.", "- Generación greedy; máximo 96 tokens por respuesta; contexto 128.", "- Prueba cualitativa: no es una puntuación automática de exactitud.", ""]
     for r in results:
         lines += [f"## {r['index']}. {r['id']} — {r['category']}","",f"**Pregunta:** {r['question']}","","**Respuesta de LUMEN:**","",r["answer"] or "∅","","---",""]
-    Path("results/lumen_main_219700_100_questions.md").write_text("\\n".join(lines),encoding="utf-8")
+    Path("results/lumen_main_219700_100_questions.md").write_text("\n".join(lines),encoding="utf-8")
     print("completed 100 questions",flush=True)
 
 if __name__ == "__main__":

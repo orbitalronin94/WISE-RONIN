@@ -703,7 +703,9 @@ def main():
             glucose_signal = "not_checked"
             if step % args.log_every == 0 and glucose_loss_window:
                 check_loss = sum(glucose_loss_window) / len(glucose_loss_window)
-                improved, glucose_level = model.presupuesto.check_loss(check_loss)
+                shared_loss_signal = model.presupuesto.check_loss_signal(check_loss)
+                improved = shared_loss_signal["improved"]
+                glucose_level = shared_loss_signal["reserve"]
                 glucose_signal = (
                     "baseline" if improved is None else
                     "fed" if improved else "metabolized"
@@ -712,8 +714,8 @@ def main():
                     "glucose_check step=%d mean_loss=%.6f improved=%s signal=%s reserve=%.3f",
                     step, check_loss, improved, glucose_signal, glucose_level,
                 )
-                pain_state = model.pain.update(check_loss)
-                pleasure_state = model.pleasure.update(check_loss)
+                pain_state = model.pain.update_signal(shared_loss_signal["regression"])
+                pleasure_state = model.pleasure.update_signal(shared_loss_signal["improvement"])
                 eligibility_signal = (
                     pleasure_state["pleasure"] - pain_state["pain"]
                 )

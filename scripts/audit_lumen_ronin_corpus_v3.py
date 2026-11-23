@@ -89,7 +89,7 @@ def main():
         db.executemany("INSERT OR IGNORE INTO pair_hash VALUES(?)",batch_pair)
         db.executemany("INSERT OR IGNORE INTO completion_hash VALUES(?)",batch_comp)
         db.executemany("INSERT INTO sim_text VALUES(?,?)",batch_text)
-        db.executemany("INSERT INTO sim_band VALUES(?,?,?)",batch_bands); db.commit()
+        db.executemany("INSERT INTO sim_band VALUES(?,?)",batch_bands); db.commit()
     if base_count!=m2["train_rows"]: raise RuntimeError(f"v2 train rows {base_count} != manifest {m2['train_rows']}")
     # Exact protected-evaluation hashes, including every MC answer option.
     eval_pair=set(); eval_comp=set(); eval_prompts=set()

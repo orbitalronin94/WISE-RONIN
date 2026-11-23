@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: lumen-transformer-paired-219700-400000
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   SOURCE_RUN_ID: "45230206330"
@@ -490,8 +490,8 @@ jobs:
     steps:
       - name: Report final paired status
         env:
-          LUMEN_RESULT: ${{ needs.lumen-400000.result }}
-          TRANSFORMER_RESULT: ${{ needs.transformer-400000.result }}
+          LUMEN_RESULT: ${{ needs['lumen-400000'].result }}
+          TRANSFORMER_RESULT: ${{ needs['transformer-400000'].result }}
           RUN_ID: ${{ github.run_id }}
         run: |
           echo "Run $RUN_ID — paired continuation 219700/219750 -> 400000"

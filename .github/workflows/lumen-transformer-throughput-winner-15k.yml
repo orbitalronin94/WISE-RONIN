@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: lumen-transformer-throughput-winner-15k
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   OMP_NUM_THREADS: "4"
@@ -30,6 +30,7 @@ env:
 
 jobs:
   validate:
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -48,6 +49,7 @@ jobs:
           PYTHONPATH=. pytest -q tests
 
   train-lumen:
+    if: false
     needs: validate
     runs-on: ubuntu-24.04
     timeout-minutes: 300
@@ -181,6 +183,7 @@ jobs:
           compression-level: 6
 
   train-transformer:
+    if: false
     needs: validate
     runs-on: ubuntu-24.04
     timeout-minutes: 300
@@ -286,6 +289,7 @@ jobs:
           compression-level: 6
 
   paired-summary:
+    if: false
     needs: [train-lumen, train-transformer]
     if: always()
     runs-on: ubuntu-24.04

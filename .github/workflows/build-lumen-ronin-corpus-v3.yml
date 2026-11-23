@@ -55,9 +55,9 @@ jobs:
         with:
           name: wise-ronin-spanish-corpus-v2-45065384110
           path: inputs/v2
-          repository: orbitalronin94/WISE-RONIN
+          repository: ${{ github.repository }}
           run-id: 45065384110
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download admitted Spanish literature train partition
         uses: actions/download-artifact@v4
@@ -66,7 +66,7 @@ jobs:
           path: inputs/literature
           repository: orbitalronin94/RONIN-IA
           run-id: 41926088900
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate the 24 reviewed Spanish behavior and lexicon curricula
         run: |

@@ -26,6 +26,7 @@ class PlasticityProfile:
         name = str(config.get("mode", "neutral"))
         presets = {
             "neutral": {},
+            "custom": {},
             "disinhibition": {"threshold_scale": 0.85, "inhibition_scale": 0.8},
             "modulator_gain": {"modulator_gain": 1.5, "eligibility_retention": 0.96},
             "plasticity_window": {"eligibility_retention": 0.98, "tagging_enabled": True},

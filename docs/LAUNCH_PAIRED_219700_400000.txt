@@ -46,3 +46,5 @@ WORKFLOWS
 RETRIGGER: versión de workflow con artefacto de checkpoint canónico por job; no cambia el plan de bloques.
 
 RETRIGGER: cancel stale pre-fix run; execute only the corrected reusable block workflow.
+
+RETRIGGER: final fix to runtime-profile JSON serialization in preparation.

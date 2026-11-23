@@ -111,7 +111,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
                 "chunk_size_bounds": [4, 16],
                 "replay_enabled": not args.no_sleep,
                 "homeostasis_enabled": True,
-                "plasticity_profile": runtime_profile.get("plasticity", {"mode": "neutral"}),
+                "plasticity_profile": getattr(args, "runtime_profile_settings", {}).get("plasticity", {"mode": "neutral"}),
             },
         },
         "params": sum(parameter.numel() for parameter in model.parameters()),
@@ -485,6 +485,16 @@ def main():
         allowed_missing |= {
             f"delta_layers.{i}.eligibility_modulator" for i in range(len(model.delta_layers))
         }
+        # New experimental plasticity buffers are neutral on migration from
+        # pre-organ checkpoints; no trained parameters or optimizer moments are reset.
+        for i in range(len(model.delta_layers)):
+            allowed_missing |= {
+                f"delta_layers.{i}.tagging.tag",
+                f"delta_layers.{i}.tagging.captured",
+                f"delta_layers.{i}.intrinsic_threshold.threshold",
+                f"delta_layers.{i}.simulated_pruner.usage",
+                f"delta_layers.{i}.simulated_pruner.mask",
+            }
         missing = set(incompatible.missing_keys)
         unexpected = set(incompatible.unexpected_keys)
         if missing - allowed_missing or unexpected:

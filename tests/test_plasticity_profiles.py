@@ -79,11 +79,13 @@ def test_neuroplasticity_organs_are_opt_in_and_profiled_together():
         "intrinsic_threshold_enabled": True,
         "simulated_pruning_enabled": True,
         "ltd_enabled": True,
+        "one_shot_enabled": True,
     })
     assert profile.tagging_enabled is True
     assert profile.intrinsic_threshold_enabled is True
     assert profile.simulated_pruning_enabled is True
     assert profile.ltd_enabled is True
+    assert profile.one_shot_enabled is True
     assert PlasticityProfile.from_config().tagging_enabled is False
 
 

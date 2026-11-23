@@ -329,10 +329,13 @@ def main():
     organ_profile = runtime_profile.get("organs", {})
     sleep_downscale = float(runtime_profile.get("sleep_downscale", 1.0))
     replay_compression = float(runtime_profile.get("replay_compression", 1.0))
+    sleep_interval_steps = int(runtime_profile.get("sleep_interval_steps", CONFIG.sleep_interval_steps))
     if not 0.90 <= sleep_downscale <= 1.0:
         raise ValueError("sleep_downscale must be in [0.90,1]")
     if not 0.1 <= replay_compression <= 1.0:
         raise ValueError("replay_compression must be in [0.1,1]")
+    if sleep_interval_steps < 1:
+        raise ValueError("sleep_interval_steps must be positive")
     pain_budget_gain = float(organ_profile.get("pain_budget_gain", 0.10))
     pleasure_budget_gain = float(organ_profile.get("pleasure_budget_gain", 0.05))
     if not 0.0 <= pain_budget_gain <= 1.0 or not 0.0 <= pleasure_budget_gain <= 1.0:
@@ -843,7 +846,7 @@ def main():
                     sleep_done = True
                     LOG.info("adaptive IRI sleep step=%d occupancy=%.1f%% loss=%.6f",
                              step, model.memoria.occupancy() * 100, sleep_loss)
-            elif step % CONFIG.sleep_interval_steps == 0:
+            elif step % sleep_interval_steps == 0:
                 records_before_sleep = int((model.memoria.contador_lenta > 0).sum().item())
                 sleep_started = time.perf_counter()
                 sleep_loss = sueno(model, device="cpu")

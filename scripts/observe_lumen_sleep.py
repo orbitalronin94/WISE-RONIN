@@ -10,7 +10,10 @@ import hashlib
 import json
 import logging
 import time
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import torch
 from tokenizers import Tokenizer
@@ -93,7 +96,7 @@ def main():
 
     torch.manual_seed(20261123)
     started = time.perf_counter()
-    sleep_loss = float(sueno(model, device="cpu"))
+    sleep_loss = float(sueno(model, pasos=500, device="cpu"))
     sleep_seconds = time.perf_counter() - started
     after_mlp = memory.mlp.state_dict()
     changed_mlp = [
@@ -115,13 +118,13 @@ def main():
         "tokenizer_sha256": tokenizer_sha,
         "parent_checkpoint_modified": False,
         "sleep": {
-            "routine": "train.sleep.sueno",
+            "routine": "train.sleep.sueno(pasos=500)",
             "replay_loss": sleep_loss,
             "duration_seconds": round(sleep_seconds, 6),
             "consolidated_records_before": occupied_before,
             "consolidated_records_after": occupied_after,
             "memory_mlp_parameters_changed": changed_mlp,
-            "updates": 3,
+            "updates": 500,
             "seed": 20261123,
         },
         "sampling": {

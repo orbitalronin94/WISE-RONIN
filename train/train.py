@@ -348,11 +348,17 @@ def main():
         if not 1 <= refinements <= 6:
             raise ValueError("delta_parallel_refinements must be between 1 and 6")
         layer.parallel_refinements = refinements
+    for layer in model.delta_layers:
+        layer.reuse_write_update = bool(runtime_profile.get("delta_reuse_write_update", False))
+        layer.always_apply_eligibility = bool(runtime_profile.get("delta_always_apply_eligibility", False))
+        layer.trace_norm_diagnostics = bool(runtime_profile.get("delta_trace_norm_diagnostics", True))
+        layer.share_causal_masks = bool(runtime_profile.get("delta_share_causal_masks", False))
     for organ in model.homeo:
         organ.fused_scatter_add = bool(runtime_profile.get("homeostasis_fused_scatter", False))
-    LOG.info("lumen_fastpaths: delta_pre_normalize=%s homeostasis_fused_scatter=%s",
-             bool(runtime_profile.get("delta_pre_normalize", False)),
-             bool(runtime_profile.get("homeostasis_fused_scatter", False)))
+        organ.reuse_input_activity = bool(runtime_profile.get("homeostasis_reuse_input_activity", False))
+    model.memoria.bmm_read = bool(runtime_profile.get("memory_bmm_read", False))
+    model.chunker.nearest_gather = bool(runtime_profile.get("chunk_nearest_gather", False))
+    LOG.info("lumen_simplifications: %s", {k: v for k, v in runtime_profile.items() if k.startswith(("delta_", "homeostasis_", "memory_", "chunk_"))})
 
     if args.dummy_m1:
         data_hash, tokenizer, phase_data = "dummy-m1-no-corpus", None, None

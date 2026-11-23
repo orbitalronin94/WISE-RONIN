@@ -1,0 +1,226 @@
+"""Run one 100-step, same-runner comparison: main control vs one LUMEN candidate."""
+from __future__ import annotations
+
+import argparse
+import copy
+import json
+import math
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import time
+
+BASE_PROFILE = {
+    "threads": 4,
+    "interop_threads": 2,
+    "mkldnn_enabled": True,
+    "foreach": False,
+    "cpu_affinity": True,
+    "delta_pre_normalize": False,
+    "homeostasis_fused_scatter": False,
+    "delta_parallel_refinements": 2,
+    "organs": {
+        "pain": {"response": 0.30, "decay": 0.55},
+        "pleasure": {"response": 0.75},
+        "pain_budget_gain": 0.10,
+        "pleasure_budget_gain": 0.1125,
+    },
+}
+
+def candidate_delta(name: str) -> dict:
+    candidates = {
+        "01_shared_signal_core": {},
+        "02_pain_response": {"organs": {"pain": {"response": 0.20}}},
+        "03_pleasure_response": {"organs": {"pleasure": {"response": 0.50}}},
+        "04_pain_budget_gain": {"organs": {"pain_budget_gain": 0.15}},
+        "05_pleasure_budget_gain": {"organs": {"pleasure_budget_gain": 0.15}},
+        "06_ltp_threshold": {"plasticity": {"mode": "neutral", "threshold_scale": 0.85}},
+        "07_disinhibition_gain": {"plasticity": {"mode": "neutral", "inhibition_scale": 0.80}},
+        "08_modulator_gain": {"plasticity": {"mode": "neutral", "modulator_gain": 1.50}},
+        "09_eligibility_window": {"plasticity": {"mode": "neutral", "eligibility_retention": 0.98}},
+        "10_attention_gate": {"plasticity": {"mode": "neutral", "attention_gain": 0.40}},
+        "11_tagging_capture": {"plasticity": {"mode": "neutral", "tagging_enabled": True}},
+        "12_intrinsic_threshold": {"plasticity": {"mode": "neutral", "intrinsic_threshold_enabled": True}},
+        "13_simulated_pruning": {"plasticity": {"mode": "neutral", "simulated_pruning_enabled": True}},
+        "14_tag_protected_ltd": {"plasticity": {"mode": "neutral", "tagging_enabled": True, "ltd_enabled": True}},
+        "15_one_shot_memory": {"plasticity": {"mode": "neutral", "one_shot_enabled": True}},
+        "16_homeostatic_scaling": {"organs": {"homeostasis": {"synaptic_scaling": True}}},
+        "17_prioritized_replay": {"replay_compression": 0.50, "sleep_interval_steps": 50},
+        "18_sleep_downscaling": {"sleep_downscale": 0.99, "sleep_interval_steps": 50},
+    }
+    if name not in candidates:
+        raise ValueError(f"unknown candidate: {name}")
+    return candidates[name]
+
+def deep_merge(base: dict, delta: dict) -> dict:
+    result = copy.deepcopy(base)
+    for key, value in delta.items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return result
+
+def run_training(root: Path, label: str, profile: dict, args, out: Path) -> dict:
+    profile_path = out / f"{label}.runtime_profile.json"
+    profile_path.write_text(json.dumps(profile, indent=2, sort_keys=True) + "\n")
+    log_path = out / f"{label}.log"
+    ckpt_dir = out / f"{label}-checkpoints"
+    command = [
+        sys.executable, "-m", "train.train",
+        "--steps", "100",
+        "--resume", str(args.checkpoint.resolve()),
+        "--phase", "1",
+        "--pilot-all-rows",
+        "--data", str((args.prepared_root / "data/spanish-v2-plus-personality-250k.jsonl").resolve()),
+        "--tokenizer", str((args.prepared_root / "artifacts/spanish-v2/tokenizer.json").resolve()),
+        "--token-cache", str((args.prepared_root / "data/spanish-v2-plus-personality-token-cache.pt").resolve()),
+        "--batch", "8", "--max-len", "128", "--seed", "42",
+        "--runtime-profile", str(profile_path.resolve()),
+        "--lr", "3e-5", "--warmup", "100", "--total-steps", "155700",
+        "--scheduler-transition", "--restart-scheduler-transition",
+        "--transition-start", "155700", "--transition-end", "155800",
+        "--warmup-transition", "10", "--transition-plateau-steps", "0",
+        "--transition-min-lr-ratio", "0.5",
+        "--log-every", "1", "--checkpoint-every", "10000",
+        "--recovery-checkpoint-every", "0", "--parameter-check-every", "100",
+        "--threads", "4", "--interop-threads", "2",
+        "--ckpt-dir", str(ckpt_dir.resolve()),
+    ]
+    env = os.environ.copy()
+    env.update({
+        "PYTHONPATH": str(root.resolve()),
+        "OMP_NUM_THREADS": "4",
+        "MKL_NUM_THREADS": "4",
+        "OMP_DYNAMIC": "FALSE",
+        "MKL_DYNAMIC": "FALSE",
+        "OMP_WAIT_POLICY": "PASSIVE",
+        "PYTHONUNBUFFERED": "1",
+    })
+    started = time.perf_counter()
+    with log_path.open("w", encoding="utf-8") as log:
+        proc = subprocess.run(command, cwd=root, env=env, stdout=log,
+                              stderr=subprocess.STDOUT, check=False)
+    elapsed = time.perf_counter() - started
+    raw = log_path.read_text(encoding="utf-8", errors="replace")
+    matches = re.findall(
+        r"INFO step=(\d+) loss=([0-9.eE+-]+).*?dead=([0-9.eE+-]+)%",
+        raw,
+    )
+    records = []
+    for step, loss, dead in matches:
+        values = (float(loss), float(dead))
+        if all(math.isfinite(x) for x in values):
+            records.append({"step": int(step), "loss": values[0], "dead_percent": values[1]})
+    result = {
+        "label": label,
+        "exit_code": proc.returncode,
+        "elapsed_seconds": round(elapsed, 4),
+        "steps_per_second": round(100.0 / elapsed, 6) if elapsed > 0 else None,
+        "logged_steps": len(records),
+        "log_file": log_path.name,
+        "profile_file": profile_path.name,
+        "nonfinite_marker": "NONFINITE" in raw or "nan" in raw.lower() or "inf" in raw.lower(),
+    }
+    if proc.returncode == 0 and len(records) == 100 and not result["nonfinite_marker"]:
+        losses = [r["loss"] for r in records]
+        windows = [sum(losses[i:i+20]) / 20 for i in range(0, 100, 20)]
+        result.update({
+            "status": "ok",
+            "mean_loss_100_steps": round(sum(losses) / 100, 8),
+            "loss_windows_20_steps": [round(x, 8) for x in windows],
+            "max_dead_percent": round(max(r["dead_percent"] for r in records), 6),
+            "first_step": records[0]["step"],
+            "last_step": records[-1]["step"],
+        })
+    else:
+        result.update({
+            "status": "error",
+            "reason": (
+                f"exit_code={proc.returncode}; logged_steps={len(records)}/100; "
+                f"nonfinite_marker={result['nonfinite_marker']}"
+            ),
+        })
+    return result
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--candidate", required=True)
+    parser.add_argument("--baseline-root", type=Path, required=True)
+    parser.add_argument("--candidate-root", type=Path, required=True)
+    parser.add_argument("--prepared-root", type=Path, required=True)
+    parser.add_argument("--checkpoint", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    args.output.mkdir(parents=True, exist_ok=True)
+
+    delta = candidate_delta(args.candidate)
+    candidate_profile = deep_merge(BASE_PROFILE, delta)
+    control = run_training(args.baseline_root, "main-control", BASE_PROFILE, args, args.output)
+    if control["status"] != "ok":
+        report = {
+            "candidate": args.candidate,
+            "status": "blocked",
+            "decision": "PENDING",
+            "reason": "main control did not complete a valid 100-step run",
+            "control": control,
+            "candidate_result": None,
+            "profile_delta": delta,
+            "candidate_profile": candidate_profile,
+        }
+    else:
+        candidate = run_training(args.candidate_root, "candidate", candidate_profile, args, args.output)
+        reasons = []
+        if candidate["status"] != "ok":
+            reasons.append("no completó 100 pasos válidos o produjo métricas no finitas")
+        else:
+            if candidate["mean_loss_100_steps"] >= control["mean_loss_100_steps"]:
+                reasons.append("no mejoró loss media")
+            if candidate["steps_per_second"] <= control["steps_per_second"]:
+                reasons.append("bajó pasos/segundo")
+            if candidate["max_dead_percent"] > control["max_dead_percent"]:
+                reasons.append("subió dead")
+        approved = candidate["status"] == "ok" and not reasons
+        report = {
+            "candidate": args.candidate,
+            "status": "completed",
+            "decision": "APPROVED" if approved else "PENDING",
+            "reasons": reasons,
+            "control": control,
+            "candidate_result": candidate,
+            "loss_improvement_percent": (
+                round(100 * (control["mean_loss_100_steps"] - candidate["mean_loss_100_steps"])
+                      / control["mean_loss_100_steps"], 6)
+                if candidate["status"] == "ok" and control["mean_loss_100_steps"] else None
+            ),
+            "throughput_improvement_percent": (
+                round(100 * (candidate["steps_per_second"] / control["steps_per_second"] - 1), 6)
+                if candidate["status"] == "ok" and control["steps_per_second"] else None
+            ),
+            "profile_delta": delta,
+            "candidate_profile": candidate_profile,
+            "comparison_contract": {
+                "baseline": "main",
+                "candidate": "PR head; shared-signal foundation plus one candidate delta",
+                "parent_checkpoint_step": 155700,
+                "training_steps_each": 100,
+                "same_runner_sequential_pair": True,
+                "same_seed": 42,
+                "same_batch_sequence_from_checkpoint_rng": True,
+                "same_corpus_tokenizer_cache": True,
+                "same_cpu_profile": True,
+                "loss_windows": 5,
+                "holdout_used": False,
+                "strict_gate": "mean loss lower AND steps/s higher AND dead not higher",
+            },
+        }
+    (args.output / "comparison.json").write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    print(json.dumps(report, indent=2, sort_keys=True))
+    # Benchmark failures remain pending with their logs; don't cancel the other matrix jobs.
+
+if __name__ == "__main__":
+    main()

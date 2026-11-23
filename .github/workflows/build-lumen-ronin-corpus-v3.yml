@@ -71,9 +71,9 @@ jobs:
       - name: Generate the 24 reviewed Spanish behavior and lexicon curricula
         run: |
           set -euo pipefail
-          python minironin/scripts/generate_synthetic_curricula.py \
+          (cd minironin && python scripts/generate_synthetic_curricula.py \
             --output-dir "$GITHUB_WORKSPACE/inputs/curricula" \
-            --seed 20261123
+            --seed 20261123)
 
       - name: Generate the 50k verifiable personality dataset
         run: python minironin-personality/scripts/build_verifiable_personality_dataset.py

@@ -1,0 +1,150 @@
+name: Paired holdout at exact step 133200 — Lumen vs Transformer v2
+
+on:
+  push:
+    branches: [experiment/holdout-paired-133200-v2]
+    paths:
+      - docs/LAUNCH_HOLDOUT_PAIRED_133200_V2.txt
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-holdout-paired-133200-v2
+  cancel-in-progress: false
+
+env:
+  SOURCE_RUN_ID: "45082812702"
+  PARENT_RUN_ID: "45071952349"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+
+jobs:
+  paired-holdout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU runtime
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+
+      - name: Download Lumen and Transformer checkpoints from the interrupted paired run
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-lumen-step133500-v2-45082812702
+          path: lumen-source
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ronin-transformer-step133500-v2-45082812702
+          path: transformer-source
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download the exact frozen v2 corpus, tokenizer and token cache
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-paired-v2-prepared-45071952349
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify the exact saved checkpoints and frozen evaluation set
+        run: |
+          set -euo pipefail
+          test -s lumen-source/checkpoints/lumen-v2-133500/latest_good.pt
+          test -s transformer-source/checkpoints/transformer-v2-133500/step_133000.pt
+          test -s prepared/data/spanish-v2-train-sample.jsonl
+          test -s prepared/data/spanish-v2-token-cache.pt
+          test -s prepared/artifacts/spanish-v2/manifest.json
+          test -s prepared/artifacts/spanish-v2/tokenizer.json
+          test -s prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl
+          python - <<'PY'
+          import json, torch
+          from pathlib import Path
+          lumen=torch.load("lumen-source/checkpoints/lumen-v2-133500/latest_good.pt",map_location="cpu",weights_only=False)
+          transformer=torch.load("transformer-source/checkpoints/transformer-v2-133500/step_133000.pt",map_location="cpu",weights_only=False)
+          assert lumen["step"] == 133200, lumen["step"]
+          assert lumen["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          assert lumen["optimizer"] and lumen["scheduler"] and lumen["rng"]
+          assert transformer["step"] == 133000, transformer["step"]
+          assert transformer["architecture_id"] == "decoder_transformer_4l_d192_h4_ff576_tied_v1"
+          assert transformer["optimizer"] and transformer["scheduler"] and transformer["rng"]
+          assert transformer["scheduler_transition"]["current_step"] in (133000,133001)
+          assert transformer["training_config"]["transition_end"] == 133500
+          manifest=json.loads(Path("prepared/artifacts/spanish-v2/manifest.json").read_text())
+          assert manifest["train_rows"] == 9357876
+          assert manifest["validation_rows"] == 1413
+          assert manifest["holdout_rows"] == 2431
+          print("Verified Lumen step 133200, Transformer step 133000, and frozen v2 evaluation assets.")
+          PY
+
+      - name: Bring Transformer forward exactly 200 steps to match Lumen 133200
+        run: |
+          set -euo pipefail
+          python -m train.transformer_baseline \
+            --steps 200 \
+            --resume transformer-source/checkpoints/transformer-v2-133500/step_133000.pt \
+            --data prepared/data/spanish-v2-train-sample.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --token-cache prepared/data/spanish-v2-token-cache.pt \
+            --batch 8 --max-len 128 --seed 42 --threads 4 \
+            --lr 7.5e-5 --warmup 100 --total-steps 133500 \
+            --scheduler-transition \
+            --transition-start 73500 --transition-end 133500 \
+            --warmup-transition 100 --transition-plateau-steps 48000 \
+            --transition-min-lr-ratio 0.5 \
+            --parameter-check-every 100 \
+            --ckpt-dir checkpoints/transformer-sync-133200 \
+            2>&1 | tee logs-transformer-sync-133200.log
+
+      - name: Verify exact paired step 133200 checkpoints
+        run: |
+          python - <<'PY'
+          import torch
+          l=torch.load("lumen-source/checkpoints/lumen-v2-133500/latest_good.pt",map_location="cpu",weights_only=False)
+          t=torch.load("checkpoints/transformer-sync-133200/step_133200.pt",map_location="cpu",weights_only=False)
+          assert l["step"] == t["step"] == 133200
+          assert l["tokenizer_sha256"] == t["tokenizer_sha256"]
+          assert t["optimizer"] and t["scheduler"] and t["rng"]
+          print("Both models are now at exact global step 133200 with the same tokenizer.")
+          PY
+
+      - name: Run the same 2431-question v2 holdout on both models
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/evaluate_multiple_choice_holdout.py \
+            --holdout prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --lumen lumen-source/checkpoints/lumen-v2-133500/latest_good.pt \
+            --transformer checkpoints/transformer-sync-133200/step_133200.pt \
+            --expected-step 133200 \
+            --out results/step133200_paired_v2_holdout.json \
+            --threads 4 --max-len 128
+
+      - name: Preserve paired holdout and synchronized Transformer checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ronin-step133200-paired-v2-holdout-${{ github.run_id }}
+          path: |
+            results/step133200_paired_v2_holdout.json
+            logs-transformer-sync-133200.log
+            checkpoints/transformer-sync-133200/step_133200.pt
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0

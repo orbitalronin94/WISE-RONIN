@@ -113,3 +113,32 @@ Antes de usar v3 en entrenamiento:
 5. Congelar el manifiesto de autorización.
 
 Hasta superar esos controles, v3 es un **artefacto de construcción validado**, no un corpus declarado globalmente autorizado para entrenamiento. Cuando se entrene, Lumen y el Transformer de control deberán recibir exactamente el mismo corpus y tokenizer.
+
+## Cierre de versión v3 — auditoría 23-11-2026
+
+El snapshot de construcción anterior queda identificado como **Lumen-Ronin Spanish Corpus v3.0.0**. No se modificarán sus datos bajo esta versión. Cualquier limpieza posterior generará una versión nueva (v3.1 o v4), con nuevo manifiesto, hash y artefacto.
+
+- Auditoría: [run 45142717502](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45142717502)
+- Informe: [artifact 14805384712](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45142717502/artifacts/14805384712)
+- Train rows: 9.933.007.
+- Incremento frente a v2: 575.558 filas (+6,15 %).
+- SHA-256 train: `87595c3217c3b8166eadaf24309cfe4753a6da4e7c1d7c91bfd5322cae114811`.
+- Artefacto comprimido: 1.638.961.161 bytes (1,64 GB decimal; 1,53 GiB).
+- Directorio extraído medido por el runner de auditoría: aproximadamente 5,4 GB.
+- Validación: 1.413 filas, idéntica a v2.
+- Holdout MC: 2.431 filas, idéntico a v2.
+- Tokenizer: vocabulario 4.096, idéntico a v2.
+
+### Resultado de controles automáticos
+
+- Cero duplicados exactos de pares prompt/completion frente a v2.
+- Cero duplicados exactos internos entre las nuevas incorporaciones.
+- Cero coincidencias exactas con validation/holdout.
+- 63 completions duplicadas frente a v2 (longitud >=40), pendientes de decidir si son respuestas genéricas legítimas o redundancia.
+- 19.740 near-duplicates confirmados por el filtro de alta precisión.
+- 157.874 consultas superaron el límite de candidatos del detector; no se consideran aprobadas por ausencia de hallazgo.
+- 41 posibles marcadores sensibles detectados automáticamente; son alertas para revisión, no filtraciones confirmadas.
+- La trazabilidad individual de los fragmentos literarios hasta documento y hash fuente debe restaurarse.
+- M-Personas requiere revisión de muestras y sesgos; las licencias y procedencia deben conservarse por fuente.
+
+**Estado de uso:** v3 queda congelado como snapshot reproducible de datos, no como corpus globalmente certificado ni autorizado para entrenamiento. `training_authorized=false` se mantiene deliberadamente. El conteo exacto de tokens BPE del conjunto completo no figura en el manifiesto ni en la auditoría; no se sustituye por una estimación. Se calculará mediante un pase completo con el tokenizer congelado antes de publicar esa cifra.

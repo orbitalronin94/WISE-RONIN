@@ -1,4 +1,4 @@
-name: LUMEN vs Transformer — OMP winner, 15k continuation from 170700
+name: LUMEN vs Transformer — OMP winner, 15k continuation from 185700
 
 on:
   push:
@@ -24,7 +24,7 @@ env:
   OMP_PROC_BIND: "close"
   OMP_PLACES: "cores"
   KMP_BLOCKTIME: "0"
-  PARENT_RUN_ID: "45177953462"
+  PARENT_RUN_ID: "45200252793"
   DATA_RUN_ID: "45149684913"
   APPROVED_RUN_ID: "45175046624"
 
@@ -48,7 +48,6 @@ jobs:
           PYTHONPATH=. pytest -q tests
 
   train-lumen:
-    if: ${{ false }}
     needs: validate
     runs-on: ubuntu-24.04
     timeout-minutes: 300
@@ -62,10 +61,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           python -m pip install numpy tokenizers tqdm
-      - name: Download latest promoted Lumen step-170700 checkpoint
+      - name: Download latest promoted Lumen step-185700 checkpoint
         uses: actions/download-artifact@v7
         with:
-          name: lumen-approved-neuroplasticity-step170700-45177953462
+          name: lumen-approved-neuroplasticity-step200700-45200252793
           path: parent
           repository: ${{ github.repository }}
           run-id: ${{ env.PARENT_RUN_ID }}
@@ -89,7 +88,7 @@ jobs:
       - name: Verify original checkpoint, corpus, tokenizer and approved profile
         run: |
           set -euo pipefail
-          CHECKPOINT="$(find parent -name step_170700.pt -print -quit)"
+          CHECKPOINT="$(find parent -name step_185700.pt -print -quit)"
           PROFILE="$(find approved -name approved.runtime_profile.json -print -quit)"
           test -n "$CHECKPOINT" && test -s "$PROFILE"
           test -s prepared/data/spanish-v2-plus-personality-250k.jsonl
@@ -104,7 +103,7 @@ jobs:
           tokenizer = Path("prepared/artifacts/spanish-v2/tokenizer.json")
           state = torch.load(checkpoint, map_location="cpu", weights_only=False)
           sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-          assert state["step"] == 170700
+          assert state["step"] == 185700
           assert state["architecture_id"] == "ronin_lumen_v3_3_neuroplasticity"
           assert state["seed"] == 42
           assert state["training_config"]["batch"] == 8
@@ -115,13 +114,13 @@ jobs:
           profile = json.loads(Path(os.environ["PROFILE"]).read_text())
           assert profile.get("plasticity", {}).get("inhibition_scale") == 0.80
           assert profile.get("plasticity", {}).get("eligibility_retention") == 0.98
-          print("Verified latest paired step 170700, exact data/tokenizer and the two approved mechanisms.")
+          print("Verified promoted paired step 185700, exact data/tokenizer and the two approved mechanisms.")
           print("data_sha256:", sha(data))
           print("tokenizer_sha256:", sha(tokenizer))
           PY
           echo "CHECKPOINT=$CHECKPOINT" >> "$GITHUB_ENV"
           echo "PROFILE=$PROFILE" >> "$GITHUB_ENV"
-      - name: Continue Lumen for 15,000 steps from latest paired step 170700 to 185700
+      - name: Continue Lumen for 15,000 steps from promoted paired step 185700 to 200700
         run: |
           set -euo pipefail
           python -m train.train \
@@ -133,9 +132,9 @@ jobs:
             --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
             --batch 8 --max-len 128 --seed 42 \
             --runtime-profile "$PROFILE" \
-            --lr 3e-5 --warmup 100 --total-steps 185700 \
+            --lr 3e-5 --warmup 100 --total-steps 200700 \
             --scheduler-transition --restart-scheduler-transition \
-            --transition-start 170700 --transition-end 185700 \
+            --transition-start 185700 --transition-end 200700 \
             --warmup-transition 100 --transition-plateau-steps 0 \
             --transition-min-lr-ratio 0.5 \
             --log-every 100 --checkpoint-every 1000 \
@@ -144,7 +143,7 @@ jobs:
             --ckpt-dir checkpoints/lumen \
             --wall-clock-file lumen-wall.json \
             2>&1 | tee lumen-training-10k.log
-          MIDPOINT="$(find checkpoints/lumen -name step_180700.pt -print -quit)"
+          MIDPOINT="$(find checkpoints/lumen -name step_195700.pt -print -quit)"
           test -n "$MIDPOINT"
           python -m train.train \
             --steps 5000 \
@@ -166,7 +165,7 @@ jobs:
             --ckpt-dir checkpoints/lumen \
             --wall-clock-file lumen-wall.json \
             2>&1 | tee lumen-training-5k.log
-      - name: Upload Lumen step-185700 checkpoint and logs
+      - name: Upload Lumen step-200700 checkpoint and logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -199,7 +198,7 @@ jobs:
       - name: Download latest paired Transformer step-170700 checkpoint
         uses: actions/download-artifact@v7
         with:
-          name: transformer-control-step170700-45177953462
+          name: transformer-control-step185700-45200252793
           path: parent
           repository: ${{ github.repository }}
           run-id: ${{ env.PARENT_RUN_ID }}

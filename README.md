@@ -21,7 +21,7 @@ El repositorio conserva el nombre técnico **WISE-RONIN**. El proyecto activo es
 - [La tesis: el perro y el loro](#la-tesis-el-perro-y-el-loro)
 - [Qué estamos construyendo](#qué-estamos-construyendo)
 - [Arquitectura actual](#arquitectura-actual)
-- [La campaña de entrenamiento: de cero a 155,7k](#la-campaña-de-entrenamiento-de-cero-a-1557k)
+- [La campaña de entrenamiento: de cero a 400k](#la-campaña-de-entrenamiento-de-cero-a-400k)
 - [Resultados emparejados](#resultados-emparejados)
 - [Corpus y evaluación](#corpus-y-evaluación)
 - [Benchmark de optimización CPU](#benchmark-de-optimización-cpu)
@@ -47,7 +47,9 @@ El repositorio conserva el nombre técnico **WISE-RONIN**. El proyecto activo es
 
 El holdout y sus predicciones están preservados en el [artefacto 14859702424](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45257284512/artifacts/14859702424). La continuación previa desde 185.700 se interrumpió: Lumen conservó su último checkpoint en 219.700, mientras Transformer llegó a 235.700. Se seleccionaron los dos checkpoints más próximos con procedencia verificable para la comparación emparejada.
 
-**Promoción:** el par 219.700/219.750 queda fijado como nueva referencia experimental y padre de continuación. El siguiente entrenamiento continúa ambos modelos hasta el paso global 300.000: Lumen añade 80.300 actualizaciones y Transformer 80.250. Se preservan optimizador y RNG; se reinicia una transición de LR documentada hasta 300k, con las tasas base aprobadas de cada modelo.
+**Promoción:** el par 219.700/219.750 queda fijado como referencia experimental y padre histórico. La primera continuación emparejada sí completó el bloque hasta 229.700 en ambos modelos. La campaña corregida parte ahora de esos checkpoints finales verificados y tiene como objetivo común el paso 400.000. Se conserva el estado del optimizador y el RNG; la nueva transición de LR se reinicia explícitamente desde el estado real del optimizador.
+
+**Tasa de aprendizaje de la campaña:** se ha fijado `5e-5` como LR objetivo para ambas arquitecturas. Es un cambio distinto para cada una: LUMEN venía de `3e-5` (objetivo un 66,7 % mayor), mientras que el Transformer venía de `7.5e-5` (objetivo un 33,3 % menor). No se aplica como una tasa constante abrupta: el scheduler cosenoidal parte del LR efectivo guardado en cada checkpoint y transiciona hacia `5e-5` durante la nueva campaña; se conservan los momentos del optimizador. Por ello, el efecto debe juzgarse por separado en cada arquitectura mediante loss por ventanas, estabilidad, throughput y holdout, no suponiendo de antemano que una vaya a beneficiarse más.
 
 La entrada común sigue siendo el snapshot congelado de 250.000 filas (200k v2 + 50k personalidad factual), tokenizer v2 de 4.096 IDs, seed 42, batch 8 y contexto 128. El perfil runtime aprobado de Lumen se extrae del propio checkpoint, incluyendo plasticidad y fast paths Delta. Corpus v3 sigue excluido: su manifiesto mantiene `training_authorized=false`.
 </details>
@@ -99,7 +101,7 @@ La extensión dual-state ZE está disponible en el código, pero no se activa en
 
 La descripción completa, con responsabilidades, fórmulas, parámetros y distinción entre código disponible y código activo, está en [Arquitectura actual](docs/ARQUITECTURA_ACTUAL_ES.md).
 
-## La campaña de entrenamiento: de cero a 300k
+## La campaña de entrenamiento: de cero a 400k
 
 El linaje emparejado se inició desde cero y avanzó mediante continuaciones verificadas. Cada bloque conserva checkpoints y estado de optimizador; los holdouts comparan ambos modelos sobre las mismas 2.431 preguntas.
 
@@ -120,7 +122,9 @@ El linaje emparejado se inició desde cero y avanzó mediante continuaciones ver
 | 140,7k → 155,7k (v2 + personalidad) | [45149684913](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913) | Ambos modelos completaron +15.000 pasos; holdout emparejado completado; step 155.700 promovido |
 | 185,7k → 219,7k/235,7k (continuación interrumpida) | [45230206330](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45230206330) | Lumen conservó 219.700; Transformer completó 235.700; se verificaron los padres 219.700/219.750 para el holdout |
 | Holdout 219,7k/219,75k | [45257284512](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45257284512) | 2.431 preguntas; Lumen 831, Transformer 805; par promovido |
-| 219,7k/219,75k → 300k | En ejecución tras la promoción | Continuación emparejada desde ambos checkpoints; 80.300 pasos Lumen y 80.250 Transformer |
+| 219,7k/219,75k → 229,7k | [45262377661](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45262377661) | Ambos modelos completaron el primer bloque de 10.000 pasos y publicaron checkpoints 229.700 |
+| Reanudación 229,7k → 239,7k | [45262377661](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45262377661) | El job de continuación falló al validar la reanudación: discrepancia entre el LR guardado en `training_config` y el solicitado; además se corrigió la ruta canónica del checkpoint entre artefactos (`checkpoint/` frente a `checkpoints/`). No fue un fallo de loss ni evidencia de inestabilidad de ninguna arquitectura |
+| Recuperación 229,7k → 400k | [Workflow de continuación](https://github.com/orbitalronin94/WISE-RONIN/actions/workflows/continue-paired-219700-300000.yml) | Reanuda desde los dos checkpoints 229.700; LR objetivo `5e-5` en ambos; validación explícita de padre, paso, arquitectura, optimizador, RNG y scheduler antes de cada bloque |
 
 El primer piloto de 500 pasos detectó un colapso de escrituras en las capas superiores. No se oculta ni se suma al linaje actual: fue una prueba de arranque que ayudó a corregir la ruta residual y la migración homeostática.
 

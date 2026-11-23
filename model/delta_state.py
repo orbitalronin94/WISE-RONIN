@@ -14,6 +14,11 @@ class EstadoDelta(nn.Module):
         self.parallel_refinements = max(1, int(parallel_refinements))
         self.parallel_scan = True
         self.pre_normalize_sequence = False
+        # Benchmarkable exact fast paths; defaults preserve the reference implementation.
+        self.trace_summary_no_grad = False
+        self.trace_norm_diagnostics = True
+        self.state_update_bmm = False
+        self.summary_update_bmm = False
         self.proj_k = nn.Linear(dim, dim, bias=False)
         self.proj_v = nn.Linear(dim, dim, bias=False)
         self.proj_q = nn.Linear(dim, dim, bias=False)
@@ -106,9 +111,24 @@ class EstadoDelta(nn.Module):
         )
         final_ratios = prefix[:, -1:].div(prefix).unsqueeze(-1)
         weighted_keys = k * final_ratios
-        write_summary = torch.einsum(
-            "btr,btd->brd", weighted_keys, write_vectors
-        ).mean(dim=0) / max(1, steps)
+        if self.trace_summary_no_grad:
+            with torch.no_grad():
+                if self.summary_update_bmm:
+                    write_summary = torch.bmm(
+                        weighted_keys.transpose(1, 2), write_vectors
+                    ).mean(dim=0) / max(1, steps)
+                else:
+                    write_summary = torch.einsum(
+                        "btr,btd->brd", weighted_keys, write_vectors
+                    ).mean(dim=0) / max(1, steps)
+        elif self.summary_update_bmm:
+            write_summary = torch.bmm(
+                weighted_keys.transpose(1, 2), write_vectors
+            ).mean(dim=0) / max(1, steps)
+        else:
+            write_summary = torch.einsum(
+                "btr,btd->brd", weighted_keys, write_vectors
+            ).mean(dim=0) / max(1, steps)
         with torch.no_grad():
             trace_update = write_summary.detach().to(
                 device=self.eligibility_trace.device,
@@ -117,12 +137,14 @@ class EstadoDelta(nn.Module):
             trace_norm = trace_update.norm().clamp_min(1e-8)
             trace_update = trace_update * (0.05 / trace_norm).clamp(max=1.0)
             self.eligibility_trace.mul_(0.95).add_(trace_update, alpha=0.05)
-            self.last_eligibility_norm = float(self.eligibility_trace.norm().item())
+            if self.trace_norm_diagnostics and collect_diagnostics:
+                self.last_eligibility_norm = float(self.eligibility_trace.norm().item())
 
-        final_state = (
-            state * prefix[:, -1].view(batch, 1, 1)
-            + torch.einsum("btr,btd->brd", weighted_keys, write_vectors)
-        )
+        if self.state_update_bmm:
+            state_update = torch.bmm(weighted_keys.transpose(1, 2), write_vectors)
+        else:
+            state_update = torch.einsum("btr,btd->brd", weighted_keys, write_vectors)
+        final_state = state * prefix[:, -1].view(batch, 1, 1) + state_update
         max_output_norm = 0.5 * x.norm(dim=-1, keepdim=True)
         output_norm = output.norm(dim=-1, keepdim=True).clamp_min(1e-6)
         output = output * (max_output_norm / output_norm).clamp(max=1.0)

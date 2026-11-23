@@ -45,3 +45,56 @@ def test_homeostasis_fused_scatter_matches_reference_outputs_gradients_and_ema()
     out_new.square().mean().backward()
     torch.testing.assert_close(x_new.grad, x_ref.grad, atol=1e-6, rtol=1e-6)
     _compare_grads(reference, candidate, atol=1e-6, rtol=1e-6)
+
+
+def test_delta_write_update_reuse_matches_outputs_state_and_gradients():
+    torch.manual_seed(19)
+    reference = EstadoDelta(dim=32, parallel_refinements=2)
+    candidate = copy.deepcopy(reference)
+    candidate.reuse_write_update = True
+    x_ref = torch.randn(2, 13, 32, requires_grad=True)
+    x_new = x_ref.detach().clone().requires_grad_(True)
+    energy = torch.rand(2, 13, 1)
+    out_ref, surprise_ref = reference(x_ref, energy, reset_state=True)
+    out_new, surprise_new = candidate(x_new, energy, reset_state=True)
+    torch.testing.assert_close(out_new, out_ref, atol=2e-6, rtol=2e-5)
+    torch.testing.assert_close(surprise_new, surprise_ref, atol=2e-6, rtol=2e-5)
+    torch.testing.assert_close(candidate.state, reference.state, atol=2e-6, rtol=2e-5)
+    (out_ref.square().mean() + surprise_ref.mean()).backward()
+    (out_new.square().mean() + surprise_new.mean()).backward()
+    torch.testing.assert_close(x_new.grad, x_ref.grad, atol=3e-6, rtol=3e-5)
+    _compare_grads(reference, candidate, atol=3e-6, rtol=3e-5)
+
+
+def test_delta_shared_causal_masks_match_outputs_state_and_gradients():
+    torch.manual_seed(23)
+    reference = EstadoDelta(dim=32, parallel_refinements=2)
+    candidate = copy.deepcopy(reference)
+    candidate.share_causal_masks = True
+    x_ref = torch.randn(2, 11, 32, requires_grad=True)
+    x_new = x_ref.detach().clone().requires_grad_(True)
+    energy = torch.rand(2, 11, 1)
+    out_ref, surprise_ref = reference(x_ref, energy, reset_state=True)
+    out_new, surprise_new = candidate(x_new, energy, reset_state=True)
+    torch.testing.assert_close(out_new, out_ref, atol=2e-6, rtol=2e-5)
+    torch.testing.assert_close(surprise_new, surprise_ref, atol=2e-6, rtol=2e-5)
+    torch.testing.assert_close(candidate.state, reference.state, atol=2e-6, rtol=2e-5)
+    (out_ref.square().mean() + surprise_ref.mean()).backward()
+    (out_new.square().mean() + surprise_new.mean()).backward()
+    torch.testing.assert_close(x_new.grad, x_ref.grad, atol=3e-6, rtol=3e-5)
+    _compare_grads(reference, candidate, atol=3e-6, rtol=3e-5)
+
+
+def test_delta_on_demand_trace_diagnostics_preserves_computation():
+    torch.manual_seed(29)
+    reference = EstadoDelta(dim=32, parallel_refinements=2)
+    candidate = copy.deepcopy(reference)
+    candidate.trace_norm_diagnostics_on_demand = True
+    x = torch.randn(2, 9, 32)
+    energy = torch.rand(2, 9, 1)
+    out_ref, surprise_ref = reference(x, energy, reset_state=True, collect_diagnostics=False)
+    out_new, surprise_new = candidate(x, energy, reset_state=True, collect_diagnostics=False)
+    torch.testing.assert_close(out_new, out_ref, atol=2e-6, rtol=2e-5)
+    torch.testing.assert_close(surprise_new, surprise_ref, atol=2e-6, rtol=2e-5)
+    torch.testing.assert_close(candidate.state, reference.state, atol=2e-6, rtol=2e-5)
+    torch.testing.assert_close(candidate.eligibility_trace, reference.eligibility_trace, atol=2e-6, rtol=2e-5)

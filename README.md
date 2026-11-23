@@ -7,6 +7,10 @@ Lumen-Ronin es un experimento de arquitectura recurrente, CPU-first y de pocos m
 
 No presentamos una metáfora como un descubrimiento. Cada órgano es código, cada hipótesis debe medirse y cada resultado debe sobrevivir a un holdout. La épica está en la pregunta y en el trabajo de responderla, no en exagerar las conclusiones.
 
+> **La velocidad es ingeniería. El aprendizaje es arquitectura.**
+>
+> No basta con procesar más tokens por segundo. Importa cómo se transforma la experiencia en conocimiento, cómo se conserva y cómo se adapta el sistema.
+
 El repositorio conserva el nombre técnico **WISE-RONIN**. El proyecto activo es **Lumen-Ronin**; un Transformer pequeño permanece como baseline de control.
 
 ---

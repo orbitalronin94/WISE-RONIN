@@ -1,7 +1,15 @@
 """Low-rank surprise-gated recurrent Delta memory with a parallel fixed-point scan."""
+from functools import lru_cache
 import torch
 from torch import nn
 from torch.nn import functional as F
+
+
+@lru_cache(maxsize=32)
+def _cached_causal_masks(steps, device, dtype):
+    """Reuse immutable causal masks across the four identical Delta organs."""
+    causal = torch.ones(steps, steps, device=device, dtype=dtype).tril()
+    return causal, causal.tril(-1)
 
 
 class EstadoDelta(nn.Module):
@@ -14,6 +22,11 @@ class EstadoDelta(nn.Module):
         self.parallel_refinements = max(1, int(parallel_refinements))
         self.parallel_scan = True
         self.pre_normalize_sequence = False
+        # Exact-equivalence simplifications toggled only by benchmark profiles.
+        self.reuse_write_update = False
+        self.always_apply_eligibility = False
+        self.trace_norm_diagnostics_on_demand = False
+        self.share_causal_masks = False
         self.proj_k = nn.Linear(dim, dim, bias=False)
         self.proj_v = nn.Linear(dim, dim, bias=False)
         self.proj_q = nn.Linear(dim, dim, bias=False)
@@ -71,8 +84,11 @@ class EstadoDelta(nn.Module):
         batch, steps, _ = k.shape
         key_gram = torch.bmm(k, k.transpose(1, 2))
         query_key = torch.bmm(q, k.transpose(1, 2))
-        causal = torch.ones(steps, steps, device=x.device, dtype=x.dtype).tril()
-        strict_causal = torch.ones_like(causal).tril(-1)
+        if self.share_causal_masks:
+            causal, strict_causal = _cached_causal_masks(steps, x.device, x.dtype)
+        else:
+            causal = torch.ones(steps, steps, device=x.device, dtype=x.dtype).tril()
+            strict_causal = torch.ones_like(causal).tril(-1)
 
         decay = torch.ones(batch, steps, device=x.device, dtype=x.dtype)
         write_vectors = torch.zeros_like(v)
@@ -106,9 +122,14 @@ class EstadoDelta(nn.Module):
         )
         final_ratios = prefix[:, -1:].div(prefix).unsqueeze(-1)
         weighted_keys = k * final_ratios
-        write_summary = torch.einsum(
-            "btr,btd->brd", weighted_keys, write_vectors
-        ).mean(dim=0) / max(1, steps)
+        if self.reuse_write_update:
+            batch_write_update = torch.einsum("btr,btd->brd", weighted_keys, write_vectors)
+            write_summary = batch_write_update.mean(dim=0) / max(1, steps)
+        else:
+            batch_write_update = None
+            write_summary = torch.einsum(
+                "btr,btd->brd", weighted_keys, write_vectors
+            ).mean(dim=0) / max(1, steps)
         with torch.no_grad():
             trace_update = write_summary.detach().to(
                 device=self.eligibility_trace.device,
@@ -117,12 +138,12 @@ class EstadoDelta(nn.Module):
             trace_norm = trace_update.norm().clamp_min(1e-8)
             trace_update = trace_update * (0.05 / trace_norm).clamp(max=1.0)
             self.eligibility_trace.mul_(0.95).add_(trace_update, alpha=0.05)
-            self.last_eligibility_norm = float(self.eligibility_trace.norm().item())
+            if not self.trace_norm_diagnostics_on_demand or collect_diagnostics:
+                self.last_eligibility_norm = float(self.eligibility_trace.norm().item())
 
-        final_state = (
-            state * prefix[:, -1].view(batch, 1, 1)
-            + torch.einsum("btr,btd->brd", weighted_keys, write_vectors)
-        )
+        if batch_write_update is None:
+            batch_write_update = torch.einsum("btr,btd->brd", weighted_keys, write_vectors)
+        final_state = state * prefix[:, -1].view(batch, 1, 1) + batch_write_update
         max_output_norm = 0.5 * x.norm(dim=-1, keepdim=True)
         output_norm = output.norm(dim=-1, keepdim=True).clamp_min(1e-6)
         output = output * (max_output_norm / output_norm).clamp(max=1.0)
@@ -147,7 +168,10 @@ class EstadoDelta(nn.Module):
         # Apply the previous batch's eligible trace only when delayed feedback
         # has assigned it value. The trace itself remains bounded and detached.
         modulation = self.eligibility_modulator.to(device=x.device, dtype=x.dtype)
-        if bool(modulation.detach().abs().item() > 0):
+        if self.always_apply_eligibility:
+            trace = self.eligibility_trace.to(device=x.device, dtype=x.dtype)
+            state = state + modulation * trace.unsqueeze(0)
+        elif bool(modulation.detach().abs().item() > 0):
             trace = self.eligibility_trace.to(device=x.device, dtype=x.dtype)
             state = state + modulation * trace.unsqueeze(0)
         k_all, v_all, q_all = self._project_sequence(x)

@@ -127,7 +127,7 @@ def test_delta_always_apply_eligibility_matches_conditional_path():
 
 
 def test_repetition_loss_shared_log_softmax_matches_reference_and_gradients():
-    from train.loss import perdida_total
+    from train.loss import repetition_loss_shared_normalization
 
     torch.manual_seed(37)
     logits_ref = torch.randn(2, 7, 31, requires_grad=True)
@@ -135,12 +135,7 @@ def test_repetition_loss_shared_log_softmax_matches_reference_and_gradients():
     targets = torch.randint(0, 31, (2, 7))
     activations = torch.randn(2, 7, 8)
     router = torch.rand(2, 7, 1)
-    output_ref = {"logits": logits_ref, "activations": activations, "router": router}
-    output_new = {"logits": logits_new, "activations": activations, "router": router}
-
-    loss_new, metrics_new = perdida_total(
-        output_new, targets, None, use_jepa=False, use_rep=True
-    )
+    loss_new = repetition_loss_shared_normalization(logits_new)
 
     logits_0 = logits_ref[:, :-2]
     logits_1 = logits_ref[:, 1:-1]
@@ -152,7 +147,7 @@ def test_repetition_loss_shared_log_softmax_matches_reference_and_gradients():
         - torch.logsumexp(logits_2, dim=-1)
     )
     loss_ref = reference_log_triple.exp().mean()
-    torch.testing.assert_close(metrics_new["L_rep"], loss_ref.detach(), atol=2e-7, rtol=2e-6)
+    torch.testing.assert_close(loss_new.detach(), loss_ref.detach(), atol=2e-7, rtol=2e-6)
     loss_new.backward()
     loss_ref.backward()
     torch.testing.assert_close(logits_new.grad, logits_ref.grad, atol=2e-7, rtol=2e-6)

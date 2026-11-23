@@ -107,6 +107,7 @@ jobs:
           test -s prepared/data/spanish-v2-plus-personality-token-cache.pt
           test -s prepared/artifacts/spanish-v2/tokenizer.json
           echo "CHECKPOINT=$CHECKPOINT" >> "$GITHUB_ENV"
+          export CHECKPOINT
           python - <<'PY'
           import hashlib, os, torch
           from pathlib import Path

@@ -5,8 +5,6 @@ on:
     branches: [feat/unified-neuroplasticity-organs]
     paths:
       - ".github/workflows/benchmark-neuroplasticity-18.yml"
-      - "scripts/benchmark_neuroplasticity_candidate.py"
-      - "scripts/aggregate_neuroplasticity_benchmarks.py"
   workflow_dispatch:
 
 permissions:
@@ -14,8 +12,8 @@ permissions:
   actions: read
 
 concurrency:
-  group: lumen-neuroplasticity-18-${{ github.run_id }}
-  cancel-in-progress: false
+  group: lumen-neuroplasticity-18-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   PARENT_RUN_ID: "45149684913"
@@ -156,6 +154,8 @@ jobs:
     name: Aggregate approved and pending changes
     needs: [benchmark]
     if: always()
+    outputs:
+      training_authorized: ${{ steps.registry.outputs.authorized }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout candidate registry
@@ -163,6 +163,12 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: candidate
+
+      - name: Checkout frozen main runtime profile
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          path: baseline-main
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -179,10 +185,25 @@ jobs:
       - name: Build approved profile and pending register
         run: |
           set -euo pipefail
+          cp baseline-main/config/lumen_cpu_profile.json benchmark-results/main-runtime-profile.json
           python candidate/scripts/aggregate_neuroplasticity_benchmarks.py --root benchmark-results
           test -s benchmark-results/AGGREGATE.md
           test -s benchmark-results/approved_candidates.json
           cat benchmark-results/AGGREGATE.md
+
+      - name: Export training authorization gate
+        id: registry
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          payload = json.loads(Path("benchmark-results/approved_candidates.json").read_text())
+          authorized = bool(payload.get("training_authorized"))
+          print("Training authorized:", authorized)
+          print("Approved candidates:", payload.get("approved_candidates", []))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("authorized=" + str(authorized).lower() + "\\n")
+          PY
 
       - name: Upload complete tournament record
         if: always()

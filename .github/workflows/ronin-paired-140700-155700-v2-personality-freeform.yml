@@ -292,6 +292,7 @@ jobs:
           retention-days: 90
 
   freeform-holdout:
+    needs: prepare-data
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:

@@ -247,8 +247,12 @@ def main():
         if parent_data_hash != data_hash:
             if not args.allow_corpus_transition:
                 raise ValueError("Transformer checkpoint corpus hash mismatch; audited transition flag required")
-            if int(state.get("step", -1)) != 66000 or state.get("architecture_id") != ARCHITECTURE_ID:
-                raise ValueError("Corpus transition is restricted to the exact Transformer step-66000 paired checkpoint")
+            allowed_transition = (
+                int(state.get("step", -1)) == 66000
+                or int(state.get("step", -1)) == 133200
+            )
+            if not allowed_transition or state.get("architecture_id") != ARCHITECTURE_ID:
+                raise ValueError("Corpus transition is restricted to exact paired Transformer checkpoints at step 66000 or 133200")
             if state.get("tokenizer_sha256") != tokenizer_hash:
                 raise ValueError("Corpus transition requires unchanged tokenizer hash")
             args.corpus_transition = True

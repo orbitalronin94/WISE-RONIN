@@ -1,8 +1,8 @@
 # Crónica experimental de Lumen-Ronin
 >
-> Del primer encendido al linaje evaluado en 133.200 pasos.
+> Del primer encendido al linaje evaluado en 155.700 pasos.
 >
-> **Corte documental:** 23 de noviembre de 2026. El último checkpoint emparejado evaluado es 133.200, sobre el corpus español v2.
+> **Corte documental:** 23 de noviembre de 2026. El último checkpoint emparejado evaluado es 155.700, sobre el corpus español v2 + personalidad factual.
 
 ## Cómo leer esta cronología
 
@@ -316,3 +316,49 @@ La comparación describe el resultado de este bloque, no el efecto causal aislad
 - Entrada común 250k: artefacto [v2 + personalidad](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45136184396/artifacts/14800196498)
 
 **Promoción:** step 140.700 queda fijado como referencia emparejada actual y nuevo punto de partida para la siguiente continuación. Esta promoción es documental y de referencia reproducible; no es una declaración de superioridad general. El próximo entrenamiento esperará a que concluya la auditoría del corpus v3 y solo lo incorporará si queda admitido formalmente.
+
+
+## X. Step 155.700: continuación emparejada y nueva promoción
+
+[Run de entrenamiento y holdout 140.700→155.700, run 45149684913](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913) · [Job de holdout final](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/job/137646815653).
+
+### Diseño y verificación del bloque
+
+Ambos modelos partieron de sus checkpoints exactos de step 140.700, verificados por el workflow, y completaron 15.000 pasos adicionales en dos tramos consecutivos: 10.000 y 5.000. Se mantuvo la muestra determinista compartida de 250.000 filas (200.000 del corpus v2 y 50.000 ejemplos de personalidad factual adaptados a Lumen-Ronin), el tokenizer v2 de 4.096 IDs, contexto 128 y seed 42. El SHA-256 del tokenizer fue `d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe`; el SHA-256 del conjunto de datos empaquetado fue `9934b07abbc6f80c7a58d61a2acf2afd0dd57778c3207179732fba966dead7a9`.
+
+Los dos jobs de entrenamiento, la preparación de datos y los jobs de evaluación finalizaron correctamente. El holdout congelado de 2.431 preguntas no se modificó y se aplicó a ambos modelos.
+
+### Resultado del holdout
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| **Lumen-Ronin** | **819/2.431** | **33,69 %** | **5,7331426** |
+| Transformer baseline | 808/2.431 | 33,24 % | 5,7857635 |
+
+Lumen queda 11 respuestas por delante (+0,4525 puntos porcentuales) y su NLL media es 0,052621 menor, una reducción relativa del 0,91 % respecto al Transformer. Ambas métricas favorecen a Lumen en este holdout.
+
+### Evolución desde 140.700
+
+| Modelo | Aciertos 140,7k | Aciertos 155,7k | Cambio |
+|---|---:|---:|---:|
+| Lumen | 824 | 819 | −5 |
+| Transformer | 821 | 808 | −13 |
+
+| Modelo | NLL 140,7k | NLL 155,7k | Cambio |
+|---|---:|---:|---:|
+| Lumen | 5,7951 | 5,7331 | −0,0620 |
+| Transformer | 5,8577 | 5,7858 | −0,0719 |
+
+La diferencia de accuracy a favor de Lumen crece de 3 a 11 respuestas. La brecha de NLL, en cambio, pasa de 0,0626 a 0,0526: ambos modelos mejoran su NLL y el Transformer reduce algo más la suya. El resultado es favorable a Lumen en las dos métricas, pero el tamaño del holdout y la ausencia de réplicas con semillas independientes impiden presentarlo como significación estadística o superioridad general.
+
+El bloque no permite aislar causalmente el efecto de los 50.000 ejemplos de personalidad ni el del scheduler de transición. La conclusión válida se limita a la comparación de estos dos checkpoints, entrenados bajo el protocolo emparejado descrito.
+
+### Artefactos y promoción
+
+- [Run completo de entrenamiento y evaluación](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913)
+- [Holdout y resumen emparejado](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14811302311)
+- Checkpoint Lumen step 155.700: [artefacto 14809524099](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14809524099), 958.439.821 bytes; SHA-256 `5a4b1da67b9c5f75414f080c668ec782cca81278c04f48f4ebca33f2678b161b`.
+- Checkpoint Transformer step 155.700: [artefacto 14807032549](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14807032549), 1.712.291.748 bytes; SHA-256 `8bd87d7ef6d803436e7a98919a739e3adfae6dd71a0afd2b73bfab0f489704f0`.
+- Informe de holdout: [artefacto 14811302311](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14811302311), 176.523 bytes; SHA-256 `75428c55c07bf6d5a4b233ae5fde79f74fdc409736e161930793405160fb79ce`.
+
+**Promoción:** el par de checkpoints de step 155.700 queda fijado como nueva referencia experimental emparejada de Lumen-Ronin frente al baseline Transformer y como punto de partida para la siguiente continuación. La promoción es documental y de referencia reproducible; no afirma una victoria universal ni sustituye réplicas independientes. El próximo ciclo podrá incorporar corpus v3 solo cuando se cierre formalmente su gate de admisión; el manifiesto actual mantiene `training_authorized=false`.

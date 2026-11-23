@@ -175,11 +175,11 @@ jobs:
               except Exception as exc:
                   reports.append({"candidate": path.parent.name, "status": "unreadable", "reason": str(exc)})
           reports.sort(key=lambda x: (
-              x.get("decision") != "APPROVED_FOR_LONGER_VALIDATION",
+              x.get("decision") != "POSITIVE_SCREENING_REQUIRES_REPEAT",
               -(x.get("speedup_percent") if x.get("speedup_percent") is not None else -1e9),
               x.get("candidate", ""),
           ))
-          approved = [x["candidate"] for x in reports if x.get("decision") == "APPROVED_FOR_LONGER_VALIDATION"]
+          approved = [x["candidate"] for x in reports if x.get("decision") == "POSITIVE_SCREENING_REQUIRES_REPEAT"]
           lines = [
               "# LUMEN 18-way CPU throughput tournament",
               "",
@@ -202,7 +202,7 @@ jobs:
               "",
               "## Decision policy",
               "",
-              "- Screening gate: at least 3% faster, final loss regression no greater than 0.01, dead-activity regression no greater than 0.5 percentage points, finite completed run and four-layer diagnostics.",
+              "- Screening gate: strictly faster than control (>0%), final loss regression no greater than 0.01, dead-activity regression no greater than 0.5 percentage points, finite completed run and four-layer diagnostics.",
               "- A pass is only **approved for longer validation**, not automatic production promotion.",
               "- No candidate is allowed to change or remove an organ, alter the training objective, change plasticity settings, or reduce architectural work.",
               "- This is not a holdout or a generalization claim.",
@@ -210,12 +210,12 @@ jobs:
               f"Completed reports: {len(reports)}/18. Screening passes: {len(approved)}.",
           ]
           (root / "AGGREGATE.md").write_text("\n".join(lines) + "\n")
-          (root / "approved_candidates.json").write_text(json.dumps({
+          (root / "positive_candidates.json").write_text(json.dumps({
               "training_authorized": False,
               "approved_for_longer_validation": approved,
               "completed_reports": len(reports),
               "expected_candidates": 18,
-              "reason": "Screening results require repeated validation before any runtime profile is promoted."
+              "reason": "Every positive speedup is retained for repeated validation; no candidate is merged on a single noisy measurement."
           }, indent=2) + "\n")
           print("\n".join(lines))
           PY

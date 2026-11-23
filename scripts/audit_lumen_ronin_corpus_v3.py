@@ -99,7 +99,7 @@ def main():
             c=str(r.get("completion","") or "")
             if p: eval_prompts.add(h(p))
             if p or c: eval_pair.add(h(p+"\n"+c))
-            if len(norm(c))>=40: eval_comp.add(h(c))
+            if c: eval_comp.add(h(c))
             choices=r.get("choices",[])
             if isinstance(choices,dict): choices=[choices[k] for k in sorted(choices)]
             if isinstance(choices,list):
@@ -107,7 +107,7 @@ def main():
                     choice=str(choice or "")
                     if choice:
                         eval_pair.add(h(p+"\n"+choice))
-                        if len(norm(choice))>=40: eval_comp.add(h(choice))
+                        eval_comp.add(h(choice))
     # Scan only additions, not the copied v2 rows.
     new_seen=set(); add_n=0; bad=[]; task_counts=collections.Counter()
     rng=random.Random(20261123)
@@ -116,7 +116,7 @@ def main():
         if cat is None: continue
         add_n+=1; counts[cat]+=1; task_counts[str(r.get("task",""))]+=1
         p=str(r.get("prompt","") or ""); c=str(r.get("completion","") or "")
-        pair=h(p+"\n"+c); ch=h(c) if len(norm(c))>=40 else None
+        pair=h(p+"\n"+c); ch=h(c) if c else None
         if db.execute("SELECT 1 FROM pair_hash WHERE k=?",(pair,)).fetchone():
             dup_pair.append({"category":cat,"id":r.get("id"),"source_id":r.get("source_id"),"line":line_no})
         if ch and db.execute("SELECT 1 FROM completion_hash WHERE k=?",(ch,)).fetchone():

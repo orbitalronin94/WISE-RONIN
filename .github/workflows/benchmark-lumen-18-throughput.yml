@@ -203,7 +203,7 @@ jobs:
               "## Decision policy",
               "",
               "- Screening gate: strictly faster than control (>0%), final loss regression no greater than 0.01, dead-activity regression no greater than 0.5 percentage points, finite completed run and four-layer diagnostics.",
-              "- A pass is only **approved for longer validation**, not automatic production promotion.",
+              "- A positive screen is retained for repeated validation; no candidate is merged on a single noisy measurement.",
               "- No candidate is allowed to change or remove an organ, alter the training objective, change plasticity settings, or reduce architectural work.",
               "- This is not a holdout or a generalization claim.",
               "",
@@ -212,7 +212,7 @@ jobs:
           (root / "AGGREGATE.md").write_text("\n".join(lines) + "\n")
           (root / "positive_candidates.json").write_text(json.dumps({
               "training_authorized": False,
-              "approved_for_longer_validation": approved,
+              "positive_screening_requires_repeat": approved,
               "completed_reports": len(reports),
               "expected_candidates": 18,
               "reason": "Every positive speedup is retained for repeated validation; no candidate is merged on a single noisy measurement."

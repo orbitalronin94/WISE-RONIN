@@ -149,6 +149,8 @@ jobs:
             assert s["runtime_profile"]["delta_share_causal_masks"] is True
           print("Verified output block",step,arch)
           PY
+          mkdir -p checkpoint
+          cp "$FINAL" "checkpoint/step_$TARGET.pt"
       - name: Publish independently recoverable block artifact
         if: always()
         uses: actions/upload-artifact@v7

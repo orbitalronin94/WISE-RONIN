@@ -216,7 +216,7 @@ En accuracy, el Transformer pasó de +32 aciertos a +1. En NLL, Lumen amplió su
 - Checkpoint Lumen 73,5k: artefacto `ronin-lumen-step73500-v2-45071952349`.
 - Checkpoint Transformer 73,5k: artefacto `ronin-transformer-step73500-v2-45071952349`.
 
-Este par queda fijado como referencia para la siguiente continuación emparejada. La campaña siguiente prevista es step 73.500 → 133.500, +60.000 pasos por modelo, con corpus v2 y holdout común.
+Este par quedó fijado como referencia al cerrar el bloque 66k→73,5k. La continuación siguiente, 73,5k→133,5k, y su evaluación emparejada a step 133.200 quedan documentadas en la sección VIII.
 
 ## VI. Qué ha enseñado el recorrido
 

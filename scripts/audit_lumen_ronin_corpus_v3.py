@@ -37,7 +37,7 @@ def anchors(text):
     if len(toks)<12: return []
     last=len(toks)-3
     positions=sorted(set((0,last//3,(2*last)//3,last)))
-    return [int.from_bytes(hashlib.blake2b(" ".join(toks[i:i+3]).encode(),digest_size=8).digest(),"big") for i in positions]
+    return [(int.from_bytes(hashlib.blake2b(" ".join(toks[i:i+3]).encode(),digest_size=8).digest(),"big") & ((1<<63)-1)) for i in positions]
 def sha(path):
     x=hashlib.sha256()
     with Path(path).open("rb") as f:

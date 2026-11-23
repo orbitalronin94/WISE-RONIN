@@ -1,0 +1,125 @@
+name: LUMEN vs Transformer — paired holdout at 219700
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/holdout-paired-219700.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-transformer-holdout-219700
+  cancel-in-progress: false
+
+env:
+  SOURCE_RUN_ID: "45230206330"
+  DATA_RUN_ID: "45149684913"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  paired-holdout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU evaluation runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+      - name: Download frozen corpus and holdout
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-v2-plus-personality-250k-45149684913
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.DATA_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download interrupted paired training artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: "*step235700-45230206330"
+          path: source-artifacts
+          merge-multiple: true
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve and verify exact step-219700 checkpoints
+        run: |
+          set -euo pipefail
+          test -s prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl
+          test -s prepared/artifacts/spanish-v2/tokenizer.json
+          python - <<'PY'
+          import json, torch
+          from pathlib import Path
+          root=Path("source-artifacts")
+          matches={"lumen":[],"transformer":[]}
+          for p in root.rglob("*.pt"):
+              try:
+                  c=torch.load(p,map_location="cpu",weights_only=False)
+              except Exception:
+                  continue
+              if not isinstance(c,dict) or int(c.get("step",-1)) != 219700:
+                  continue
+              arch=str(c.get("architecture_id","")).lower()
+              key="lumen" if "lumen" in arch or "ronin_lumen" in arch else "transformer" if "transformer" in arch else None
+              if key: matches[key].append((p,c))
+          for key in matches:
+              if len(matches[key]) != 1:
+                  raise SystemExit(f"Expected exactly one {key} checkpoint with internal step=219700; found {[str(x[0]) for x in matches[key]]}")
+          lp, l=matches["lumen"][0]; tp, t=matches["transformer"][0]
+          assert isinstance(l.get("model"),dict) and l["model"], "Lumen state dict missing"
+          assert isinstance(t.get("model"),dict) and t["model"], "Transformer state dict missing"
+          assert l.get("tokenizer_sha256") == t.get("tokenizer_sha256"), "Tokenizer SHA mismatch"
+          assert l.get("data_sha256") == t.get("data_sha256"), "Training data SHA mismatch"
+          assert l.get("architecture_id") == "ronin_lumen_v3_3_neuroplasticity", l.get("architecture_id")
+          assert t.get("architecture_id") == "decoder_transformer_4l_d192_h4_ff576_tied_v1", t.get("architecture_id")
+          assert l.get("optimizer") and t.get("optimizer"), "Optimizer state missing"
+          assert l.get("rng") and t.get("rng"), "RNG state missing"
+          rows=[json.loads(x) for x in Path("prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(rows)==2431, f"Expected 2431 untouched holdout rows, got {len(rows)}"
+          Path("resolved").mkdir(exist_ok=True)
+          import shutil
+          shutil.copy2(lp,"resolved/lumen-219700.pt")
+          shutil.copy2(tp,"resolved/transformer-219700.pt")
+          print("LUMEN:",lp,"step",l["step"],"architecture",l["architecture_id"])
+          print("Transformer:",tp,"step",t["step"],"architecture",t["architecture_id"])
+          print("Shared tokenizer SHA:",l["tokenizer_sha256"])
+          print("Shared training data SHA:",l["data_sha256"])
+          print("Frozen holdout rows:",len(rows))
+          PY
+      - name: Evaluate both models on the same untouched holdout
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          python scripts/evaluate_multiple_choice_holdout.py \
+            --holdout prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --lumen resolved/lumen-219700.pt \
+            --transformer resolved/transformer-219700.pt \
+            --expected-step 219700 \
+            --out results/step219700_paired_v2_personality_holdout.json \
+            --threads 4 --max-len 128
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ronin-step219700-paired-v2-personality-holdout-${{ github.run_id }}
+          path: results/step219700_paired_v2_personality_holdout.json
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Report holdout provenance
+        if: always()
+        run: |
+          echo "Paired 219700 holdout run: ${{ github.run_id }}"
+          test -s results/step219700_paired_v2_personality_holdout.json

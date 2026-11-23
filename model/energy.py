@@ -23,17 +23,21 @@ class Presupuesto(nn.Module):
         self.affect_scale = 1.0
 
     @torch.no_grad()
-    def check_loss(self, mean_loss):
-        """Reward a meaningful loss improvement with internal energy, never LR."""
+    def check_loss_signal(self, mean_loss):
+        """Produce one shared normalized check-loss signal for all affect organs."""
         current = torch.as_tensor(
             mean_loss, dtype=self.last_check_loss.dtype,
             device=self.last_check_loss.device,
         )
-        if current.numel() != 1 or not torch.isfinite(current):
-            raise ValueError("glucose feedback requires one finite check loss")
-
-        previous = self.last_check_loss
+        if current.numel() != 1 or not torch.isfinite(current) or current.item() < 0:
+            raise ValueError("shared check-loss feedback requires one finite non-negative loss")
+        previous = self.last_check_loss.clone()
         has_baseline = bool(torch.isfinite(previous).item())
+        improvement = (
+            float(((previous - current) / previous.clamp_min(1e-8)).item())
+            if has_baseline else 0.0
+        )
+        regression = -improvement
         improved = (
             has_baseline
             and float(current.item()) < float(previous.item()) * (1.0 - self.IMPROVEMENT_THRESHOLD)
@@ -43,7 +47,19 @@ class Presupuesto(nn.Module):
         else:
             self.glucose.mul_(self.GLUCOSE_DECAY).clamp_(0.0, self.GLUCOSE_CAP)
         self.last_check_loss.copy_(current)
-        return improved if has_baseline else None, float(self.glucose.item())
+        return {
+            "improved": improved if has_baseline else None,
+            "improvement": improvement,
+            "regression": regression,
+            "reserve": float(self.glucose.item()),
+            "has_baseline": has_baseline,
+        }
+
+    @torch.no_grad()
+    def check_loss(self, mean_loss):
+        """Backward-compatible glucose-only view of the shared check signal."""
+        signal = self.check_loss_signal(mean_loss)
+        return signal["improved"], signal["reserve"]
 
     def forward(self, x):
         allocation = torch.softmax(self.proj(x), dim=-1)

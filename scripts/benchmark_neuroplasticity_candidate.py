@@ -189,6 +189,8 @@ def main():
                 reasons.append("no mejoró loss media")
             if candidate["steps_per_second"] <= control["steps_per_second"]:
                 reasons.append("bajó pasos/segundo")
+            if candidate["loss_windows_20_steps"][-1] > control["loss_windows_20_steps"][-1]:
+                reasons.append("empeoró la última ventana de 20 pasos")
             if candidate["max_dead_percent"] > control["max_dead_percent"]:
                 reasons.append("subió dead")
         approved = candidate["status"] == "ok" and not reasons

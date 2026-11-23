@@ -49,9 +49,18 @@ def test_tournament_register_accounts_for_all_twenty_and_never_authorizes_traini
 
 def test_tournament_aggregator_rejects_duplicate_candidate_artifacts(tmp_path, monkeypatch):
     (tmp_path / "main-runtime-profile.json").write_text("{}", encoding="utf-8")
-    _write_report(tmp_path, EXPECTED_CANDIDATES[0])
-    _write_report(tmp_path, EXPECTED_CANDIDATES[0] + "-duplicate")
+    for folder_name in ("first", "second"):
+        folder = tmp_path / folder_name
+        folder.mkdir()
+        (folder / "comparison.json").write_text(
+            json.dumps({
+                "candidate": EXPECTED_CANDIDATES[0],
+                "decision": "PENDING",
+                "profile_delta": {},
+            }),
+            encoding="utf-8",
+        )
     monkeypatch.setattr(sys, "argv", ["aggregate", "--root", str(tmp_path)])
 
-    with pytest.raises(ValueError, match="unexpected candidate reports"):
+    with pytest.raises(ValueError, match="duplicate candidate reports"):
         aggregate_main()

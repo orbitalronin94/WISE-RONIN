@@ -57,26 +57,26 @@ jobs:
         with:
           name: paired-inputs-45262377661
           path: bundle
-          repository: \${{ github.repository }}
+          repository: ${{ github.repository }}
           run-id: 45262377661
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download final LUMEN 229700 checkpoint
         uses: actions/download-artifact@v7
         with:
           name: lumen-step-229700-45262377661
           path: lumen-final
-          repository: \${{ github.repository }}
+          repository: ${{ github.repository }}
           run-id: 45262377661
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download final Transformer 229700 checkpoint
         uses: actions/download-artifact@v7
         with:
           name: transformer-step-229700-45262377661
           path: transformer-final
-          repository: \${{ github.repository }}
+          repository: ${{ github.repository }}
           run-id: 45262377661
-          github-token: \${{ secrets.GITHUB_TOKEN }}
-      - name: Promote and verify exact final checkpoints at 229700
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promote, retarget LR and verify exact final checkpoints at 229700
         run: |
           set -euo pipefail
           test -s bundle/data/spanish-v2-plus-personality-250k.jsonl
@@ -114,7 +114,14 @@ jobs:
               assert profile["plasticity"]["eligibility_retention"]==0.98
               assert profile["delta_reuse_write_update"] is True
               assert profile["delta_share_causal_masks"] is True
-            print("Verified promoted final checkpoint",model,229700)
+            config=s.get("training_config")
+            assert isinstance(config,dict) and config.get("lr") in (3e-5,7.5e-5)
+            config["lr"]=5e-5
+            torch.save(s,path)
+            patched=torch.load(path,map_location="cpu",weights_only=False)
+            assert patched["training_config"]["lr"]==5e-5
+            assert patched["optimizer"] and patched["rng"] and patched["scheduler_transition"]
+            print("Verified final checkpoint and retargeted LR",model,229700,5e-5)
           PY
       - name: Publish immutable inputs for every block
         uses: actions/upload-artifact@v7

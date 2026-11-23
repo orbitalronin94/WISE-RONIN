@@ -59,3 +59,36 @@ Los mecanismos periódicos (tags, poda, sueño y replay) deben incluir su coste 
 4. El gate atencional mejora la relación entre señal y ruido y reduce loss, sin penalizar el throughput por encima de la mejora obtenida.
 
 Un perfil solo se considera útil si supera el gate emparejado completo. Ninguna analogía biológica sustituye la medición.
+
+
+## Estado de implementación en la rama de integración
+
+Los cuatro perfiles ya tienen controles ejecutables en `model/plasticity.py` y se aplican al gate Delta desde `train/train.py`. Sus valores actuales son hipótesis iniciales, no ganadores de benchmark:
+
+- `disinhibition`: `threshold_scale=0.85` e `inhibition_scale=0.8`.
+- `modulator_gain`: `modulator_gain=1.5` y `eligibility_retention=0.96`.
+- `plasticity_window`: `eligibility_retention=0.98` y tagging/capture activado.
+- `attentional_gate`: `attention_gain=0.4`, aplicada a la sorpresa que ya calcula Delta.
+
+Además, la rama contiene los siguientes mecanismos experimentales, desactivados salvo configuración explícita:
+
+1. Contexto inmutable de sorpresa e incertidumbre compartido entre capas consumidoras; el contexto deriva incertidumbre una vez.
+2. Una sola señal normalizada de check-loss alimenta glucosa, dolor y placer; los órganos conservan sus respuestas independientes, pero no recalculan la variación de loss.
+3. Tagging/capture local con recurso global retardado y decaimiento configurable.
+4. Umbral intrínseco adaptativo, lento y acotado, gobernado por actividad de escritura.
+5. Poda simulada mediante máscara de uso/fuerza. No borra parámetros ni reduce todavía el tamaño físico del modelo.
+6. LTD experimental sobre trazas elegibles protegidas por tags; no se presenta como LTD sináptica biológica ni como modificación directa de matrices de pesos.
+7. Aprendizaje one-shot limitado a escrituras de memoria auxiliar en función de incertidumbre; nunca modifica el learning rate global.
+8. Ganancia homeostática multiplicativa por canal, acotada entre 0.8 y 1.2.
+9. Replay comprimido/priorizado por uso de slots de memoria, con ratio configurable.
+10. Downscaling acotado durante sueño sobre matrices del MLP de replay.
+11. Probe ELM de características aleatorias fijas y readout ridge analítico, aislado y offline; no toca los pesos de LUMEN ni el trainer autoregresivo.
+12. La traza/modulador de Delta existente sigue cubriendo la familia de aprendizaje de tres factores y recompensa distal rate-based; no hay spikes ni equivalencia literal con STDP.
+
+Las nuevas memorias persistentes se inicializan a valores neutros al migrar checkpoints anteriores. Las opciones experimentales se guardan en `runtime_profile`. Ninguna queda promovida por el mero hecho de estar implementada.
+
+### Límites deliberados
+
+No se ha implementado poda física de conexiones, un modelo spiking pre/post, síntesis proteica biológica, ni replay hipocampal de secuencias comprimidas. La memoria actual almacena vectores de contexto, no trayectorias neuronales. Para esos casos el nombre de la hipótesis no debe confundirse con equivalencia mecanística.
+
+El perfil neutro conserva identidad en sus factores. Cada mecanismo debe pasar pruebas de propiedades, migración y el benchmark emparejado antes de poder activarse en una configuración de entrenamiento promovida.

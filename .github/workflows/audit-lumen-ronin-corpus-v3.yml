@@ -1,0 +1,80 @@
+name: Audit Lumen-Ronin Spanish corpus v3
+
+on:
+  push:
+    branches: [audit/lumen-v3-admission]
+    paths:
+      - scripts/audit_lumen_ronin_corpus_v3.py
+      - .github/workflows/audit-lumen-ronin-corpus-v3.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-ronin-corpus-v3-admission-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout audit code
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+
+      - name: Download frozen v2 baseline
+        uses: actions/download-artifact@v6
+        with:
+          name: wise-ronin-spanish-corpus-v2-45065384110
+          path: inputs/v2
+          repository: ${{ github.repository }}
+          run-id: 45065384110
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download frozen v3 candidate
+        uses: actions/download-artifact@v6
+        with:
+          name: lumen-ronin-spanish-corpus-v3-45132496748
+          path: inputs/v3
+          repository: ${{ github.repository }}
+          run-id: 45132496748
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve corpus roots and check disk
+        shell: bash
+        run: |
+          set -euo pipefail
+          V2_ROOT="$(dirname "$(find inputs/v2 -name manifest.json -type f | head -n 1)")"
+          test -s "$V2_ROOT/train.jsonl"
+          test -s "inputs/v3/train.jsonl"
+          echo "V2_ROOT=$V2_ROOT" >> "$GITHUB_ENV"
+          df -h
+          du -sh inputs/v2 inputs/v3
+
+      - name: Run global exact, near-duplicate and hygiene audit
+        run: |
+          python scripts/audit_lumen_ronin_corpus_v3.py \
+            --v2 "$V2_ROOT" \
+            --v3 inputs/v3 \
+            --out audit-output \
+            --sample-size 100
+
+      - name: Upload audit report and stratified review sample
+        uses: actions/upload-artifact@v6
+        with:
+          name: lumen-ronin-corpus-v3-admission-audit-${{ github.run_id }}
+          path: |
+            audit-output/audit-report.json
+            audit-output/sample_review.jsonl
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1

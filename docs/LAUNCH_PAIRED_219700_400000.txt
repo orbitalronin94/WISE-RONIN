@@ -36,3 +36,5 @@ VALIDACIÓN
 WORKFLOWS
 - .github/workflows/continue-paired-219700-300000.yml: orquestador de la reanudación desde 229700.
 - .github/workflows/train-paired-block.yml: un bloque independiente.
+
+RETRIGGER: LR 5e-5 transition restarts only on the first resumed block; subsequent blocks preserve its scheduler state.

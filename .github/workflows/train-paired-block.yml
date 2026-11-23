@@ -18,6 +18,10 @@ on:
       first_block:
         required: true
         type: boolean
+      restart_scheduler_transition:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -96,6 +100,10 @@ jobs:
           assert s.get("optimizer") and s.get("rng") and s.get("scheduler_transition")
           print("Verified parent",step,arch)
           PY
+          RESTART=()
+          if [ "${{ inputs.restart_scheduler_transition }}" = "true" ]; then
+            RESTART=(--restart-scheduler-transition)
+          fi
           if [ "$MODEL" = "lumen" ]; then
             OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.train \
               --steps "$STEPS" --resume "$CKPT" \
@@ -106,7 +114,7 @@ jobs:
               --batch 8 --max-len 128 --seed 42 \
               --runtime-profile inputs/config/lumen-runtime-profile.json \
               --lr 5e-5 --warmup 100 --total-steps 400000 \
-              --scheduler-transition --restart-scheduler-transition \
+              --scheduler-transition "${RESTART[@]}" \
               --transition-start 219700 --transition-end 400000 \
               --warmup-transition 100 --transition-plateau-steps 0 \
               --transition-min-lr-ratio 0.5 \
@@ -123,7 +131,7 @@ jobs:
               --token-cache inputs/data/spanish-v2-plus-personality-token-cache.pt \
               --batch 8 --max-len 128 --seed 42 --threads 4 \
               --lr 5e-5 --warmup 100 --total-steps 400000 \
-              --scheduler-transition --restart-scheduler-transition \
+              --scheduler-transition "${RESTART[@]}" \
               --transition-start 219700 --transition-end 400000 \
               --warmup-transition 100 --transition-plateau-steps 0 \
               --transition-min-lr-ratio 0.5 \

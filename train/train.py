@@ -661,6 +661,10 @@ def main():
             quant_enabled = True
 
         if step % args.log_every == 0 or step == start + 1:
+            if runtime_profile.get("delta_trace_norm_diagnostics_on_demand", False) and step % args.log_every == 0:
+                # Preserve the exact logged diagnostic cadence while avoiding four per-step CPU syncs.
+                for delta_layer in model.delta_layers:
+                    delta_layer.last_eligibility_norm = float(delta_layer.eligibility_trace.norm().item())
             glucose_signal = "not_checked"
             if step % args.log_every == 0 and glucose_loss_window:
                 check_loss = sum(glucose_loss_window) / len(glucose_loss_window)

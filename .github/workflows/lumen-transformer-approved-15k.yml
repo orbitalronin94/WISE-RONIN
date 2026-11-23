@@ -120,7 +120,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m train.train \
-            --steps 15000 \
+            --steps 10000 \
             --resume "$CHECKPOINT" \
             --phase 1 --pilot-all-rows \
             --data prepared/data/spanish-v2-plus-personality-250k.jsonl \
@@ -138,7 +138,29 @@ jobs:
             --threads 4 --interop-threads 2 \
             --ckpt-dir checkpoints/lumen \
             --wall-clock-file lumen-wall.json \
-            2>&1 | tee lumen-training.log
+            2>&1 | tee lumen-training-10k.log
+          MIDPOINT="$(find checkpoints/lumen -name step_165700.pt -print -quit)"
+          test -n "$MIDPOINT"
+          python -m train.train \
+            --steps 5000 \
+            --resume "$MIDPOINT" \
+            --phase 1 --pilot-all-rows \
+            --data prepared/data/spanish-v2-plus-personality-250k.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile "$PROFILE" \
+            --lr 3e-5 --warmup 100 --total-steps 170700 \
+            --scheduler-transition \
+            --transition-start 155700 --transition-end 170700 \
+            --warmup-transition 100 --transition-plateau-steps 0 \
+            --transition-min-lr-ratio 0.5 \
+            --log-every 100 --checkpoint-every 1000 \
+            --recovery-checkpoint-every 100 --parameter-check-every 100 \
+            --threads 4 --interop-threads 2 \
+            --ckpt-dir checkpoints/lumen \
+            --wall-clock-file lumen-wall.json \
+            2>&1 | tee lumen-training-5k.log
       - name: Upload Lumen step-170700 checkpoint and logs
         if: always()
         uses: actions/upload-artifact@v7
@@ -147,7 +169,8 @@ jobs:
           path: |
             checkpoints/lumen/
             lumen-wall.json
-            lumen-training.log
+            lumen-training-10k.log
+            lumen-training-5k.log
             approved.runtime_profile.json
           if-no-files-found: warn
           retention-days: 90

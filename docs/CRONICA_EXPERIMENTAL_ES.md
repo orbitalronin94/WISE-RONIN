@@ -362,3 +362,39 @@ El bloque no permite aislar causalmente el efecto de los 50.000 ejemplos de pers
 - Informe de holdout: [artefacto 14811302311](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913/artifacts/14811302311), 176.523 bytes; SHA-256 `75428c55c07bf6d5a4b233ae5fde79f74fdc409736e161930793405160fb79ce`.
 
 **Promoción:** el par de checkpoints de step 155.700 queda fijado como nueva referencia experimental emparejada de Lumen-Ronin frente al baseline Transformer y como punto de partida para la siguiente continuación. La promoción es documental y de referencia reproducible; no afirma una victoria universal ni sustituye réplicas independientes. El próximo ciclo podrá incorporar corpus v3 solo cuando se cierre formalmente su gate de admisión; el manifiesto actual mantiene `training_authorized=false`.
+
+
+## XI. Promoción emparejada 219.700/219.750 y continuación a 300.000
+
+[Continuación interrumpida desde 185.700, run 45230206330](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45230206330) · [Holdout emparejado, run 45257284512](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45257284512) · [Artefacto de resultados y predicciones](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45257284512/artifacts/14859702424).
+
+### Procedencia de los checkpoints
+
+La continuación 185.700→235.700 fue interrumpida mientras Lumen avanzaba. El último checkpoint recuperable de Lumen quedó en 219.700; el Transformer sí alcanzó 235.700. Para no comparar pasos distintos por una distancia mayor de la necesaria, se seleccionaron por metadatos internos los checkpoints más próximos disponibles: Lumen 219.700 y Transformer 219.750, separados por 50 actualizaciones.
+
+- Lumen: artefacto [14857727162](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45230206330/artifacts/14857727162), arquitectura `ronin_lumen_v3_3_neuroplasticity`.
+- Transformer: artefacto [14854630840](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45230206330/artifacts/14854630840), arquitectura `decoder_transformer_4l_d192_h4_ff576_tied_v1`.
+- Ambos comparten el snapshot de datos v2 + personalidad, tokenizer, seed 42, batch 8 y contexto 128. Se verificaron los estados de modelo, optimizador y RNG.
+- El perfil runtime de Lumen se conserva desde el propio checkpoint: plasticidad con inhibition scale 0,8 y eligibility retention 0,98, dos refinamientos Delta y los fast paths aprobados. No se reconstruye a partir de una suposición externa.
+
+### Holdout congelado
+
+Los dos modelos se evaluaron sin actualizaciones sobre las mismas 2.431 preguntas:
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| Lumen 219.700 | **831/2.431** | **34,18 %** | 5,7440759 |
+| Transformer 219.750 | 805/2.431 | 33,11 % | **5,5147196** |
+
+Lumen queda 26 respuestas por delante (+1,07 puntos porcentuales); Transformer conserva una NLL 0,2293563 menor. En el análisis emparejado, ambos aciertan 456 preguntas, solo Lumen acierta 313, solo Transformer acierta 289 y ambos fallan 1.198. La lectura correcta es una ventaja de Lumen en accuracy, no una victoria en todas las métricas. La diferencia de 50 actualizaciones se mantiene explícita.
+
+### Promoción y nuevo tramo
+
+**Promoción:** el par 219.700/219.750 queda fijado como referencia emparejada y padre de continuación. El siguiente tramo continúa ambos modelos hasta el paso global 300.000:
+
+- Lumen: +80.300 actualizaciones, desde 219.700.
+- Transformer: +80.250 actualizaciones, desde 219.750.
+
+Se preservan pesos, momentos AdamW y RNG. Cada modelo reinicia una transición de learning rate desde el estado del optimizador que conserva, hasta el horizonte común de 300.000, con tasas base respectivas de 3e-5 para Lumen y 7,5e-5 para Transformer. Los tramos se guardan en bloques de 10.000 o menos; Lumen mantiene recovery checkpoints cada 100 actualizaciones y checkpoints numerados cada 1.000, Transformer checkpoints cada 250.
+
+El corpus permanece congelado en 250.000 filas (200.000 v2 + 50.000 de personalidad factual), tokenizer de 4.096 IDs, seed 42, batch 8 y contexto 128. El corpus v3 no se incorpora: su gate de entrenamiento continúa cerrado. La ficha estructurada de promoción y procedencia está en [experiments/step_219700_promotion.json](../experiments/step_219700_promotion.json).

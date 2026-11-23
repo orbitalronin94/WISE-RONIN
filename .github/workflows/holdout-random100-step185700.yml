@@ -81,7 +81,7 @@ jobs:
           sample=random.Random(int(os.environ["SAMPLE_SEED"])).sample(rows,100)
           assert len(sample)==100 and len({json.dumps(x,sort_keys=True,ensure_ascii=False) for x in sample})==100
           out=Path("prepared/random100_holdout.jsonl")
-          out.write_text("".join(json.dumps(x,ensure_ascii=False)+"\\n" for x in sample),encoding="utf-8")
+          out.write_text("".join(json.dumps(x,ensure_ascii=False)+"\n" for x in sample),encoding="utf-8")
           counts={}
           for row in sample:
               n=len(row.get("choices", row.get("options", [])))
@@ -98,7 +98,7 @@ jobs:
           assert l.get("rng") and t.get("rng")
           metadata={"seed":int(os.environ["SAMPLE_SEED"]),"population":len(rows),"sample_size":len(sample),"choice_counts":counts}
           metadata["weighted_random_accuracy"]=sum(n*(1/int(k)) for k,n in counts.items())/100
-          Path("results/sample_metadata.json").write_text(json.dumps(metadata,indent=2)+"\\n",encoding="utf-8")
+          Path("results/sample_metadata.json").write_text(json.dumps(metadata,indent=2)+"\n",encoding="utf-8")
           print("Verified both step-185700 checkpoints.")
           print("Random sample metadata:",json.dumps(metadata,sort_keys=True))
           PY

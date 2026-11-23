@@ -46,3 +46,19 @@ def test_delta_eligibility_modulator_is_bounded_and_signed():
     assert float(delta.eligibility_modulator) == 0.25
     delta.set_eligibility_modulator(-9.0)
     assert float(delta.eligibility_modulator) == -0.25
+
+
+def test_lumen_builds_one_shared_surprise_uncertainty_context():
+    from model.config import CONFIG
+    from model.lumen import RoninLumen
+    from model.neuroplasticity import SignalContext
+
+    torch.manual_seed(31)
+    model = RoninLumen()
+    output = model(torch.randint(4, CONFIG.vocab_size, (2, 8)), reset_state=True)
+    signals = output["signals"]
+    assert isinstance(signals, SignalContext)
+    assert signals.surprise.shape == output["surprise"].shape
+    assert torch.equal(signals.surprise, output["surprise"].detach())
+    assert torch.all(signals.uncertainty >= 0)
+    assert torch.all(signals.uncertainty <= 1)

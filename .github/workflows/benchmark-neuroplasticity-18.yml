@@ -1,0 +1,349 @@
+name: LUMEN — 18 neuroplasticity changes, paired 100-step gates
+
+on:
+  push:
+    branches: [feat/unified-neuroplasticity-organs]
+    paths:
+      - ".github/workflows/benchmark-neuroplasticity-18.yml"
+      - "scripts/benchmark_neuroplasticity_candidate.py"
+      - "scripts/aggregate_neuroplasticity_benchmarks.py"
+      - "model/**"
+      - "train/**"
+      - "config/**"
+      - "tests/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-neuroplasticity-18-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BASE_SHA: "80a3354cd462d0969915ca745a46babd59729f86"
+  PARENT_RUN_ID: "45149684913"
+  PREPARED_RUN_ID: "45149684913"
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+
+jobs:
+  benchmark:
+    name: "${{ matrix.candidate }} — main vs candidate — 100 steps"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 18
+      matrix:
+        candidate:
+          - 01_shared_signal_core
+          - 02_pain_response
+          - 03_pleasure_response
+          - 04_pain_budget_gain
+          - 05_pleasure_budget_gain
+          - 06_ltp_threshold
+          - 07_disinhibition_gain
+          - 08_modulator_gain
+          - 09_eligibility_window
+          - 10_attention_gate
+          - 11_tagging_capture
+          - 12_intrinsic_threshold
+          - 13_simulated_pruning
+          - 14_tag_protected_ltd
+          - 15_one_shot_memory
+          - 16_homeostatic_scaling
+          - 17_prioritized_replay
+          - 18_sleep_downscaling
+
+    steps:
+      - name: Checkout frozen main control source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: baseline
+
+      - name: Checkout candidate PR source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: candidate
+
+      - name: Set up Python matching the promoted checkpoint runtime
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+
+      - name: Install CPU training runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+
+      - name: Download exact promoted step-155700 checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-lumen-step155700-v2-personality-45149684913
+          path: parent
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download exact frozen v2 plus personality corpus and token cache
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-v2-plus-personality-250k-45149684913
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify identical parent, corpus, tokenizer and cache
+        run: |
+          set -euo pipefail
+          CHECKPOINT="$(find parent -name step_155700.pt -print -quit)"
+          test -n "$CHECKPOINT"
+          test -s prepared/data/spanish-v2-plus-personality-250k.jsonl
+          test -s prepared/data/spanish-v2-plus-personality-token-cache.pt
+          test -s prepared/artifacts/spanish-v2/tokenizer.json
+          echo "CHECKPOINT=$CHECKPOINT" >> "$GITHUB_ENV"
+          export CHECKPOINT
+          python - <<'PY'
+          import hashlib, os, torch
+          from pathlib import Path
+          checkpoint = Path(os.environ["CHECKPOINT"])
+          data = Path("prepared/data/spanish-v2-plus-personality-250k.jsonl")
+          tokenizer = Path("prepared/artifacts/spanish-v2/tokenizer.json")
+          state = torch.load(checkpoint, map_location="cpu", weights_only=False)
+          sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+          assert state["step"] == 155700
+          assert state["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          assert state["phase"] == 1 and state["pilot_all_rows"] is True
+          assert state["seed"] == 42
+          assert state["training_config"]["batch"] == 8
+          assert state["training_config"]["max_len"] == 128
+          assert state["training_config"]["lr"] == 3e-5
+          assert state["data_sha256"] == sha(data)
+          assert state["tokenizer_sha256"] == sha(tokenizer)
+          assert state.get("optimizer") and state.get("rng") and state.get("scheduler_transition")
+          print("Exact parent/data/tokenizer verified:", checkpoint)
+          print("data_sha256:", sha(data))
+          print("tokenizer_sha256:", sha(tokenizer))
+          PY
+
+      - name: Run paired 100-step main-control and one-change candidate
+        run: |
+          set -euo pipefail
+          python candidate/scripts/benchmark_neuroplasticity_candidate.py \
+            --candidate "${{ matrix.candidate }}" \
+            --baseline-root baseline \
+            --candidate-root candidate \
+            --prepared-root prepared \
+            --checkpoint "$CHECKPOINT" \
+            --output "benchmark-results/${{ matrix.candidate }}"
+
+      - name: Preserve both 100-step logs and comparison JSON
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: neuroplasticity-18-${{ matrix.candidate }}-${{ github.run_id }}
+          path: benchmark-results/${{ matrix.candidate }}/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6
+
+  aggregate:
+    name: Aggregate approved and pending changes
+    needs: [benchmark]
+    if: always()
+    outputs:
+      training_authorized: ${{ steps.registry.outputs.authorized }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout candidate registry
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: candidate
+
+      - name: Checkout frozen main runtime profile
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: baseline-main
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+
+      - name: Download all 18 candidate artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: neuroplasticity-18-*-${{ github.run_id }}
+          path: benchmark-results
+          merge-multiple: false
+
+      - name: Build approved profile and pending register
+        run: |
+          set -euo pipefail
+          cp baseline-main/config/lumen_cpu_profile.json benchmark-results/main-runtime-profile.json
+          python candidate/scripts/aggregate_neuroplasticity_benchmarks.py --root benchmark-results
+          test -s benchmark-results/AGGREGATE.md
+          test -s benchmark-results/approved_candidates.json
+          cat benchmark-results/AGGREGATE.md
+
+      - name: Export training authorization gate
+        id: registry
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          payload = json.loads(Path("benchmark-results/approved_candidates.json").read_text())
+          authorized = bool(payload.get("training_authorized"))
+          print("Training authorized:", authorized)
+          print("Approved candidates:", payload.get("approved_candidates", []))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("authorized=" + str(authorized).lower() + "\n")
+          PY
+
+      - name: Upload complete tournament record
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lumen-neuroplasticity-18-summary-${{ github.run_id }}
+          path: benchmark-results/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6
+
+  train-approved:
+    name: Train 1,000 steps with approved mechanisms only
+    needs: [aggregate]
+    if: needs.aggregate.outputs.training_authorized == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout candidate trainer
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: candidate
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+
+      - name: Install CPU training runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+
+      - name: Download approved registry
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-neuroplasticity-18-summary-${{ github.run_id }}
+          path: summary
+
+      - name: Materialize approved-only runtime profile
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          registry = json.loads(Path("summary/approved_candidates.json").read_text())
+          assert registry["training_authorized"] is True
+          assert registry["approved_candidates"]
+          assert registry["combined_profile"] is not None
+          Path("approved.runtime_profile.json").write_text(
+              json.dumps(registry["combined_profile"], indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print("Training only approved:", registry["approved_candidates"])
+          PY
+
+      - name: Download exact promoted step-155700 checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-lumen-step155700-v2-personality-45149684913
+          path: parent
+          repository: ${{ github.repository }}
+          run-id: "45149684913"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download frozen corpus, tokenizer and token cache
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-v2-plus-personality-250k-45149684913
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: "45149684913"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify parent checkpoint and data hashes
+        run: |
+          set -euo pipefail
+          CHECKPOINT="$(find parent -name step_155700.pt -print -quit)"
+          test -n "$CHECKPOINT"
+          CHECKPOINT="$(realpath "$CHECKPOINT")"
+          export CHECKPOINT
+          python - <<'PY'
+          import hashlib, os, torch
+          from pathlib import Path
+          checkpoint = Path(os.environ["CHECKPOINT"])
+          state = torch.load(checkpoint, map_location="cpu", weights_only=False)
+          data = Path("prepared/data/spanish-v2-plus-personality-250k.jsonl")
+          tokenizer = Path("prepared/artifacts/spanish-v2/tokenizer.json")
+          sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+          assert state["step"] == 155700
+          assert state["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          assert state["data_sha256"] == sha(data)
+          assert state["tokenizer_sha256"] == sha(tokenizer)
+          PY
+          echo "CHECKPOINT=$CHECKPOINT" >> "$GITHUB_ENV"
+
+      - name: Train 1,000 steps using only benchmark-approved changes
+        run: |
+          set -euo pipefail
+          cd candidate
+          python -m train.train \
+            --steps 1000 \
+            --resume "$CHECKPOINT" \
+            --phase 1 \
+            --pilot-all-rows \
+            --data ../prepared/data/spanish-v2-plus-personality-250k.jsonl \
+            --tokenizer ../prepared/artifacts/spanish-v2/tokenizer.json \
+            --token-cache ../prepared/data/spanish-v2-plus-personality-token-cache.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile ../approved.runtime_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 156700 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 155700 --transition-end 156700 \
+            --warmup-transition 100 --transition-plateau-steps 0 \
+            --transition-min-lr-ratio 0.5 \
+            --log-every 100 --checkpoint-every 1000 \
+            --recovery-checkpoint-every 100 --parameter-check-every 100 \
+            --threads 4 --interop-threads 2 \
+            --ckpt-dir ../approved-checkpoints \
+            --wall-clock-file ../approved-training-wall.json \
+            2>&1 | tee ../approved-training.log
+
+      - name: Upload approved-only training checkpoint and logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lumen-approved-only-1000-steps-${{ github.run_id }}
+          path: |
+            approved-checkpoints/
+            approved.runtime_profile.json
+            approved-training-wall.json
+            approved-training.log
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6

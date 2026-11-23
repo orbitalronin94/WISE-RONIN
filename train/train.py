@@ -15,6 +15,7 @@ import torch
 
 from model.config import CONFIG
 from model.lumen import RoninLumen
+from model.plasticity import PlasticityProfile
 from train.curriculum import datos_para_fase, sample_phase2
 from train.dataset import (BPETokenizer, collate_rows, collate_cached_indices,
                             load_jsonl, load_token_cache, pack_token_cache)
@@ -110,6 +111,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
                 "chunk_size_bounds": [4, 16],
                 "replay_enabled": not args.no_sleep,
                 "homeostasis_enabled": True,
+                "plasticity_profile": getattr(args, "runtime_profile_settings", {}).get("plasticity", {"mode": "neutral"}),
             },
         },
         "params": sum(parameter.numel() for parameter in model.parameters()),
@@ -231,6 +233,9 @@ def apply_organ_profile(model, profile):
             value = int(value)
             if not 1 <= value <= model.config.model_dim: raise ValueError("homeostasis k_top out of range")
             for organ in model.homeo: organ.k_top = value
+        elif key == "synaptic_scaling":
+            if not isinstance(value, bool): raise ValueError("homeostasis synaptic_scaling must be boolean")
+            for organ in model.homeo: organ.synaptic_scaling_enabled = value
         else: raise ValueError(f"Unknown homeostasis parameter: {key}")
     for key, value in profile.get("memory", {}).items():
         if key not in {"small_pe", "large_pe"}: raise ValueError(f"Unknown memory parameter: {key}")
@@ -322,6 +327,15 @@ def main():
         LOG.warning("runtime profile not found; using explicit/default CLI CPU settings: %s", args.runtime_profile)
     args.runtime_profile_settings = dict(runtime_profile)
     organ_profile = runtime_profile.get("organs", {})
+    sleep_downscale = float(runtime_profile.get("sleep_downscale", 1.0))
+    replay_compression = float(runtime_profile.get("replay_compression", 1.0))
+    sleep_interval_steps = int(runtime_profile.get("sleep_interval_steps", CONFIG.sleep_interval_steps))
+    if not 0.90 <= sleep_downscale <= 1.0:
+        raise ValueError("sleep_downscale must be in [0.90,1]")
+    if not 0.1 <= replay_compression <= 1.0:
+        raise ValueError("replay_compression must be in [0.1,1]")
+    if sleep_interval_steps < 1:
+        raise ValueError("sleep_interval_steps must be positive")
     pain_budget_gain = float(organ_profile.get("pain_budget_gain", 0.10))
     pleasure_budget_gain = float(organ_profile.get("pleasure_budget_gain", 0.05))
     if not 0.0 <= pain_budget_gain <= 1.0 or not 0.0 <= pleasure_budget_gain <= 1.0:
@@ -342,7 +356,10 @@ def main():
     random.seed(args.seed)
     device = torch.device("cpu")
     model = RoninLumen(v32_ze=args.v32_ze).to(device)
+    plasticity_profile = PlasticityProfile.from_config(runtime_profile.get("plasticity", {}))
     for layer in model.delta_layers:
+        layer.plasticity_profile = plasticity_profile
+        layer.tagging.decay = plasticity_profile.eligibility_retention
         layer.pre_normalize_sequence = bool(runtime_profile.get("delta_pre_normalize", False))
         refinements = int(runtime_profile.get("delta_parallel_refinements", layer.parallel_refinements))
         if not 1 <= refinements <= 6:
@@ -356,6 +373,8 @@ def main():
         layer.share_causal_masks = bool(runtime_profile.get("delta_share_causal_masks", False))
     for organ in model.homeo:
         organ.fused_scatter_add = bool(runtime_profile.get("homeostasis_fused_scatter", False))
+    model.memoria.one_shot_enabled = plasticity_profile.one_shot_enabled
+    LOG.info("plasticity_profile: %s", plasticity_profile)
     LOG.info("lumen_fastpaths: %s", {
         "delta_pre_normalize": bool(runtime_profile.get("delta_pre_normalize", False)),
         "delta_parallel_refinements": refinements,
@@ -405,6 +424,7 @@ def main():
         allowed_parent_arches = {
             "ronin_lumen_v3_1_residual_homeostasis",
             "ronin_lumen_v3_2_parallel_delta",
+            "ronin_lumen_v3_3_neuroplasticity",
             "ronin_lumen_v3_pilot",
             "legacy_preversioned",
         }
@@ -480,6 +500,17 @@ def main():
         allowed_missing |= {
             f"delta_layers.{i}.eligibility_modulator" for i in range(len(model.delta_layers))
         }
+        allowed_missing |= {f"homeo.{i}.synaptic_scale" for i in range(len(model.homeo))}
+        # New experimental plasticity buffers are neutral on migration from
+        # pre-organ checkpoints; no trained parameters or optimizer moments are reset.
+        for i in range(len(model.delta_layers)):
+            allowed_missing |= {
+                f"delta_layers.{i}.tagging.tag",
+                f"delta_layers.{i}.tagging.captured",
+                f"delta_layers.{i}.intrinsic_threshold.threshold",
+                f"delta_layers.{i}.simulated_pruner.usage",
+                f"delta_layers.{i}.simulated_pruner.mask",
+            }
         missing = set(incompatible.missing_keys)
         unexpected = set(incompatible.unexpected_keys)
         if missing - allowed_missing or unexpected:
@@ -681,7 +712,9 @@ def main():
             glucose_signal = "not_checked"
             if step % args.log_every == 0 and glucose_loss_window:
                 check_loss = sum(glucose_loss_window) / len(glucose_loss_window)
-                improved, glucose_level = model.presupuesto.check_loss(check_loss)
+                shared_loss_signal = model.presupuesto.check_loss_signal(check_loss)
+                improved = shared_loss_signal["improved"]
+                glucose_level = shared_loss_signal["reserve"]
                 glucose_signal = (
                     "baseline" if improved is None else
                     "fed" if improved else "metabolized"
@@ -690,8 +723,8 @@ def main():
                     "glucose_check step=%d mean_loss=%.6f improved=%s signal=%s reserve=%.3f",
                     step, check_loss, improved, glucose_signal, glucose_level,
                 )
-                pain_state = model.pain.update(check_loss)
-                pleasure_state = model.pleasure.update(check_loss)
+                pain_state = model.pain.update_signal(shared_loss_signal["regression"])
+                pleasure_state = model.pleasure.update_signal(shared_loss_signal["improvement"])
                 eligibility_signal = (
                     pleasure_state["pleasure"] - pain_state["pain"]
                 )
@@ -803,20 +836,20 @@ def main():
                 if not sleep_done and model.memoria.occupancy() >= 0.8:
                     records_before_sleep = int((model.memoria.contador_lenta > 0).sum().item())
                     sleep_started = time.perf_counter()
-                    sleep_loss = sueno(model, device="cpu")
+                    sleep_loss = sueno(model, device="cpu", compression_ratio=replay_compression, downscale=sleep_downscale)
                     sleep_duration = time.perf_counter() - sleep_started
                     profile["sleep"] += sleep_duration
-                    LOG.info("sleep_called: step=%d, duration_s=%.3f", step, sleep_duration)
+                    LOG.info("sleep_called: step=%d, records=%d, duration_s=%.3f", step, records_before_sleep, sleep_duration)
                     sleep_events.append({"step": step, "records": records_before_sleep,
                                          "executed": records_before_sleep > 0, "loss": float(sleep_loss),
                                          "duration_s": sleep_duration})
                     sleep_done = True
                     LOG.info("adaptive IRI sleep step=%d occupancy=%.1f%% loss=%.6f",
                              step, model.memoria.occupancy() * 100, sleep_loss)
-            elif step % CONFIG.sleep_interval_steps == 0:
+            elif step % sleep_interval_steps == 0:
                 records_before_sleep = int((model.memoria.contador_lenta > 0).sum().item())
                 sleep_started = time.perf_counter()
-                sleep_loss = sueno(model, device="cpu")
+                sleep_loss = sueno(model, device="cpu", compression_ratio=replay_compression, downscale=sleep_downscale)
                 sleep_duration = time.perf_counter() - sleep_started
                 profile["sleep"] += sleep_duration
                 LOG.info("sleep_called: step=%d, duration_s=%.3f", step, sleep_duration)

@@ -155,3 +155,15 @@ def test_v31_homeostasis_migration_restores_gate_updates():
     organ(x)
     assert organ.last_gate_positive > 0.0
     assert organ.neuronas_muertas() < 1.0
+
+
+def test_bounded_multiplicative_homeostatic_scaling_tracks_effective_activity():
+    organ = Homeostasis(dim=8, m_target=0.1, eta=0.01, k_top=2)
+    organ.synaptic_scaling_enabled = True
+    organ.train()
+    before = organ.synaptic_scale.clone()
+    organ(torch.randn(2, 4, 8))
+    assert torch.isfinite(organ.synaptic_scale).all()
+    assert torch.all(organ.synaptic_scale >= 0.8)
+    assert torch.all(organ.synaptic_scale <= 1.2)
+    assert not torch.equal(organ.synaptic_scale, before)

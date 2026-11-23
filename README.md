@@ -21,6 +21,7 @@ El repositorio conserva el nombre técnico **WISE-RONIN**. El proyecto activo es
 - [Resultados emparejados](#resultados-emparejados)
 - [Corpus y evaluación](#corpus-y-evaluación)
 - [Benchmark de optimización CPU](#benchmark-de-optimización-cpu)
+- [Integración progresiva de neuroplasticidad](#integración-progresiva-de-neuroplasticidad)
 - [Cómo se investiga](#cómo-se-investiga)
 - [Documentación y código](#documentación-y-código)
 - [Límites y compromisos](#límites-y-compromisos)
@@ -167,6 +168,16 @@ El segundo resultado fue homeostasis_fused_scatter (+1,96 % de velocidad); el te
 **Importante: es una selección provisional, no una victoria que haya superado el gate.** El protocolo había fijado un mínimo de +3 % de aceleración y una regresión máxima de loss del 0,5 %; ninguna de las 20 candidatas alcanzó el umbral de velocidad (0/20 elegibles). Se adopta MKLDNN off como mejor configuración observada para el siguiente ciclo, pero el margen del 2,38 % procede de una sola comparación de 100 pasos y puede incluir variación del runner. No es un holdout ni evidencia de mejor calidad o generalización. Debe confirmarse con repeticiones más largas antes de considerarlo una optimización robusta.
 
 La configuración activa queda registrada en config/lumen_cpu_profile.json. El informe agregado y los informes individuales se conservaron como artefactos de la ejecución. El benchmark también incorporó una migración de compatibilidad para los checkpoints step-140.700 anteriores a las trazas persistentes de elegibilidad: únicamente inicializa a cero esos buffers nuevos ausentes y mantiene estricta la comprobación de cualquier otra clave inesperada o ausente.
+## Integración progresiva de neuroplasticidad
+
+La [PR #71](https://github.com/orbitalronin94/WISE-RONIN/pull/71) investiga una siguiente generación de mecanismos para Lumen-Ronin. Su objetivo transversal es **compartir señales y cálculos entre órganos**, evitando EMAs y operaciones redundantes, y coordinar mejor cuándo se escribe, consolida, debilita o protege lo aprendido.
+
+La propuesta incluye un contexto compartido de sorpresa/incertidumbre; una señal común de evolución de la loss para glucosa, dolor y placer; perfiles acotados de modulación de plasticidad; etiquetado y captura sináptica; umbrales intrínsecos adaptativos; poda simulada y reversible; LTD protegida; memoria one-shot; escalado homeostático; replay priorizado/comprimido y downscaling durante sueño. El ELM permanece como probe offline, sin atribuirle efectos de entrenamiento. Las analogías farmacológicas son únicamente inspiración computacional, no equivalencias biológicas.
+
+**La intención es que, tarde o temprano, podamos incorporar todos los cambios que demuestren ser útiles**, aunque algunos necesiten varias rondas de diseño, optimización y validación. No se activarán todos por decreto: cada candidato debe demostrar menor loss y mayor throughput en una comparación emparejada, sin empeorar estabilidad. Los que no pasen quedan pendientes con sus logs y podrán revisarse contra una referencia posterior. Después se evaluará la composición conjunta y su estabilidad en entrenamiento y holdout.
+
+La PR sigue en borrador mientras se completan esos gates. Por tanto, esta hoja de ruta no significa que todos los mecanismos estén ya activos ni que hayan demostrado una mejora. El alcance, el protocolo y el estado detallado están en [Integración progresiva de neuroplasticidad](docs/INTEGRACION_PROGRESSIVA_NEUROPLASTICIDAD_ES.md) y en la [PR #71](https://github.com/orbitalronin94/WISE-RONIN/pull/71).
+
 ## Cómo se investiga
 
 El proyecto no acepta una mejora solo porque baje la loss o porque un workflow se llame `fast`.

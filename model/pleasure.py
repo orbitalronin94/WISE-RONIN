@@ -35,6 +35,17 @@ class Recompensa(nn.Module):
         return self.state()
 
     @torch.no_grad()
+    def update_signal(self, improvement):
+        """Consume the trainer's shared normalized improvement signal; no private EMA."""
+        value = torch.as_tensor(improvement, dtype=self.pleasure.dtype, device=self.pleasure.device)
+        if value.numel() != 1 or not torch.isfinite(value):
+            raise ValueError("pleasure shared signal must be one finite value")
+        self.last_improvement.copy_(value)
+        raw = ((value - self.deadband) / (self.full_scale - self.deadband)).clamp(0.0, 1.0)
+        self.pleasure.mul_(self.decay).add_(raw, alpha=self.response).clamp_(0.0, 1.0)
+        return self.state()
+
+    @torch.no_grad()
     def state(self):
         value = float(self.pleasure.item())
         return {"pleasure": value, "plasticity_scale": 1.0 + 0.10 * value,

@@ -9,7 +9,9 @@ class Homeostasis(nn.Module):
         self.dim, self.m_target, self.eta, self.k_top = dim, m_target, eta, k_top
         # Optional fused residual scatter path; parity-checked against the reference path.
         self.fused_scatter_add = False
+        self.synaptic_scaling_enabled = False
         self.bias = nn.Parameter(torch.zeros(dim))
+        self.register_buffer("synaptic_scale", torch.ones(dim))
         # Input activity is retained as a diagnostic, not as the control signal.
         self.register_buffer("m", torch.zeros(dim))
         # EMA of units that survive the actual ReLU + Top-K output gate.
@@ -37,6 +39,8 @@ class Homeostasis(nn.Module):
         _, indices = torch.topk(y, k=k, dim=-1, sorted=False)
         selected = torch.gather(y, dim=-1, index=indices)
         selected_update = torch.relu(selected)
+        if self.synaptic_scaling_enabled:
+            selected_update = selected_update * self.synaptic_scale[indices]
         # Top-K sparsifies the homeostatic update, not the information stream.
         # Bound residual gain to 10% of the incoming token norm.
         if self.fused_scatter_add:
@@ -63,6 +67,12 @@ class Homeostasis(nn.Module):
                 # Close the loop around activity that survives ReLU + Top-K.
                 self.effective_m.mul_(0.99).add_(effective_active, alpha=0.01)
                 self.bias.add_(self.eta * (self.effective_m - self.m_target))
+                if self.synaptic_scaling_enabled:
+                    # Bounded per-channel multiplicative gain scaling. This is
+                    # an engineering analogue, not literal biological synapses.
+                    self.synaptic_scale.mul_(
+                        1.0 + self.eta * (self.m_target - effective_active)
+                    ).clamp_(0.8, 1.2)
         # The health window needs per-unit activity each step, but scalar
         # summaries are only materialized on requested diagnostic steps.
         self.last_gate_activity_per_unit = effective_active.detach()

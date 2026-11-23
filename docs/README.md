@@ -5,7 +5,7 @@ La documentación distingue entre arquitectura implementada, configuración real
 ## Empieza aquí
 
 1. [README del proyecto](../README.md) — tesis, estado actual, resultados y accesos rápidos.
-2. [Arquitectura actual](ARQUITECTURA_ACTUAL_ES.md) — componentes, parámetros y qué está activo o desactivado en el entrenamiento 61k→66k.
+2. [Arquitectura actual](ARQUITECTURA_ACTUAL_ES.md) — componentes, parámetros y qué está activo o desactivado en el entrenamiento 185,7k (último holdout y train activo).
 3. [Crónica experimental](CRONICA_EXPERIMENTAL_ES.md) — historia desde el arranque a step 1.000, continuaciones hasta 61k y bloque actual a 66k.
 4. [Neurociencia y decisiones de arquitectura](NEUROCIENCIA_Y_ARQUITECTURA_ES.md) — literatura, traducción a mecanismos y límites de las analogías.
 

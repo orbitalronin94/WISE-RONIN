@@ -9,6 +9,15 @@ on:
       - "model/delta_state.py"
       - "config/lumen_cpu_profile.json"
       - "tests/**"
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/validate-delta-integration.yml"
+      - "train/train.py"
+      - "model/delta_state.py"
+      - "config/lumen_cpu_profile.json"
+      - "tests/**"
   workflow_dispatch:
 
 permissions:

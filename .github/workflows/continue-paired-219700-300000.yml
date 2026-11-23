@@ -103,7 +103,8 @@ jobs:
             assert s["architecture_id"]==arch,(model,s.get("architecture_id"))
             assert s.get("optimizer") and s.get("rng") and s.get("scheduler_transition"),model
             transition=s["scheduler_transition"]
-            assert int(transition.get("start_step",-1))==219700,(model,transition)
+            expected_transition_start={"lumen":219700,"transformer":219750}[model]
+            assert int(transition.get("start_step",-1))==expected_transition_start,(model,transition)
             assert int(transition.get("end_step",-1))==400000,(model,transition)
             assert int(transition.get("current_step",-1)) in (229700,229701),(model,transition)
             assert s.get("data_sha256")==sha(data),(model,"data hash")

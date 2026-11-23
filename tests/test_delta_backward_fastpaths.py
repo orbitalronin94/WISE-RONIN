@@ -15,7 +15,7 @@ def test_delta_exact_fastpaths_preserve_outputs_state_and_gradients():
     optimized.summary_update_bmm = True
 
     x_ref = torch.randn(2, 9, 16, requires_grad=True)
-    e_ref = torch.rand(2, 9, requires_grad=True)
+    e_ref = torch.rand(2, 9, 1, requires_grad=True)
     x_opt = x_ref.detach().clone().requires_grad_(True)
     e_opt = e_ref.detach().clone().requires_grad_(True)
 

@@ -183,7 +183,7 @@ def main():
                 candidate["status"] = "not_exercised"
                 candidate["reason"] = "el plan de 100 pasos no ejecutó ningún ciclo de sueño"
         if candidate["status"] != "ok":
-            reasons.append("no completó 100 pasos válidos o produjo métricas no finitas")
+            reasons.append(candidate.get("reason", "no completó 100 pasos válidos o produjo métricas no finitas"))
         else:
             if candidate["mean_loss_100_steps"] >= control["mean_loss_100_steps"]:
                 reasons.append("no mejoró loss media")

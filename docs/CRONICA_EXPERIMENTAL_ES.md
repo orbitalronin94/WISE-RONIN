@@ -272,3 +272,47 @@ Esta divergencia es el resultado experimental central de este corte: **la menor 
 - Checkpoint Transformer 133,2k: step_133200.pt incluido en el artefacto del run 45123727239.
 
 **Promoción:** el par de checkpoints de step 133.200 queda fijado como referencia experimental actual de Lumen-Ronin frente al baseline Transformer. La promoción es documental y de referencia reproducible; no afirma una victoria universal ni sustituye futuras réplicas independientes.
+
+
+## IX. Step 140.700: personalidad factual sobre corpus v2
+
+[Entrenamiento emparejado 133.200→140.700, run 45136184396](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45136184396) · [Artefacto del holdout y resumen](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45136184396/artifacts/14802396847).
+
+### Diseño del bloque
+
+Ambos modelos partieron del corte emparejado exacto de step 133.200 y completaron 7.500 pasos adicionales hasta step 140.700. Se mantuvieron los pesos, momentos del optimizador, RNG y la arquitectura de cada modelo. La entrada común fue una muestra determinista de 250.000 filas: 200.000 del corpus v2 y 50.000 ejemplos de personalidad factual adaptados a Lumen-Ronin. Se conservó el tokenizer v2 de 4.096 IDs. La preparación excluyó las nuevas fuentes v3: literatura, M-Personas y currículos sintéticos.
+
+El scheduler de transición del bloque usó warmup de 100 pasos, plateau de 6.000 y ratio mínimo de learning rate 0,5. Learning rates objetivo: 3e-5 para Lumen y 7,5e-5 para Transformer. Es una condición experimental adicional que debe constar al interpretar el resultado.
+
+### Holdout final
+
+El holdout congelado de 2.431 preguntas se mantuvo intacto y fue común a ambos modelos:
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| Lumen-Ronin | **824/2.431** | **33,90 %** | **5,7951** |
+| Transformer baseline | 821/2.431 | 33,77 % | 5,8577 |
+
+Lumen queda 3 respuestas por delante (+0,12 puntos porcentuales) y mantiene una NLL 0,0626 menor. El margen es mucho más estrecho que en 133.200.
+
+| Modelo | Aciertos 133,2k | Aciertos 140,7k | Cambio |
+|---|---:|---:|---:|
+| Lumen | 810 | **824** | **+14** |
+| Transformer | 793 | **821** | **+28** |
+
+| Modelo | NLL 133,2k | NLL 140,7k | Cambio |
+|---|---:|---:|---:|
+| Lumen | 5,7221 | 5,7951 | +0,0730 |
+| Transformer | 5,8947 | **5,8577** | −0,0370 |
+
+La comparación describe el resultado de este bloque, no el efecto causal aislado de los 50.000 ejemplos: cambiaron conjuntamente el corpus de entrenamiento y el scheduler de transición. El Transformer recuperó terreno; Lumen conserva una ventaja pequeña en ambas métricas. Se necesitan réplicas con semillas nuevas y controles adicionales.
+
+### Artefactos y promoción
+
+- [Run completo de entrenamiento y evaluación](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45136184396)
+- [Holdout y resumen emparejado](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45136184396/artifacts/14802396847)
+- Checkpoint Lumen 140,7k: artefacto [ronin-lumen-step140700-v2-personality](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45136184396/artifacts/14801614159)
+- Checkpoint Transformer 140,7k: artefacto [ronin-transformer-step140700-v2-personality](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45136184396/artifacts/14800528034)
+- Entrada común 250k: artefacto [v2 + personalidad](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45136184396/artifacts/14800196498)
+
+**Promoción:** step 140.700 queda fijado como referencia emparejada actual y nuevo punto de partida para la siguiente continuación. Esta promoción es documental y de referencia reproducible; no es una declaración de superioridad general. El próximo entrenamiento esperará a que concluya la auditoría del corpus v3 y solo lo incorporará si queda admitido formalmente.

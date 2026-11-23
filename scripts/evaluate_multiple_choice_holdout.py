@@ -53,7 +53,9 @@ def main():
     p.add_argument("--lumen", required=True); p.add_argument("--transformer")
     p.add_argument("--out", required=True); p.add_argument("--limit", type=int, default=0)
     p.add_argument("--threads", type=int, default=4); p.add_argument("--max-len", type=int, default=128)
-    p.add_argument("--expected-step", type=int, default=1000)
+    p.add_argument("--expected-step", type=int, default=None, help="Legacy shared expected step")
+    p.add_argument("--expected-lumen-step", type=int, default=None)
+    p.add_argument("--expected-transformer-step", type=int, default=None)
     a=p.parse_args()
     torch.set_num_threads(a.threads); torch.set_num_interop_threads(2)
     tok=Tokenizer.from_file(a.tokenizer)
@@ -62,12 +64,14 @@ def main():
     models={}
     lm=RoninLumen().cpu()
     ls=torch.load(a.lumen,map_location="cpu",weights_only=False)
-    if int(ls.get("step",-1)) != a.expected_step: raise ValueError(f"Lumen checkpoint is not step {a.expected_step}")
+    expected_lumen = a.expected_lumen_step if a.expected_lumen_step is not None else a.expected_step
+    if expected_lumen is not None and int(ls.get("step",-1)) != expected_lumen: raise ValueError(f"Lumen checkpoint is not step {expected_lumen}")
     lm.load_state_dict(ls["model"]); lm.eval(); models["lumen"]=(lm,True)
     if a.transformer:
         tm=SmallTransformerLM(CONFIG.vocab_size,a.max_len).cpu()
         ts=torch.load(a.transformer,map_location="cpu",weights_only=False)
-        if int(ts.get("step",-1)) != a.expected_step: raise ValueError(f"Transformer checkpoint is not step {a.expected_step}")
+        expected_transformer = a.expected_transformer_step if a.expected_transformer_step is not None else a.expected_step
+        if expected_transformer is not None and int(ts.get("step",-1)) != expected_transformer: raise ValueError(f"Transformer checkpoint is not step {expected_transformer}")
         tm.load_state_dict(ts["model"]); tm.eval(); models["transformer"]=(tm,False)
     results={k:{"correct":0,"total":0,"mean_answer_nll":0.0,"predictions":[]} for k in models}
     sums={k:0.0 for k in models}

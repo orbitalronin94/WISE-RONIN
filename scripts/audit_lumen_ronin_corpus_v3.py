@@ -32,17 +32,12 @@ def shingles(text):
     toks=re.findall(r"\w+",norm(text),flags=re.UNICODE)
     if len(toks)<12: return set()
     return {" ".join(toks[i:i+3]) for i in range(len(toks)-2)}
-def simhash(sh):
-    acc=[0]*64
-    for gram in sh:
-        v=int.from_bytes(hashlib.blake2b(gram.encode(),digest_size=8).digest(),"big")
-        for i in range(64): acc[i]+=1 if (v>>i)&1 else -1
-    out=0
-    for i,n in enumerate(acc):
-        if n>=0: out|=1<<i
-    return out
-def bands(sig):
-    return [(i,(sig>>(16*i))&65535) for i in range(4)]
+def anchors(text):
+    toks=re.findall(r"\w+",norm(text),flags=re.UNICODE)
+    if len(toks)<12: return []
+    last=len(toks)-3
+    positions=sorted(set((0,last//3,(2*last)//3,last)))
+    return [int.from_bytes(hashlib.blake2b(" ".join(toks[i:i+3]).encode(),digest_size=8).digest(),"big") for i in positions]
 def sha(path):
     x=hashlib.sha256()
     with Path(path).open("rb") as f:
@@ -66,8 +61,8 @@ def main():
       CREATE TABLE pair_hash(k TEXT PRIMARY KEY);
       CREATE TABLE completion_hash(k TEXT PRIMARY KEY);
       CREATE TABLE sim_text(id INTEGER PRIMARY KEY, text TEXT NOT NULL);
-      CREATE TABLE sim_band(band INTEGER, val INTEGER, rid INTEGER);
-      CREATE INDEX sim_lookup ON sim_band(band,val);
+      CREATE TABLE sim_band(val INTEGER, rid INTEGER);
+      CREATE INDEX sim_lookup ON sim_band(val);
     """)
     counts=collections.Counter(); samples=collections.defaultdict(list); dup_pair=[]; dup_completion=[]; near=[]; eval_hits=[]
     # Index the full frozen v2 train: exact pair, exact completion and LSH for long answers.
@@ -78,17 +73,17 @@ def main():
         p=str(r.get("prompt","") or ""); c=str(r.get("completion","") or "")
         batch_pair.append((h(p+"\n"+c),))
         if len(norm(c))>=40: batch_comp.append((h(c),))
-        sh=shingles(c)
-        if sh:
+        anch=anchors(c)
+        if anch:
             rid=base_count
             batch_text.append((rid,c))
-            batch_bands.extend((b,val,rid) for b,val in bands(simhash(sh)))
+            batch_bands.extend((val,rid) for val in anch)
             base_sig_count+=1
         if len(batch_pair)>=5000:
             db.executemany("INSERT OR IGNORE INTO pair_hash VALUES(?)",batch_pair)
             db.executemany("INSERT OR IGNORE INTO completion_hash VALUES(?)",batch_comp)
             db.executemany("INSERT INTO sim_text VALUES(?,?)",batch_text)
-            db.executemany("INSERT INTO sim_band VALUES(?,?,?)",batch_bands)
+            db.executemany("INSERT INTO sim_band VALUES(?,?)",batch_bands)
             db.commit(); batch_pair=[]; batch_comp=[]; batch_text=[]; batch_bands=[]
     if batch_pair:
         db.executemany("INSERT OR IGNORE INTO pair_hash VALUES(?)",batch_pair)
@@ -122,13 +117,14 @@ def main():
         if pair in new_seen: counts["duplicate_within_additions"]+=1
         new_seen.add(pair)
         # LSH near-duplicate search against v2 plus previously indexed additions.
-        sh=shingles(c)
-        if sh:
-            sig=simhash(sh); cand=set()
-            for b,val in bands(sig):
-                cand.update(x[0] for x in db.execute("SELECT rid FROM sim_band WHERE band=? AND val=? LIMIT 1001",(b,val)))
+        anch=anchors(c)
+        if anch:
+            cand=set()
+            for val in anch:
+                cand.update(x[0] for x in db.execute("SELECT rid FROM sim_band WHERE val=? LIMIT 1001",(val,)))
                 if len(cand)>1000: break
             if len(cand)<=1000:
+                sh=shingles(c)
                 for rid in cand:
                     old=db.execute("SELECT text FROM sim_text WHERE id=?",(rid,)).fetchone()
                     if not old: continue
@@ -142,7 +138,7 @@ def main():
             else: counts["near_duplicate_queries_overflow"]+=1
             rid=base_count+add_n
             db.execute("INSERT INTO sim_text VALUES(?,?)",(rid,c))
-            db.executemany("INSERT INTO sim_band VALUES(?,?,?)",[(b,val,rid) for b,val in bands(sig)])
+            db.executemany("INSERT INTO sim_band VALUES(?,?)",[(val,rid) for val in anch])
         # Automated data hygiene checks.
         if not p.strip() and cat!="literature": bad.append({"category":cat,"id":r.get("id"),"issue":"empty_prompt"})
         if not c.strip(): bad.append({"category":cat,"id":r.get("id"),"issue":"empty_completion"})
@@ -170,7 +166,7 @@ def main():
       "additions":{"scanned_rows":add_n,"by_category":dict(counts),"by_task":dict(task_counts)},
       "exact_dedup":{"pair_duplicates_vs_v2":len(dup_pair),"completion_duplicates_vs_v2_len_ge_40":len(dup_completion),"duplicates_within_additions":counts["duplicate_within_additions"],"examples":dup_pair[:100]},
       "evaluation_contamination":{"exact_hits_vs_validation_or_holdout":len(eval_hits),"examples":eval_hits[:100]},
-      "near_duplicates":{"method":"64-bit SimHash over word trigrams; 4x16-bit LSH bands; candidate confirmation by trigram Jaccard >=0.88 and normalized length ratio >=0.80","confirmed":len(near),"queries_over_1000_candidates":counts["near_duplicate_queries_overflow"],"examples":near[:200]},
+      "near_duplicates":{"method":"Four evenly spaced word-trigram anchors per completion for indexed candidate retrieval; candidate confirmation by full word-trigram Jaccard >=0.88 and normalized length ratio >=0.80. This is a high-precision screening, not exhaustive paraphrase detection.","confirmed":len(near),"queries_over_1000_candidates":counts["near_duplicate_queries_overflow"],"examples":near[:200]},
       "hygiene":{"issues":len(bad),"examples":bad[:200]},
       "samples_file":"sample_review.jsonl",
       "source_provenance":{

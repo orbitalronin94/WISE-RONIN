@@ -32,8 +32,7 @@
     "transformer": {
       "correct": 805,
       "accuracy": 0.33113986096256643,
-      "mean_answer_nll": 5.514681,
-      "note": "Exact mean NLL is preserved in the holdout result artifact."
+      "mean_answer_nll": 5.514719554986644
     },
     "paired_counts": {
       "both_correct": 456,

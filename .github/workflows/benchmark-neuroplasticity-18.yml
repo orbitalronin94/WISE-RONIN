@@ -16,6 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  BASE_SHA: "80a3354cd462d0969915ca745a46babd59729f86"
   PARENT_RUN_ID: "45149684913"
   PREPARED_RUN_ID: "45149684913"
   PYTHONUNBUFFERED: "1"
@@ -58,7 +59,7 @@ jobs:
       - name: Checkout frozen main control source
         uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ env.BASE_SHA }}
           path: baseline
 
       - name: Checkout candidate PR source
@@ -167,7 +168,7 @@ jobs:
       - name: Checkout frozen main runtime profile
         uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ env.BASE_SHA }}
           path: baseline-main
 
       - name: Set up Python
@@ -284,6 +285,7 @@ jobs:
           set -euo pipefail
           CHECKPOINT="$(find parent -name step_155700.pt -print -quit)"
           test -n "$CHECKPOINT"
+          CHECKPOINT="$(realpath "$CHECKPOINT")"
           export CHECKPOINT
           python - <<'PY'
           import hashlib, os, torch

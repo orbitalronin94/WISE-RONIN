@@ -253,6 +253,10 @@ def main():
                     dropped["legacy_identity_duplicate"]+=1
             else:
                 dst.write(json.dumps(base_row,ensure_ascii=False,sort_keys=True,separators=(",",":"))+"\n")
+        new_counts["base_self_identity_source_rows"]=legacy_identity_rows
+        new_counts["base_self_identity_adapted"]=base_identity_adapted
+        new_counts["base_self_identity_generic_kept"]=base_identity_generic_kept
+        new_counts["base_self_identity_removed"]=base_identity_removed
         # 1) Source-scoped Spanish public-domain literature: train partition only.
         lit=Path(args.literature_dir)/"train.txt"
         lit_manifest=Path(args.literature_dir)/"dataset-manifest.json"

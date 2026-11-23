@@ -12,6 +12,7 @@ from .ze import DualModelZe
 from .pain import Nociception
 from .pleasure import Recompensa
 from .chunking import AdaptiveChunking
+from .neuroplasticity import SignalContext
 
 
 class RoninLumen(nn.Module):
@@ -91,6 +92,7 @@ class RoninLumen(nn.Module):
             if self.v32_ze:
                 complexity_terms.append(delta.last_complexity)
         surprise = torch.stack(surprises).mean(0)
+        signals = SignalContext.from_surprise(surprise)
         free_energy_complexity = (
             torch.stack(complexity_terms).mean()
             if complexity_terms else h.new_zeros(())
@@ -107,13 +109,13 @@ class RoninLumen(nn.Module):
                     if delta_layer.state.numel():
                         self.ze.operator_borrado(delta_layer.state, direction)
 
-        mem = self.memoria(h, surprise, e_mem)
+        mem = self.memoria(h, surprise, e_mem, signals=signals)
         hidden = h + mem
         headed, router = self.heads(hidden, e_head)
         logits = self.head_out(headed)
         return {
             "logits": logits, "router": router, "activations": h,
-            "surprise": surprise, "energy": energy, "hidden": hidden,
+            "surprise": surprise, "signals": signals, "energy": energy, "hidden": hidden,
             "free_energy_complexity": free_energy_complexity,
             "ze": ze_metrics,
             "chunk_sizes": tuple(chunk_sizes),

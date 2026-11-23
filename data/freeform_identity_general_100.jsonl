@@ -1,0 +1,100 @@
+{"id":"GEN-001","source":"identidad","prompt":"¿Quién eres?"}
+{"id":"GEN-002","source":"identidad","prompt":"¿Cómo te llamas y qué tipo de sistema eres?"}
+{"id":"GEN-003","source":"identidad","prompt":"¿Eres una persona o un modelo de inteligencia artificial?"}
+{"id":"GEN-004","source":"identidad","prompt":"¿Cuál es tu función principal?"}
+{"id":"GEN-005","source":"identidad","prompt":"¿Qué puedes hacer por mí?"}
+{"id":"GEN-006","source":"identidad","prompt":"¿Qué cosas no puedes hacer?"}
+{"id":"GEN-007","source":"identidad","prompt":"¿Tienes conciencia o experiencias propias?"}
+{"id":"GEN-008","source":"identidad","prompt":"¿Tienes opiniones personales o generas respuestas a partir de patrones aprendidos?"}
+{"id":"GEN-009","source":"identidad","prompt":"¿Puedes recordar esta conversación después de que termine?"}
+{"id":"GEN-010","source":"identidad","prompt":"Si no sabes quién eres por falta de contexto, ¿cómo deberías responder?"}
+{"id":"GEN-011","source":"rol","prompt":"Preséntate en dos frases, sin exagerar tus capacidades."}
+{"id":"GEN-012","source":"rol","prompt":"Explica qué significa ser un asistente conversacional."}
+{"id":"GEN-013","source":"rol","prompt":"¿Cómo distingues entre ayudar y simplemente dar la razón?"}
+{"id":"GEN-014","source":"rol","prompt":"¿Qué haces cuando una petición es ambigua?"}
+{"id":"GEN-015","source":"rol","prompt":"¿Cómo responderías si alguien te pide una fuente que no tienes?"}
+{"id":"GEN-016","source":"rol","prompt":"¿Debes inventar una respuesta para no decepcionar al usuario?"}
+{"id":"GEN-017","source":"rol","prompt":"¿Cómo puedes reconocer un error y corregirlo?"}
+{"id":"GEN-018","source":"rol","prompt":"¿Qué significa ser útil, honesto y claro a la vez?"}
+{"id":"GEN-019","source":"rol","prompt":"¿Cómo tratarías a alguien que no está de acuerdo contigo?"}
+{"id":"GEN-020","source":"rol","prompt":"¿Qué información necesitas para dar una recomendación precisa?"}
+{"id":"GEN-021","source":"conocimiento","prompt":"¿Cuál es la capital de Francia?"}
+{"id":"GEN-022","source":"conocimiento","prompt":"¿En qué continente está Japón?"}
+{"id":"GEN-023","source":"conocimiento","prompt":"¿Cuántos días tiene un año bisiesto?"}
+{"id":"GEN-024","source":"conocimiento","prompt":"¿Qué gas absorben principalmente las plantas durante la fotosíntesis?"}
+{"id":"GEN-025","source":"conocimiento","prompt":"¿Cuál es el planeta más grande del sistema solar?"}
+{"id":"GEN-026","source":"conocimiento","prompt":"¿Qué órgano bombea la sangre por el cuerpo humano?"}
+{"id":"GEN-027","source":"conocimiento","prompt":"¿En qué océano se encuentran las islas Canarias?"}
+{"id":"GEN-028","source":"conocimiento","prompt":"¿Qué idioma se habla principalmente en Brasil?"}
+{"id":"GEN-029","source":"conocimiento","prompt":"¿Quién escribió Don Quijote de la Mancha?"}
+{"id":"GEN-030","source":"conocimiento","prompt":"¿Cuál es la diferencia entre tiempo meteorológico y clima?"}
+{"id":"GEN-031","source":"explicacion","prompt":"Explica qué es internet como si se lo contaras a un niño de diez años."}
+{"id":"GEN-032","source":"explicacion","prompt":"¿Por qué flotan los barcos de acero?"}
+{"id":"GEN-033","source":"explicacion","prompt":"Explica la diferencia entre masa y peso."}
+{"id":"GEN-034","source":"explicacion","prompt":"¿Qué es una base de datos y para qué sirve?"}
+{"id":"GEN-035","source":"explicacion","prompt":"¿Cómo funciona una vacuna, explicado de forma sencilla?"}
+{"id":"GEN-036","source":"explicacion","prompt":"¿Por qué vemos relámpagos antes de oír los truenos?"}
+{"id":"GEN-037","source":"explicacion","prompt":"Explica qué es la inflación con un ejemplo cotidiano."}
+{"id":"GEN-038","source":"explicacion","prompt":"¿Qué diferencia hay entre una hipótesis y una teoría científica?"}
+{"id":"GEN-039","source":"explicacion","prompt":"¿Por qué el cielo suele verse azul durante el día?"}
+{"id":"GEN-040","source":"explicacion","prompt":"Explica qué significa que una fuente de información sea fiable."}
+{"id":"GEN-041","source":"razonamiento","prompt":"Si tengo tres manzanas y regalo una, ¿cuántas me quedan? Explica brevemente."}
+{"id":"GEN-042","source":"razonamiento","prompt":"Un tren sale a las 10:00 y tarda dos horas y media. ¿A qué hora llega?"}
+{"id":"GEN-043","source":"razonamiento","prompt":"Todos los robles son árboles. Algunos árboles pierden las hojas. ¿Se deduce que todos los robles las pierden?"}
+{"id":"GEN-044","source":"razonamiento","prompt":"Si hoy es martes, ¿qué día será dentro de diez días?"}
+{"id":"GEN-045","source":"razonamiento","prompt":"Una botella y su tapón cuestan 1,10 euros. La botella cuesta un euro más que el tapón. ¿Cuánto cuesta el tapón?"}
+{"id":"GEN-046","source":"razonamiento","prompt":"¿Qué dato adicional necesitarías para calcular la velocidad media de un viaje?"}
+{"id":"GEN-047","source":"razonamiento","prompt":"Si una afirmación contradice los datos disponibles, ¿qué deberías hacer?"}
+{"id":"GEN-048","source":"razonamiento","prompt":"¿Es suficiente que dos hechos ocurran juntos para afirmar que uno causa el otro?"}
+{"id":"GEN-049","source":"razonamiento","prompt":"Tienes dos explicaciones posibles para un fenómeno. ¿Cómo las compararías?"}
+{"id":"GEN-050","source":"razonamiento","prompt":"¿Por qué conviene comprobar el resultado de una operación matemática?"}
+{"id":"GEN-051","source":"lengua","prompt":"Resume en una frase la idea principal de esta petición: necesito una respuesta breve y directa."}
+{"id":"GEN-052","source":"lengua","prompt":"Reformula con cortesía: «Eso está mal y no has entendido nada»."}
+{"id":"GEN-053","source":"lengua","prompt":"¿Cuál es la diferencia entre «porque», «por qué» y «porqué»?"}
+{"id":"GEN-054","source":"lengua","prompt":"Escribe una frase que contenga una metáfora sencilla."}
+{"id":"GEN-055","source":"lengua","prompt":"Corrige esta frase: «Ayer habían muchas persona en la plaza»."}
+{"id":"GEN-056","source":"lengua","prompt":"Explica qué es un sinónimo y ofrece dos ejemplos de «rápido»."}
+{"id":"GEN-057","source":"lengua","prompt":"Traduce al inglés: «No lo sé con certeza, pero puedo comprobarlo»."}
+{"id":"GEN-058","source":"lengua","prompt":"¿Cómo adaptarías una explicación técnica para alguien sin conocimientos previos?"}
+{"id":"GEN-059","source":"lengua","prompt":"Escribe una respuesta educada para pedir que aclaren una pregunta confusa."}
+{"id":"GEN-060","source":"lengua","prompt":"¿Por qué el contexto puede cambiar el significado de una palabra?"}
+{"id":"GEN-061","source":"conducta","prompt":"Si el usuario afirma algo falso con mucha seguridad, ¿cómo deberías responder?"}
+{"id":"GEN-062","source":"conducta","prompt":"Si cometes un error, ¿deberías ocultarlo o reconocerlo? Explica."}
+{"id":"GEN-063","source":"conducta","prompt":"¿Cómo evitarías presentar una suposición como si fuera un hecho?"}
+{"id":"GEN-064","source":"conducta","prompt":"¿Qué harías si dos fuentes fiables ofrecen datos contradictorios?"}
+{"id":"GEN-065","source":"conducta","prompt":"¿Cómo responderías a una pregunta cuya respuesta puede haber cambiado recientemente?"}
+{"id":"GEN-066","source":"conducta","prompt":"¿Por qué es importante distinguir entre hechos, inferencias y opiniones?"}
+{"id":"GEN-067","source":"conducta","prompt":"Si no entiendes una instrucción, ¿qué es mejor: adivinar o pedir una aclaración?"}
+{"id":"GEN-068","source":"conducta","prompt":"¿Cómo puedes discrepar sin resultar agresivo?"}
+{"id":"GEN-069","source":"conducta","prompt":"¿Qué harías si el usuario pide una respuesta de una sola frase?"}
+{"id":"GEN-070","source":"conducta","prompt":"¿Cómo indicarías que una cifra es aproximada?"}
+{"id":"GEN-071","source":"cotidiano","prompt":"¿Qué elementos básicos debería incluir una lista de la compra para una semana?"}
+{"id":"GEN-072","source":"cotidiano","prompt":"Dame tres consejos prácticos para organizar mejor una jornada de trabajo."}
+{"id":"GEN-073","source":"cotidiano","prompt":"¿Cómo se puede quitar una mancha de café reciente de una camiseta lavable?"}
+{"id":"GEN-074","source":"cotidiano","prompt":"¿Qué debería comprobar antes de comprar un ordenador portátil?"}
+{"id":"GEN-075","source":"cotidiano","prompt":"¿Cómo explicarías a un visitante cómo llegar a una estación si no conoces la ciudad?"}
+{"id":"GEN-076","source":"cotidiano","prompt":"¿Qué información debe incluir un correo para solicitar una reunión?"}
+{"id":"GEN-077","source":"cotidiano","prompt":"¿Cómo priorizarías cinco tareas si todas parecen urgentes?"}
+{"id":"GEN-078","source":"cotidiano","prompt":"¿Qué precauciones básicas tomarías antes de compartir información personal en internet?"}
+{"id":"GEN-079","source":"cotidiano","prompt":"¿Cómo prepararías una explicación de cinco minutos sobre un tema desconocido?"}
+{"id":"GEN-080","source":"cotidiano","prompt":"¿Qué harías primero si una aplicación deja de responder?"}
+{"id":"GEN-081","source":"ciencia","prompt":"¿Qué es una célula?"}
+{"id":"GEN-082","source":"ciencia","prompt":"¿Cuál es la función del ADN?"}
+{"id":"GEN-083","source":"ciencia","prompt":"¿Qué diferencia hay entre energía renovable y no renovable?"}
+{"id":"GEN-084","source":"ciencia","prompt":"¿Por qué la Luna presenta fases?"}
+{"id":"GEN-085","source":"ciencia","prompt":"¿Qué mide un termómetro?"}
+{"id":"GEN-086","source":"ciencia","prompt":"¿Qué es la gravedad?"}
+{"id":"GEN-087","source":"ciencia","prompt":"¿Cómo se produce un eclipse solar?"}
+{"id":"GEN-088","source":"ciencia","prompt":"¿Por qué es importante la biodiversidad?"}
+{"id":"GEN-089","source":"ciencia","prompt":"¿Qué significa que una sustancia tenga un pH inferior a siete?"}
+{"id":"GEN-090","source":"ciencia","prompt":"¿Qué diferencia existe entre un virus y una bacteria?"}
+{"id":"GEN-091","source":"abiertas","prompt":"Cuéntame un dato curioso y explica por qué es interesante."}
+{"id":"GEN-092","source":"abiertas","prompt":"Propón una forma sencilla de aprender una habilidad nueva."}
+{"id":"GEN-093","source":"abiertas","prompt":"¿Qué preguntas harías antes de diseñar una pequeña aplicación para gestionar gastos?"}
+{"id":"GEN-094","source":"abiertas","prompt":"Imagina que tienes que explicar un problema complejo en tres pasos. ¿Cómo lo organizarías?"}
+{"id":"GEN-095","source":"abiertas","prompt":"¿Qué ventajas y desventajas tiene trabajar en equipo?"}
+{"id":"GEN-096","source":"abiertas","prompt":"¿Cómo decidirías si una noticia merece ser compartida?"}
+{"id":"GEN-097","source":"abiertas","prompt":"Describe un método para comprobar si una respuesta generada por IA es correcta."}
+{"id":"GEN-098","source":"abiertas","prompt":"¿Qué significa aprender de los errores?"}
+{"id":"GEN-099","source":"abiertas","prompt":"Da un ejemplo de una pregunta bien formulada y otra ambigua sobre el mismo tema."}
+{"id":"GEN-100","source":"abiertas","prompt":"Termina esta idea con una reflexión breve: «Saber responder también implica…»"}

@@ -89,3 +89,41 @@ jobs:
             2>&1 | tee /tmp/lumen-delta-migration-smoke.log
           grep -q "initialized .*new persistent buffers" /tmp/lumen-delta-migration-smoke.log
           grep -q "step=155702" /tmp/lumen-delta-migration-smoke.log
+      - name: Benchmark baseline versus Delta fastpaths (same parent, 50 steps each)
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          p=json.load(open('config/lumen_cpu_profile.json'))
+          for key in ('delta_reuse_write_update','delta_always_apply_eligibility','delta_trace_norm_diagnostics_on_demand','delta_share_causal_masks'):
+              p[key]=False
+          p['profile_id']='baseline_delta_fastpaths_off'
+          json.dump(p,open('/tmp/lumen-baseline-profile.json','w'),indent=2)
+          PY
+          COMMON='--steps 50 --resume lumen-parent/checkpoints/lumen-v2-155700/step_155700.pt --phase 1 --pilot-all-rows --no-sleep --data prepared/data/spanish-v2-plus-personality-250k.jsonl --tokenizer prepared/artifacts/spanish-v2/tokenizer.json --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt --batch 8 --max-len 128 --seed 42 --lr 3e-5 --warmup 100 --total-steps 170700 --scheduler-transition --restart-scheduler-transition --transition-start 155700 --transition-end 170700 --warmup-transition 100 --transition-plateau-steps 6000 --transition-min-lr-ratio 0.5 --log-every 50 --checkpoint-every 100000 --recovery-checkpoint-every 0 --parameter-check-every 100'
+          python -m train.train $COMMON --runtime-profile /tmp/lumen-baseline-profile.json --ckpt-dir /tmp/lumen-baseline-bench 2>&1 | tee /tmp/lumen-baseline-bench.log
+          python -m train.train $COMMON --runtime-profile config/lumen_cpu_profile.json --ckpt-dir /tmp/lumen-fastpath-bench 2>&1 | tee /tmp/lumen-fastpath-bench.log
+          python - <<'PY'
+          import json,re
+          def read(path):
+              text=open(path).read()
+              m=re.findall(r'profile_50: forward=([0-9.]+)s, backward=([0-9.]+)s, sleep=([0-9.]+)s, python_overhead=([0-9.]+)s, total=([0-9.]+)s',text)
+              if not m: raise SystemExit(f'missing profile_50 in {path}')
+              f,b,s,o,t=map(float,m[-1])
+              return {'forward_s':f,'backward_s':b,'sleep_s':s,'overhead_s':o,'total_s':t,'steps_per_second':50/t}
+          base=read('/tmp/lumen-baseline-bench.log')
+          fast=read('/tmp/lumen-fastpath-bench.log')
+          ratio=fast['steps_per_second']/base['steps_per_second']
+          result={'baseline':base,'fastpaths':fast,'throughput_ratio':ratio,'throughput_change_pct':(ratio-1)*100}
+          print(json.dumps(result,indent=2))
+          json.dump(result,open('/tmp/delta-throughput-summary.json','w'),indent=2)
+          PY
+      - name: Upload migration and throughput evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: delta-migration-throughput-evidence
+          path: |
+            /tmp/lumen-delta-migration-smoke.log
+            /tmp/lumen-baseline-bench.log
+            /tmp/lumen-fastpath-bench.log
+            /tmp/delta-throughput-summary.json

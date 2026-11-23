@@ -1,8 +1,8 @@
 # Crónica experimental de Lumen-Ronin
 >
-> Del primer encendido al linaje de 73.500 pasos.
+> Del primer encendido al linaje evaluado en 133.200 pasos.
 >
-> **Corte documental:** 22 de noviembre de 2026. El último checkpoint emparejado completado y evaluado es 73.500, tras la transición compartida al corpus español v2.
+> **Corte documental:** 23 de noviembre de 2026. El último checkpoint emparejado evaluado es 133.200, sobre el corpus español v2.
 
 ## Cómo leer esta cronología
 
@@ -226,3 +226,49 @@ Este par queda fijado como referencia para la siguiente continuación emparejada
 4. **La velocidad debe medirse en el trainer real.** Un microbenchmark aislado no garantiza que una optimización acelere la ejecución completa.
 5. **Un fallo de workflow no invalida automáticamente un checkpoint, pero tampoco se debe ocultar.** Se verifica el archivo y se evalúa por separado.
 6. **La comparación sigue abierta.** Lumen conserva una NLL claramente menor a 73,5k, mientras la accuracy está prácticamente empatada; se necesitan más continuaciones y análisis por pregunta.
+
+
+## VIII. La prueba decisiva de la campaña v2: step 133.200
+
+[Continuación 73,5k→133,5k, run 45082812702](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45082812702) · [Holdout emparejado exacto, run 45123727239](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45123727239).
+
+### Procedencia de los checkpoints
+
+La continuación larga tuvo un desenlace operativo desigual: el Transformer completó step 133.500, mientras el job de Lumen fue interrumpido después de guardar su checkpoint válido de step 133.200. Para no comparar pasos distintos, el workflow de holdout recuperó ese checkpoint de Lumen y avanzó el Transformer desde su checkpoint 133.000 exactamente 200 pasos, preservando el estado de optimizador, scheduler y RNG.
+
+El workflow verificó que ambos checkpoints estaban en **step 133.200** y compartían el mismo SHA de tokenizer. El holdout se ejecutó sobre las mismas 2.431 preguntas, con contexto 128. El job de evaluación terminó correctamente.
+
+### Resultado del holdout
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| Lumen-Ronin | **810/2.431** | **33,32 %** | **5,7221** |
+| Transformer baseline | 793/2.431 | 32,62 % | 5,8947 |
+
+Lumen obtuvo 17 aciertos más (+0,70 puntos porcentuales) y una NLL 0,1726 menor. En relación con el holdout de 73.500:
+
+| Modelo | Aciertos 73,5k | Aciertos 133,2k | Cambio |
+|---|---:|---:|---:|
+| Lumen | 791 | **810** | **+19** |
+| Transformer | 792 | 793 | +1 |
+
+| Modelo | NLL 73,5k | NLL 133,2k | Cambio |
+|---|---:|---:|---:|
+| Lumen | 5,8320 | **5,7221** | −0,1099 |
+| Transformer | 6,4189 | 5,8947 | −0,5242 |
+
+### La divergencia entre training loss y holdout
+
+En los logs de entrenamiento del tramo 73,5k→133k, el Transformer mantuvo menor loss de minibatch en los intervalos observados y una pendiente de descenso más pronunciada. Sin embargo, en el holdout de step 133.200 Lumen quedó por delante tanto en accuracy como en NLL.
+
+Esta divergencia es el resultado experimental central de este corte: **la menor training loss del Transformer no se tradujo en mejor resultado en este holdout**. Es compatible con la hipótesis de que la arquitectura de Lumen induce una dinámica de aprendizaje distinta, pero no identifica causalidad ni prueba superioridad general. Hace falta repetir con nuevas semillas, ampliar el análisis por categorías y conservar el mismo protocolo de evaluación.
+
+### Artefactos y promoción
+
+- [Run de entrenamiento 73,5k→133,5k](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45082812702)
+- [Run de holdout emparejado 133,2k](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45123727239)
+- [Artefacto del holdout y checkpoint Transformer sincronizado](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45123727239/artifacts/14794737935)
+- Checkpoint Lumen 133,2k: latest_good.pt preservado en el artefacto del run 45082812702 (ronin-lumen-step133500-v2-45082812702).
+- Checkpoint Transformer 133,2k: step_133200.pt incluido en el artefacto del run 45123727239.
+
+**Promoción:** el par de checkpoints de step 133.200 queda fijado como referencia experimental actual de Lumen-Ronin frente al baseline Transformer. La promoción es documental y de referencia reproducible; no afirma una victoria universal ni sustituye futuras réplicas independientes.

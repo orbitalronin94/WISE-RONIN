@@ -5,8 +5,8 @@ La documentación distingue entre arquitectura implementada, configuración real
 ## Empieza aquí
 
 1. [README del proyecto](../README.md) — tesis, estado actual, resultados y accesos rápidos.
-2. [Arquitectura actual](ARQUITECTURA_ACTUAL_ES.md) — componentes, parámetros y qué está activo o desactivado en el entrenamiento 61k→66k.
-3. [Crónica experimental](CRONICA_EXPERIMENTAL_ES.md) — historia desde el arranque a step 1.000, continuaciones hasta 61k y bloque actual a 66k.
+2. [Arquitectura actual](ARQUITECTURA_ACTUAL_ES.md) — componentes, parámetros y qué está activo o desactivado en el entrenamiento 185,7k (último holdout y train activo).
+3. [Crónica experimental](CRONICA_EXPERIMENTAL_ES.md) — historia narrativa de cada tramo desde el arranque hasta step 185.700 y continuación en curso hasta 235.700.
 4. [Neurociencia y decisiones de arquitectura](NEUROCIENCIA_Y_ARQUITECTURA_ES.md) — literatura, traducción a mecanismos y límites de las analogías.
 
 ## Diseño y especificaciones
@@ -47,3 +47,5 @@ La documentación distingue entre arquitectura implementada, configuración real
 ## Regla de lectura
 
 Una implementación que compila no equivale a una hipótesis validada. Un smoke test no equivale a entrenamiento. Un microbenchmark no equivale a holdout. Un checkpoint guardado tras un workflow fallido debe verificarse y evaluarse por separado. Los mecanismos opcionales solo se atribuyen a un entrenamiento si su workflow los habilitó.
+
+- [Torneo de 20 hipótesis sobre mecanismos pendientes](TORNEO_20_MECANISMOS_PENDIENTES_ES.md) — alcance, combinaciones y gate loss + throughput.

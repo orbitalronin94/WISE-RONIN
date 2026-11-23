@@ -233,10 +233,12 @@ def main():
     new_counts=Counter(); new_bytes=Counter(); added=0; dropped=Counter()
     base_identity_adapted=0; base_identity_generic_kept=0; base_identity_removed=0
     base_identity_rows=0; base_rows_seen=0
+    base_train_hash=hashlib.sha256()
     out_train=out/"train.jsonl"
     with out_train.open("w",encoding="utf-8",newline="\n") as dst:
         with train.open(encoding="utf-8") as src:
             for line in src:
+                base_train_hash.update(line.encode("utf-8"))
                 if not line.strip(): continue
                 base_rows_seen+=1
                 if re.search(r'"task"\s*:\s*"self-identity"',line):
@@ -256,7 +258,12 @@ def main():
                         dropped["legacy_identity_duplicate"]+=1
                 else:
                     dst.write(line if line.endswith("\n") else line+"\n")
-        new_counts["base_self_identity_source_rows"]=legacy_identity_rows
+        if base_rows_seen!=bm["train_rows"]:
+            raise RuntimeError(f"v2 train row count mismatch: {base_rows_seen} != {bm['train_rows']}")
+        if base_train_hash.hexdigest()!=bm["sha256"]["train.jsonl"]:
+            raise RuntimeError("Frozen v2 train SHA-256 mismatch")
+        new_counts["base_train_sha256_verified"]=1
+        new_counts["base_self_identity_source_rows"]=base_identity_rows
         new_counts["base_self_identity_adapted"]=base_identity_adapted
         new_counts["base_self_identity_generic_kept"]=base_identity_generic_kept
         new_counts["base_self_identity_removed"]=base_identity_removed

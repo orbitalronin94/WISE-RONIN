@@ -57,7 +57,7 @@ jobs:
           path: inputs/v2
           repository: orbitalronin94/WISE-RONIN
           run-id: 45065384110
-          github-token: \${{ github.token }}
+          github-token: ${{ github.token }}
 
       - name: Download admitted Spanish literature train partition
         uses: actions/download-artifact@v4
@@ -66,7 +66,7 @@ jobs:
           path: inputs/literature
           repository: orbitalronin94/RONIN-IA
           run-id: 41926088900
-          github-token: \${{ github.token }}
+          github-token: ${{ github.token }}
 
       - name: Generate the 24 reviewed Spanish behavior and lexicon curricula
         run: |
@@ -123,7 +123,7 @@ jobs:
       - name: Upload frozen Lumen-Ronin Spanish corpus v3
         uses: actions/upload-artifact@v4
         with:
-          name: lumen-ronin-spanish-corpus-v3-\${{ github.run_id }}
+          name: lumen-ronin-spanish-corpus-v3-${{ github.run_id }}
           path: artifacts/spanish-v3/
           if-no-files-found: error
           retention-days: 90

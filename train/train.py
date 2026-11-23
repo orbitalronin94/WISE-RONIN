@@ -15,6 +15,7 @@ import torch
 
 from model.config import CONFIG
 from model.lumen import RoninLumen
+from model.plasticity import PlasticityProfile
 from train.curriculum import datos_para_fase, sample_phase2
 from train.dataset import (BPETokenizer, collate_rows, collate_cached_indices,
                             load_jsonl, load_token_cache, pack_token_cache)
@@ -110,6 +111,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
                 "chunk_size_bounds": [4, 16],
                 "replay_enabled": not args.no_sleep,
                 "homeostasis_enabled": True,
+                "plasticity_profile": runtime_profile.get("plasticity", {"mode": "neutral"}),
             },
         },
         "params": sum(parameter.numel() for parameter in model.parameters()),
@@ -342,7 +344,9 @@ def main():
     random.seed(args.seed)
     device = torch.device("cpu")
     model = RoninLumen(v32_ze=args.v32_ze).to(device)
+    plasticity_profile = PlasticityProfile.from_config(runtime_profile.get("plasticity", {}))
     for layer in model.delta_layers:
+        layer.plasticity_profile = plasticity_profile
         layer.pre_normalize_sequence = bool(runtime_profile.get("delta_pre_normalize", False))
         refinements = int(runtime_profile.get("delta_parallel_refinements", layer.parallel_refinements))
         if not 1 <= refinements <= 6:
@@ -356,6 +360,7 @@ def main():
         layer.share_causal_masks = bool(runtime_profile.get("delta_share_causal_masks", False))
     for organ in model.homeo:
         organ.fused_scatter_add = bool(runtime_profile.get("homeostasis_fused_scatter", False))
+    LOG.info("plasticity_profile: %s", plasticity_profile)
     LOG.info("lumen_fastpaths: %s", {
         "delta_pre_normalize": bool(runtime_profile.get("delta_pre_normalize", False)),
         "delta_parallel_refinements": refinements,

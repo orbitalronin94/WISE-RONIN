@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class PlasticityProfile:
-    """Four bounded controls; neutral is an exact identity profile."""
+    """Bounded computational modes; neutral is an exact identity profile."""
 
     name: str = "neutral"
     threshold_scale: float = 1.0
@@ -36,7 +36,7 @@ class PlasticityProfile:
         allowed = {"threshold_scale", "modulator_gain", "eligibility_retention", "attention_gain", "tagging_enabled", "intrinsic_threshold_enabled", "simulated_pruning_enabled", "one_shot_enabled", "ltd_enabled"}
         if set(values) - allowed:
             raise ValueError(f"unknown plasticity factors: {sorted(set(values) - allowed)}")
-        boolean_keys = {"tagging_enabled", "intrinsic_threshold_enabled", "simulated_pruning_enabled"}
+        boolean_keys = {"tagging_enabled", "intrinsic_threshold_enabled", "simulated_pruning_enabled", "one_shot_enabled", "ltd_enabled"}
         if any(k in values and not isinstance(values[k], bool) for k in boolean_keys):
             raise ValueError("plasticity mechanism flags must be booleans")
         numeric = {k: float(v) for k, v in values.items() if k not in boolean_keys}

@@ -136,3 +136,147 @@ Los teoremas Lean deben formalizar estas propiedades algebraicas pequeñas con t
 ## Referencias
 
 Todas las referencias y DOI de esta ficha se contrastaron con las páginas editoriales o PubMed enlazadas arriba. La corrección bibliográfica de Nicola & Clopath es deliberada: el DOI que termina en `0415-5` no corresponde al artículo localizado; el correcto termina en `0415-2`.
+
+
+## Segunda tanda: homeostasis, poda, sueño, replay y olvido (hipótesis 7–12)
+
+**Estado:** propuestas de investigación. Ninguna de estas entradas debe interpretarse como descripción ya verificada del comportamiento interno de Lumen. Las métricas de entrenamiento solo permiten una interpretación después de comprobar qué tensor, operación y escala temporal representan.
+
+### 7. Escalado sináptico homeostático
+
+**Referencia:** Turrigiano (2008), [The Self-Tuning Neuron: Synaptic Scaling of Excitatory Synapses](https://doi.org/10.1016/j.cell.2008.10.008), *Cell* 135(3):422–435.
+
+El trabajo describe ajustes coordinados de la fuerza de las sinapsis excitatorias para estabilizar la actividad neuronal. La intuición computacional —separar cambios relativos específicos de una normalización global de magnitud— merece una prueba en Lumen.
+
+Una regla simplificada sería:
+
+`w_i' = c w_i,` con `c = clip(r_target / max(r_actual, eps), c_min, c_max)`.
+
+Si el mismo factor positivo se aplica a todos los pesos del conjunto, conserva sus proporciones; no implica que la regla sea estable en una red profunda ni que la tasa de activación del modelo sea equivalente a una tasa de disparo biológica.
+
+**Matices y riesgos:**
+- El clipping del factor evita cambios multiplicativos extremos, pero no garantiza estabilidad del sistema acoplado al optimizador.
+- La fórmula propuesta puede amplificar pesos cuando la actividad es baja; debe probarse con cotas, regularización y actividad mínima.
+- En el paper, la homeostasis se estudia en sinapsis excitatorias y en escalas biológicas; no justifica aplicar el factor a todos los parámetros de un LLM en cada minibatch.
+- Un valor alto de `homeo_out` en una capa no demuestra que esa capa esté «trabajando más» ni que el valor sea una escala sináptica. Hay que rastrear su definición y unidades en el código.
+
+**Experimento falsable:** comparar homeostasis actual, escalado multiplicativo por bloque, escalado por canal y control sin escalado. Aplicarlo en intervalos lentos y barrer tasa objetivo y límites del factor. Medir NLL/accuracy, normas por bloque, distribución de activaciones, gradientes, estabilidad y tiempo. Controlar que no se altere el presupuesto efectivo de aprendizaje de forma inadvertida.
+
+**Criterio de rechazo:** cualquier variante que mejore una métrica interna pero empeore holdout, diversidad de activación o estabilidad queda descartada.
+
+### 8. Homeostasis intrínseca: umbral adaptativo
+
+**Referencias:** Ibata, Sun & Turrigiano (2008), [Rapid Synaptic Scaling Induced by Changes in Postsynaptic Firing](https://doi.org/10.1016/j.neuron.2008.02.031); Desai, Rutherford & Turrigiano (1999), [Plasticity in the Intrinsic Excitability of Cortical Pyramidal Neurons](https://doi.org/10.1038/9165).
+
+Los trabajos muestran formas de ajuste homeostático de la fuerza sináptica y de la excitabilidad intrínseca. Una abstracción de umbral móvil podría ser:
+
+`theta[t+1] = clip(theta[t] + eta_theta * (activity[t] - target), theta_min, theta_max)`.
+
+**Conexión con Lumen:** no se debe identificar automáticamente `gate+` con un umbral neuronal ni interpretar una curva plana como estabilización. Hay que localizar qué parámetro cambia realmente, dónde se aplica y cómo se relaciona con la actividad post-gate.
+
+**Experimento falsable:** añadir un umbral adaptativo en una rama experimental, separado de los sesgos homeostáticos existentes. Comparar umbral fijo, adaptación lenta y adaptación rápida. Medir actividad efectiva por unidad, porcentaje de unidades persistentemente inactivas, reactivación, entropía/Gini, NLL y retención.
+
+**Riesgo principal:** la actualización lineal puede oscilar o empujar el umbral fuera de rango. Requiere límites, tasa pequeña y pruebas de estabilidad. Un objetivo de actividad cero no es aceptable.
+
+**Criterio de rechazo:** si la adaptación reduce la actividad hasta crear unidades permanentemente inactivas o perjudica holdout, se descarta.
+
+### 9. Poda selectiva
+
+**Referencia principal:** Chechik, Meilijson & Ruppin (1998), [Synaptic Pruning in Development: A Computational Account](https://doi.org/10.1162/089976698300017124), *Neural Computation* 10(7):1759–1777.
+
+La referencia computacional estudia crecimiento seguido de eliminación selectiva bajo restricciones; no demuestra que una poda por umbral simple mejore automáticamente redes neuronales modernas. La regla propuesta —eliminar conexiones débiles y poco usadas— es una hipótesis de ingeniería, no una traducción literal del paper.
+
+Regla candidata:
+
+`prune(w, u) = 0` si `abs(w) < tau_w` y `usage < tau_u`; en otro caso, conservar `w`.
+
+**Conexión con Lumen:** el crecimiento de `bias_norm` no demuestra densificación de conexiones: un sesgo no es una sinapsis ni una matriz de conectividad. Antes de proponer poda hay que identificar parámetros estructurales que puedan eliminarse sin cambiar la semántica del modelo y medir su uso real.
+
+**Experimento falsable:** comenzar con poda *solo simulada* (máscara temporal, sin borrar pesos). Usar ventanas de uso, umbral por capa y protección de parámetros recién activados o etiquetados. Comparar sin poda, poda aleatoria con igual sparsity y poda débil+infrautilizada. Medir sparsity real, latencia, memoria, NLL, holdout y recuperación tras reactivar conexiones.
+
+**Criterio de rechazo:** si la poda selectiva no supera al control aleatorio con igual sparsity, o causa pérdida irreversible de capacidad, no se promueve. La poda física solo se considera después de validar la máscara y la consolidación.
+
+### 10. Sueño computacional: renormalización y consolidación offline
+
+**Referencia:** Tononi & Cirelli (2014), [Sleep and the Price of Plasticity](https://doi.org/10.1016/j.neuron.2013.12.025), *Neuron* 81(1):12–34.
+
+La hipótesis de homeostasis sináptica propone que el sueño contribuye a renormalizar la fuerza sináptica tras la plasticidad de la vigilia y puede apoyar consolidación e integración. Es una hipótesis neurobiológica con evidencia y debates propios; no implica que un trainer necesite una fase llamada «sueño» para evitar colapsar.
+
+Abstracción experimental:
+
+- renormalización moderada de cambios no protegidos;
+- preservación de parámetros o actualizaciones seleccionados por una señal de consolidación;
+- replay offline de ejemplos o secuencias seleccionadas;
+- comparación con un control de igual presupuesto de cómputo sin fase offline.
+
+**Conexión con Lumen:** un log `sleep=0.000s` solo indica lo que mida ese contador en esa ejecución. No demuestra ausencia de consolidación biológica ni que el crecimiento de `bias_norm` sea causado por falta de sueño. Hay que inspeccionar el scheduler, los eventos de replay y qué estado modifica cada fase.
+
+**Experimento factorial:** (A) sin fase offline, (B) renormalización sola, (C) replay solo, (D) renormalización + replay protegido por tags. Igualar tokens y, en un segundo análisis, igualar tiempo de CPU. Medir retención de conocimientos anteriores, transferencia, NLL y deriva de pesos.
+
+**Criterio de rechazo:** si la fase offline solo ayuda por consumir más datos o cómputo, o si perjudica retención/holdout, no se atribuye beneficio al mecanismo de sueño.
+
+### 11. Replay secuencial inspirado en sharp-wave ripples
+
+**Referencias:** Buzsáki (2015), [Hippocampal sharp wave-ripple](https://doi.org/10.1002/hipo.22488); Foster & Wilson (2006), [Reverse replay of behavioural sequences in hippocampal place cells during the awake state](https://doi.org/10.1038/nature04587).
+
+El replay hipocampal reactiva secuencias de actividad y puede ocurrir tanto durante el sueño como en vigilia tranquila; Foster y Wilson describen replay inverso durante vigilia. La analogía útil para Lumen es la reactivación selectiva de secuencias, no copiar literalmente frecuencias de 100–200 Hz ni asumir una compresión fija de 15×.
+
+La función de ejemplo `replay_compress` no comprime realmente la secuencia ni reduce el número de operaciones de aprendizaje: devuelve la secuencia intacta y un contador aproximado. Por tanto, sus asserts solo verifican una convención aritmética, no replay comprimido.
+
+**Diseño computacional comprobable:**
+1. Guardar secuencias candidatas con puntuaciones explícitas: novedad, error, mejora/retención y etiqueta local.
+2. Seleccionar replay por prioridad y comparar con replay uniforme y sin replay.
+3. Mantener el orden de cada secuencia; añadir replay inverso como brazo separado.
+4. Si se afirma compresión temporal, medir operaciones/tiempo real y demostrar que se conserva la información relevante.
+
+**Criterio de rechazo:** si el replay priorizado no mejora retención o generalización frente al replay uniforme con el mismo presupuesto, no se promueve. Evitar confundir «menos pasos de replay» con «misma actualización comprimida».
+
+### 12. Depresión a largo plazo (LTD) y olvido activo
+
+**Referencias:** Collingridge et al. (2010), [Long-term depression in the CNS](https://doi.org/10.1038/nrn2867); Malenka & Bear (2004), [LTP and LTD: an embarrassment of riches](https://doi.org/10.1038/nrn1475).
+
+LTD agrupa mecanismos diversos de debilitamiento sináptico dependientes del contexto; no equivale a una regla universal «post sin pre ⇒ restar una constante». La regla de ejemplo es un juguete lógico, no una implementación fisiológica ni una regla validada para pesos de lenguaje.
+
+**Hipótesis de ingeniería:** introducir una pequeña señal de debilitamiento solo sobre parámetros auxiliares o conexiones que, durante ventanas largas, estén infrautilizados y no protegidos por una señal de consolidación. Distinguir falta de uso de evidencia de que una asociación es incorrecta.
+
+**Experimento falsable:** comparar sin LTD, LTD uniforme, LTD condicionado por uso y LTD condicionado por uso + protección por tag. Mantener el mismo presupuesto de entrenamiento. Medir retención de conocimiento previo, aprendizaje de datos nuevos, interferencia, NLL y recuperación de parámetros.
+
+**Riesgos:** el uso puede ser raro pero esencial; un tag puede estar obsoleto; una regla local puede borrar asociaciones necesarias para generalización. Proteger solo con tags recientes tampoco basta: evaluar caducidad y falsos positivos de protección.
+
+**Criterio de rechazo:** si el olvido activo borra capacidades anteriores o no mejora adquisición de información nueva frente al control, se elimina.
+
+## Síntesis: sistema candidato, no explicación cerrada
+
+Las doce entradas pueden organizarse como un circuito de hipótesis:
+
+1. **Plasticidad local:** elegibilidad y modulador de tres factores.
+2. **Selección/consolidación:** tags, recursos y replay priorizado.
+3. **Estabilidad:** homeostasis sináptica e intrínseca, con escalas temporales lentas.
+4. **Control de capacidad:** sparsity y poda selectiva después de medir uso y retención.
+5. **Renovación:** renormalización offline y LTD condicionada, con protección de memorias útiles.
+6. **Lecturas auxiliares:** ELM y one-shot como experimentos separados, no sustitutos ya demostrados del entrenamiento autoregresivo.
+
+No se concluye que Lumen «tenga» ya los mecanismos 7–12, que el Transformer carezca de mecanismos de estabilización equivalentes, ni que estos expliquen la diferencia de velocidad o los resultados de holdout. Tampoco se puede atribuir causalidad a métricas aisladas como `homeo_out`, `gate+`, `dead`, `bias_norm` o `sleep` sin rastrear sus definiciones y comparar ablaciones.
+
+## Orden de prioridad actualizado
+
+1. Auditar el código y telemetría existente: homeostasis, actividad efectiva, replay, tags y modulador.
+2. Medir primero sin cambiar dinámica: curvas de norma, actividad, concentración, reactivación y coste.
+3. Probar homeostasis/umbral en ablaciones independientes y lentas.
+4. Probar tag × replay con diseño factorial.
+5. Evaluar poda y LTD primero como máscaras reversibles/simuladas.
+6. Probar la fase offline con presupuesto de cómputo controlado.
+7. Mantener ELM y one-shot en bancos auxiliares hasta que demuestren valor.
+8. No combinar mecanismos en un único train hasta que cada uno haya superado su prueba aislada; después, probar interacciones con un diseño factorial pequeño.
+
+## Referencias adicionales verificadas
+
+- Turrigiano (2008), DOI [10.1016/j.cell.2008.10.008](https://doi.org/10.1016/j.cell.2008.10.008). PubMed/PMC: [PMID 18984155](https://pubmed.ncbi.nlm.nih.gov/18984155/).
+- Ibata, Sun & Turrigiano (2008), DOI [10.1016/j.neuron.2008.02.031](https://doi.org/10.1016/j.neuron.2008.02.031).
+- Desai, Rutherford & Turrigiano (1999), DOI [10.1038/9165](https://doi.org/10.1038/9165).
+- Chechik, Meilijson & Ruppin (1998), DOI [10.1162/089976698300017124](https://doi.org/10.1162/089976698300017124).
+- Tononi & Cirelli (2014), DOI [10.1016/j.neuron.2013.12.025](https://doi.org/10.1016/j.neuron.2013.12.025).
+- Buzsáki (2015), DOI [10.1002/hipo.22488](https://doi.org/10.1002/hipo.22488).
+- Foster & Wilson (2006), DOI [10.1038/nature04587](https://doi.org/10.1038/nature04587).
+- Collingridge et al. (2010), DOI [10.1038/nrn2867](https://doi.org/10.1038/nrn2867).
+- Malenka & Bear (2004), DOI [10.1038/nrn1475](https://doi.org/10.1038/nrn1475).

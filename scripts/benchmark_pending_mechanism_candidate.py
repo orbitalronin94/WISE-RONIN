@@ -331,7 +331,7 @@ def main():
         if candidate is None:
             candidate = run_training(args.candidate_root, "candidate", candidate_profile, args, args.output)
         reasons = []
-        if "prioritized_replay" in args.candidate or "sleep_downscaling" in args.candidate or "tag_replay" in args.candidate or "scaling_plus_downscale" in args.candidate or "all_pending" in args.candidate:
+        if "prioritized_replay" in args.candidate or "sleep_downscaling" in args.candidate or "tag_replay" in args.candidate or "plus_replay" in args.candidate or "plus_downscale" in args.candidate or "scaling_plus_downscale" in args.candidate or "all_pending" in args.candidate:
             if candidate.get("sleep_skipped"):
                 candidate["status"] = "not_exercised"
                 candidate["reason"] = "no había registros consolidados; el órgano de sueño no llegó a actuar"

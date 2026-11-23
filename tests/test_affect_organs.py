@@ -1,4 +1,5 @@
 import pytest
+import torch
 from model.pain import Nociception
 from model.pleasure import Recompensa
 
@@ -35,3 +36,24 @@ def test_invalid_values_rejected_and_state_persists():
     restored = Recompensa(ema=0.0)
     restored.load_state_dict(organ.state_dict())
     assert restored.state() == organ.state()
+
+
+def test_glucose_pain_and_pleasure_consume_one_shared_check_loss_signal():
+    from model.energy import Presupuesto
+
+    budget = Presupuesto(dim=4)
+    pain, pleasure = Nociception(ema=0.0), Recompensa(ema=0.0)
+    first = budget.check_loss_signal(5.0)
+    assert first["has_baseline"] is False
+    pain.update_signal(first["regression"])
+    pleasure.update_signal(first["improvement"])
+
+    second = budget.check_loss_signal(4.0)
+    assert second["has_baseline"] is True
+    assert second["improvement"] == pytest.approx(0.2)
+    assert second["regression"] == pytest.approx(-0.2)
+    pain_state = pain.update_signal(second["regression"])
+    pleasure_state = pleasure.update_signal(second["improvement"])
+    assert pain_state["pain"] == 0.0
+    assert pleasure_state["pleasure"] > 0.0
+    assert torch.isfinite(budget.glucose)

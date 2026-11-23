@@ -1,0 +1,317 @@
+name: LUMEN — 20 organ simplification hypotheses
+
+on:
+  push:
+    branches: [benchmark/lumen-organ-simplification-20]
+    paths:
+      - ".github/workflows/benchmark-lumen-organ-simplification-20.yml"
+      - "model/**"
+      - "train/train.py"
+      - "tests/test_organ_simplifications.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-organ-simplification-${{ github.run_id }
+  cancel-in-progress: false
+
+env:
+  PARENT_RUN_ID: "45136184396"
+  PREPARED_RUN_ID: "45136184396"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install parity-test runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm pytest
+      - name: Verify outputs, persistent states and gradients
+        run: |
+          python -m pytest -q tests/test_organ_simplifications.py tests/test_hotspot_fastpaths.py tests/test_delta_backward_fastpaths.py
+
+  benchmark:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        profile:
+          - control_repeat
+          - delta_reuse_write_update
+          - delta_always_apply_eligibility
+          - delta_trace_norm_on_demand
+          - delta_share_causal_masks
+          - homeostasis_reuse_input_activity
+          - homeostasis_fused_scatter
+          - memory_bmm_read
+          - chunk_nearest_gather
+          - delta_reuse_plus_always
+          - delta_reuse_plus_masks
+          - delta_reuse_plus_diag
+          - delta_all_four
+          - homeostasis_both
+          - memory_plus_chunk
+          - delta_plus_memory
+          - delta_plus_homeostasis
+          - delta_plus_chunk
+          - delta_plus_homeostasis_memory
+          - all_exact_simplifications
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+      - name: Download frozen v2 plus personality corpus
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-v2-plus-personality-250k-45136184396
+          path: prepared
+          repository: ${{ github.repository }
+          run-id: ${{ env.PREPARED_RUN_ID }
+          github-token: ${{ secrets.GITHUB_TOKEN }
+      - name: Download promoted step-140700 Lumen checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-lumen-step140700-v2-personality-45136184396
+          path: lumen-parent
+          repository: ${{ github.repository }
+          run-id: ${{ env.PARENT_RUN_ID }
+          github-token: ${{ secrets.GITHUB_TOKEN }
+      - name: Verify frozen inputs and checkpoint
+        run: |
+          set -euo pipefail
+          test -s prepared/data/spanish-v2-plus-personality-250k.jsonl
+          test -s prepared/data/spanish-v2-plus-personality-token-cache.pt
+          test -s prepared/artifacts/spanish-v2/tokenizer.json
+          python - <<'PY'
+          import torch
+          p="lumen-parent/checkpoints/lumen-v2-140700/step_140700.pt"
+          s=torch.load(p,map_location="cpu",weights_only=False)
+          assert s["step"] == 140700
+          assert s["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          assert s["pilot_all_rows"] is True
+          assert s["training_config"]["batch"] == 8 and s["training_config"]["max_len"] == 128
+          assert s["tokenizer_sha256"] == "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          assert s.get("optimizer") and s.get("scheduler_transition") and s.get("rng")
+          assert int(s["scheduler_transition"]["current_step"]) in (140700,140701)
+          print("Exact parent verified:",s["step"],"tokens_seen:",s["tokens_seen"])
+          PY
+      - name: Write baseline profile
+        env:
+          PROFILE: ${{ matrix.profile }
+        run: |
+          mkdir -p "artifacts/results/$PROFILE" config
+          python - <<'PY'
+          import json, os
+          p={"threads":4,"interop_threads":2,"mkldnn_enabled":False,"foreach":False,"cpu_affinity":True,
+             "delta_pre_normalize":False,"homeostasis_fused_scatter":False,"delta_parallel_refinements":2,
+             "delta_reuse_write_update":False,"delta_always_apply_eligibility":False,
+             "delta_trace_norm_diagnostics_on_demand":False,"delta_share_causal_masks":False,
+             "homeostasis_reuse_input_activity":False,"memory_bmm_read":False,"chunk_nearest_gather":False,
+             "organs":{"pain":{"response":0.30,"decay":0.55},"pleasure":{"response":0.75},
+                       "pain_budget_gain":0.10,"pleasure_budget_gain":0.1125}}
+          json.dump(p,open("config/runtime_profile.json","w"),indent=2,sort_keys=True)
+          json.dump(p,open(f"artifacts/results/{os.environ['PROFILE']}/control_profile.json","w"),indent=2,sort_keys=True)
+          PY
+      - name: Run 100-step matched control
+        env:
+          PROFILE: ${{ matrix.profile }
+        run: |
+          set -euo pipefail
+          python -m train.train --steps 100 --resume lumen-parent/checkpoints/lumen-v2-140700/step_140700.pt \
+            --phase 1 --pilot-all-rows --no-sleep \
+            --data prepared/data/spanish-v2-plus-personality-250k.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
+            --batch 8 --max-len 128 --seed 42 --runtime-profile config/runtime_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 155700 \
+            --scheduler-transition --restart-scheduler-transition --transition-start 140700 --transition-end 155700 \
+            --warmup-transition 100 --transition-plateau-steps 6000 --transition-min-lr-ratio 0.5 \
+            --log-every 20 --checkpoint-every 100000 --recovery-checkpoint-every 0 \
+            --parameter-check-every 100 --ckpt-dir /tmp/lumen-organ-control \
+            2>&1 | tee "artifacts/results/$PROFILE/control.log"
+      - name: Apply simplification hypothesis
+        env:
+          PROFILE: ${{ matrix.profile }
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          name=os.environ["PROFILE"]
+          p={"threads":4,"interop_threads":2,"mkldnn_enabled":False,"foreach":False,"cpu_affinity":True,
+             "delta_pre_normalize":False,"homeostasis_fused_scatter":False,"delta_parallel_refinements":2,
+             "delta_reuse_write_update":False,"delta_always_apply_eligibility":False,
+             "delta_trace_norm_diagnostics_on_demand":False,"delta_share_causal_masks":False,
+             "homeostasis_reuse_input_activity":False,"memory_bmm_read":False,"chunk_nearest_gather":False,
+             "organs":{"pain":{"response":0.30,"decay":0.55},"pleasure":{"response":0.75},
+                       "pain_budget_gain":0.10,"pleasure_budget_gain":0.1125}}
+          variants={
+            "control_repeat":{},
+            "delta_reuse_write_update":{"delta_reuse_write_update":True},
+            "delta_always_apply_eligibility":{"delta_always_apply_eligibility":True},
+            "delta_trace_norm_on_demand":{"delta_trace_norm_diagnostics_on_demand":True},
+            "delta_share_causal_masks":{"delta_share_causal_masks":True},
+            "homeostasis_reuse_input_activity":{"homeostasis_reuse_input_activity":True},
+            "homeostasis_fused_scatter":{"homeostasis_fused_scatter":True},
+            "memory_bmm_read":{"memory_bmm_read":True},
+            "chunk_nearest_gather":{"chunk_nearest_gather":True},
+            "delta_reuse_plus_always":{"delta_reuse_write_update":True,"delta_always_apply_eligibility":True},
+            "delta_reuse_plus_masks":{"delta_reuse_write_update":True,"delta_share_causal_masks":True},
+            "delta_reuse_plus_diag":{"delta_reuse_write_update":True,"delta_trace_norm_diagnostics_on_demand":True},
+            "delta_all_four":{"delta_reuse_write_update":True,"delta_always_apply_eligibility":True,"delta_trace_norm_diagnostics_on_demand":True,"delta_share_causal_masks":True},
+            "homeostasis_both":{"homeostasis_reuse_input_activity":True,"homeostasis_fused_scatter":True},
+            "memory_plus_chunk":{"memory_bmm_read":True,"chunk_nearest_gather":True},
+            "delta_plus_memory":{"delta_reuse_write_update":True,"delta_share_causal_masks":True,"memory_bmm_read":True},
+            "delta_plus_homeostasis":{"delta_reuse_write_update":True,"delta_always_apply_eligibility":True,"homeostasis_reuse_input_activity":True,"homeostasis_fused_scatter":True},
+            "delta_plus_chunk":{"delta_reuse_write_update":True,"delta_share_causal_masks":True,"chunk_nearest_gather":True},
+            "delta_plus_homeostasis_memory":{"delta_reuse_write_update":True,"delta_always_apply_eligibility":True,"homeostasis_reuse_input_activity":True,"homeostasis_fused_scatter":True,"memory_bmm_read":True},
+            "all_exact_simplifications":{"delta_reuse_write_update":True,"delta_always_apply_eligibility":True,"delta_trace_norm_diagnostics_on_demand":True,"delta_share_causal_masks":True,"homeostasis_reuse_input_activity":True,"homeostasis_fused_scatter":True,"memory_bmm_read":True,"chunk_nearest_gather":True}}
+          assert name in variants
+          p.update(variants[name])
+          json.dump(p,open("config/runtime_profile.json","w"),indent=2,sort_keys=True)
+          json.dump({"name":name,"steps":100,"seed":42,"parent_step":140700,"changes":variants[name],
+                     "runtime_profile":p,"all_organs_retained":True},
+                    open(f"artifacts/results/{name}/hypothesis.json","w"),indent=2,sort_keys=True)
+          print(json.dumps({"name":name,"changes":variants[name]},indent=2))
+          PY
+          python -m json.tool config/runtime_profile.json >/dev/null
+      - name: Run 100-step candidate from same checkpoint and seed
+        env:
+          PROFILE: ${{ matrix.profile }
+        run: |
+          set -euo pipefail
+          python -m train.train --steps 100 --resume lumen-parent/checkpoints/lumen-v2-140700/step_140700.pt \
+            --phase 1 --pilot-all-rows --no-sleep \
+            --data prepared/data/spanish-v2-plus-personality-250k.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
+            --batch 8 --max-len 128 --seed 42 --runtime-profile config/runtime_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 155700 \
+            --scheduler-transition --restart-scheduler-transition --transition-start 140700 --transition-end 155700 \
+            --warmup-transition 100 --transition-plateau-steps 6000 --transition-min-lr-ratio 0.5 \
+            --log-every 20 --checkpoint-every 100000 --recovery-checkpoint-every 0 \
+            --parameter-check-every 100 --ckpt-dir /tmp/lumen-organ-candidate \
+            2>&1 | tee "artifacts/results/$PROFILE/candidate.log"
+      - name: Parse matched loss, timings and organ traces
+        if: always()
+        env:
+          PROFILE: ${{ matrix.profile }
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, re, statistics
+          root=pathlib.Path("artifacts/results")/os.environ["PROFILE"]
+          def read(name):
+              path=root/f"{name}.log"
+              if not path.exists(): return {"status":"missing"}
+              raw=path.read_text(errors="replace")
+              def nums(pattern): return [float(v) for v in re.findall(pattern,raw)]
+              total=nums(r"profile_20:.*?total=([0-9.]+)s")
+              back=nums(r"profile_20:.*?backward=([0-9.]+)s")
+              forward=nums(r"profile_20:.*?forward=([0-9.]+)s")
+              loss=nums(r"glucose_check step=\\d+ mean_loss=([0-9.eE+-]+)")
+              pain=nums(r"affect_check step=\\d+ pain=([0-9.eE+-]+)")
+              pleasure=nums(r"affect_check step=\\d+ pain=[0-9.eE+-]+ regression=[0-9.eE+-]+ pleasure=([0-9.eE+-]+)")
+              glucose=nums(r"glucose_check step=\\d+ mean_loss=[0-9.eE+-]+ improved=(?:True|False|None) signal=[a-z_]+ reserve=([0-9.eE+-]+)")
+              trace=re.findall(r"eligibility_feedback step=\\d+ signal=([0-9.eE+-]+) trace_norms=(\\[[^\\]]+\\])",raw)
+              dead=re.findall(r"effective_dead_by_layer step=\\d+ values=([0-9.,]+)",raw)
+              bad=("NONFINITE" in raw or "non-finite" in raw.lower())
+              if any(len(v)!=5 for v in (total,back,loss,pain,pleasure,glucose,trace)) or bad:
+                  return {"status":"incomplete_or_unhealthy","windows":{"total":len(total),"backward":len(back),"loss":len(loss),"pain":len(pain),"pleasure":len(pleasure),"glucose":len(glucose),"trace":len(trace)},"nonfinite":bad,"tail":raw[-1500:]}
+              return {"status":"ok","steps":100,"total_seconds":round(sum(total),4),"backward_seconds":round(sum(back),4),
+                "forward_seconds":round(sum(forward),4) if len(forward)==5 else None,
+                "mean_loss":round(statistics.mean(loss),7),"loss_windows":loss,"pain_trace":pain,
+                "pleasure_trace":pleasure,"glucose_reserve_trace":glucose,"eligibility_trace_samples":trace,
+                "effective_dead_by_layer":dead[-1] if dead else None,"steps_per_second":round(100/sum(total),6)}
+          c=read("control"); n=read("candidate"); ok=c.get("status")=="ok" and n.get("status")=="ok"
+          report={"hypothesis":os.environ["PROFILE"],"status":"ok" if ok else "incomplete_or_unhealthy",
+            "control":c,"candidate":n,
+            "speedup":round(c["total_seconds"]/n["total_seconds"],6) if ok else None,
+            "backward_speedup":round(c["backward_seconds"]/n["backward_seconds"],6) if ok and n["backward_seconds"] else None,
+            "loss_delta_percent":round(100*(n["mean_loss"]/c["mean_loss"]-1),5) if ok and c["mean_loss"] else None,
+            "parent_step":140700,"final_step":140800,"seed":42,
+            "measurement":"five 20-step windows; matched training metrics, not a holdout"}
+          json.dump(report,open(root/"comparison.json","w"),indent=2)
+          print(json.dumps(report,indent=2))
+          PY
+      - name: Upload individual evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lumen-organ-simplification-${{ matrix.profile }-${{ github.run_id }
+          path: artifacts/results/${{ matrix.profile }/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6
+
+  aggregate:
+    needs: benchmark
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Download all individual reports
+        uses: actions/download-artifact@v7
+        with:
+          pattern: lumen-organ-simplification-*-${{ github.run_id }
+          path: artifacts/all
+          merge-multiple: false
+      - name: Rank only complete, healthy and loss-safe hypotheses
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          reports=[]
+          for p in pathlib.Path("artifacts/all").glob("**/comparison.json"):
+              try: reports.append(json.loads(p.read_text()))
+              except Exception: pass
+          valid=[r for r in reports if r.get("status")=="ok" and r.get("speedup") is not None and r.get("loss_delta_percent") is not None]
+          eligible=[r for r in valid if r["speedup"]>=1.02 and r["loss_delta_percent"]<=0.5]
+          eligible.sort(key=lambda r:(r["speedup"],r.get("backward_speedup") or 0),reverse=True)
+          ranked=sorted(valid,key=lambda r:(r["speedup"],r.get("backward_speedup") or 0),reverse=True)
+          report={"expected":20,"reported":len(reports),"valid":len(valid),"eligible":len(eligible),
+            "gate":{"minimum_speedup":1.02,"maximum_loss_regression_percent":0.5,"all_five_loss_and_organ_windows":True,"parity_tests_passed":True},
+            "winner":eligible[0] if eligible else None,"ranked":ranked,
+            "incomplete":[r.get("hypothesis") for r in reports if r.get("status")!="ok"],
+            "note":"100-step screen, not a holdout. All candidates retain every organ and all four Delta layers; only exact-equivalence operations and diagnostic scheduling are changed."}
+          pathlib.Path("artifacts").mkdir(exist_ok=True)
+          json.dump(report,open("artifacts/lumen_organ_simplification_20.json","w"),indent=2)
+          print(json.dumps(report,indent=2))
+          PY
+      - name: Upload aggregate ranking
+        uses: actions/upload-artifact@v7
+        with:
+          name: lumen-organ-simplification-20-report-${{ github.run_id }
+          path: artifacts/lumen_organ_simplification_20.json
+          if-no-files-found: error
+          retention-days: 90

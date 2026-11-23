@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/holdout-approved-185700.yml"
+      - ".github/workflows/holdout-approved-170700.yml"
   workflow_dispatch:
 
 permissions:

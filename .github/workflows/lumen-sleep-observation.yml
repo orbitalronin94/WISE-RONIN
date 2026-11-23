@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - ".github/workflows/lumen-sleep-observation.yml"
+      - "scripts/observe_lumen_sleep.py"
+      - "train/sleep.py"
   workflow_dispatch:
 
 permissions:

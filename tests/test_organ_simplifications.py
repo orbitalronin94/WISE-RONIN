@@ -128,3 +128,23 @@ def test_chunk_nearest_gather_matches_interpolate_outputs_and_gradients():
     out_ref.square().mean().backward()
     out_new.square().mean().backward()
     torch.testing.assert_close(x_new.grad, x_ref.grad, atol=2e-6, rtol=2e-5)
+
+def test_homeostasis_combined_scatter_and_activity_reuse_preserve_function():
+    torch.manual_seed(43)
+    reference = Homeostasis(dim=32, k_top=8)
+    candidate = copy.deepcopy(reference)
+    candidate.fused_scatter_add = True
+    candidate.reuse_input_activity = True
+    x_ref = torch.randn(3, 11, 32, requires_grad=True)
+    x_new = x_ref.detach().clone().requires_grad_(True)
+    out_ref = reference(x_ref, collect_diagnostics=True)
+    out_new = candidate(x_new, collect_diagnostics=True)
+    torch.testing.assert_close(out_new, out_ref, atol=1e-6, rtol=1e-6)
+    torch.testing.assert_close(candidate.m, reference.m, atol=1e-7, rtol=1e-6)
+    torch.testing.assert_close(candidate.effective_m, reference.effective_m, atol=1e-7, rtol=1e-6)
+    torch.testing.assert_close(candidate.bias, reference.bias, atol=1e-7, rtol=1e-6)
+    assert abs(candidate.last_input_positive - reference.last_input_positive) < 1e-7
+    out_ref.square().mean().backward()
+    out_new.square().mean().backward()
+    torch.testing.assert_close(x_new.grad, x_ref.grad, atol=1e-6, rtol=1e-6)
+    _compare_grads(reference, candidate, atol=1e-6, rtol=1e-6)

@@ -25,6 +25,7 @@ class AdaptiveChunking(nn.Module):
         self.surprise_scale = float(surprise_scale)
         self.last_chunk_size = self.max_chunk
         self.last_chunk_count = 0
+        self.nearest_gather = False
 
     def choose_chunk_size(self, surprise):
         score = float(surprise.detach().float().mean().item())
@@ -48,7 +49,14 @@ class AdaptiveChunking(nn.Module):
         self.last_chunk_count = chunks
 
         pooled = F.adaptive_avg_pool1d(x.transpose(1, 2), chunks)
-        context = F.interpolate(pooled, size=steps, mode="nearest").transpose(1, 2)
+        if self.nearest_gather:
+            indices = torch.div(
+                torch.arange(steps, device=x.device) * chunks, steps,
+                rounding_mode="floor",
+            ).clamp_max(chunks - 1)
+            context = pooled.index_select(-1, indices).transpose(1, 2)
+        else:
+            context = F.interpolate(pooled, size=steps, mode="nearest").transpose(1, 2)
         # Parameter-free similarity gate: keep the matched-size comparison fair.
         similarity = (x * context).sum(dim=-1, keepdim=True) / math.sqrt(self.dim)
         gate = torch.sigmoid(similarity)

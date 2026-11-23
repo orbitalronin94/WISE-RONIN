@@ -5,6 +5,11 @@
   "foreach": false,
   "cpu_affinity": true,
   "delta_pre_normalize": false,
+  "delta_parallel_refinements": 2,
+  "delta_reuse_write_update": false,
+  "delta_always_apply_eligibility": false,
+  "delta_trace_norm_diagnostics_on_demand": false,
+  "delta_share_causal_masks": false,
   "homeostasis_fused_scatter": false,
   "profile_id": "screening_winner_mkldnn_off_4x2_v1",
   "benchmark_metadata": {
@@ -20,6 +25,6 @@
     "cpu_affinity": true,
     "delta_pre_normalize": false,
     "homeostasis_fused_scatter": false,
-    "selection_note": "Top-ranked screening candidate: 2.3813% lower wall time and 2.1948% lower backward time than its matched control; mean training loss delta -0.00001%. Provisional only: below the predeclared 3% promotion threshold, 100-step screen, not a holdout. Validate with longer repeated benchmarks before treating as a robust speed improvement."
+    "selection_note": "Existing CPU profile retained. Delta fastpaths are now wired to this profile but remain disabled by default until the corrected checkpoint-migration benchmark completes; do not infer a speedup or quality gain from wiring alone."
   }
 }

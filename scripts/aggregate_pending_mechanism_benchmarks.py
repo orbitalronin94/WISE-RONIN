@@ -61,8 +61,36 @@ def main():
         }
         for name in missing
     ]
-    approved = [r for r in reports if r.get("decision") == "APPROVED"]
-    pending = [r for r in reports if r.get("decision") != "APPROVED"] + pending_missing
+    raw_approved = [r for r in reports if r.get("decision") == "APPROVED"]
+    # A combination cannot promote a mechanism whose isolated hypothesis failed.
+    requirements = {
+        "04_tag_protected_ltd": ["01_tagging_capture"],
+        "09_tag_plus_intrinsic": ["01_tagging_capture", "02_intrinsic_threshold"],
+        "10_tag_plus_pruning": ["01_tagging_capture", "03_simulated_pruning"],
+        "11_tag_plus_one_shot": ["01_tagging_capture", "05_one_shot_memory"],
+        "12_tag_plus_scaling": ["01_tagging_capture", "06_homeostatic_scaling"],
+        "13_tag_plus_replay": ["01_tagging_capture", "07_prioritized_replay"],
+        "14_tag_plus_downscale": ["01_tagging_capture", "08_sleep_downscaling"],
+        "15_intrinsic_plus_pruning": ["02_intrinsic_threshold", "03_simulated_pruning"],
+        "16_one_shot_plus_scaling": ["05_one_shot_memory", "06_homeostatic_scaling"],
+        "17_pruning_plus_ltd": ["03_simulated_pruning", "01_tagging_capture", "04_tag_protected_ltd"],
+        "18_scaling_plus_downscale": ["06_homeostatic_scaling", "08_sleep_downscaling"],
+        "19_tag_replay_downscale": ["01_tagging_capture", "07_prioritized_replay", "08_sleep_downscaling"],
+        "20_all_pending": EXPECTED_CANDIDATES[:8],
+    }
+    raw_approved_names = {r.get("candidate") for r in raw_approved}
+    approved, combination_blocked = [], []
+    for report in raw_approved:
+        required = requirements.get(report.get("candidate"), [])
+        missing_components = [name for name in required if name not in raw_approved_names]
+        if missing_components:
+            report = dict(report)
+            report["decision"] = "PENDING"
+            report["reasons"] = [f"la combinación no puede promoverse: componentes individuales no aprobados ({', '.join(missing_components)})"]
+            combination_blocked.append(report)
+        else:
+            approved.append(report)
+    pending = [r for r in reports if r.get("decision") != "APPROVED"] + combination_blocked + pending_missing
 
     # Start from main's committed runtime profile, not a hand-maintained approximation.
     main_profile_path = args.root / "main-runtime-profile.json"
@@ -83,6 +111,8 @@ def main():
         "received_candidates": sorted(by_name),
         "missing_candidates": missing,
         "approved_candidates": [r["candidate"] for r in approved],
+        "raw_screening_passes": sorted(raw_approved_names),
+        "combination_blocked": [r["candidate"] for r in combination_blocked],
         "pending_candidates": [
             {
                 "candidate": r.get("candidate"),

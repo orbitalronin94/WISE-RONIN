@@ -20,6 +20,7 @@ El repositorio conserva el nombre técnico **WISE-RONIN**. El proyecto activo es
 - [La campaña de entrenamiento: de cero a 133,2k](#la-campaña-de-entrenamiento-de-cero-a-1332k)
 - [Resultados emparejados](#resultados-emparejados)
 - [Corpus y evaluación](#corpus-y-evaluación)
+- [Benchmark de optimización CPU](#benchmark-de-optimización-cpu)
 - [Cómo se investiga](#cómo-se-investiga)
 - [Documentación y código](#documentación-y-código)
 - [Límites y compromisos](#límites-y-compromisos)
@@ -146,6 +147,23 @@ La procedencia, fuentes, manifiesto, hashes y estado de la ampliación están en
 
 **Corpus v3 congelado y próximo paso:** v3.0.0 queda como la siguiente ampliación planificada para el próximo train emparejado. El experimento comprobará si seguir escalando y diversificando el corpus de forma gradual mejora la generalización, en lugar de asumir que más datos siempre ayudan. La auditoría automática está completada, pero no equivale a una certificación perfecta: se mantienen pendientes la revisión de near-duplicates y respuestas repetidas, el examen de los 41 marcadores potencialmente sensibles y la trazabilidad individual de parte de la literatura. El manifiesto conserva `training_authorized=false` como registro del estado de admisión de la auditoría; antes de ejecutar el train se deberá cerrar y documentar explícitamente el gate de datos. [Ficha y composición v3](docs/CORPUS_V3_ES.md) · [Auditoría 45142717502](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45142717502).
 
+## Benchmark de optimización CPU
+
+El 23 de noviembre de 2026 se ejecutó un cribado paralelo de **20 hipótesis de optimización** sobre Lumen-Ronin. Cada candidata y su control partieron del mismo checkpoint promovido (step 140.700), corpus v2 + personalidad, tokenizer, seed 42, scheduler y configuración de entrenamiento; se midieron 100 pasos por brazo, en cinco ventanas de 20 pasos. El experimento completo está en [GitHub Actions run 45158484545](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45158484545).
+
+**Ganador del cribado: desactivar MKLDNN (mkldnn_enabled=false)**, manteniendo cuatro hilos intra-op, dos inter-op, AdamW foreach=false y afinidad CPU fijada.
+
+| Métrica | Control | MKLDNN off | Cambio |
+|---|---:|---:|---:|
+| Tiempo total / 100 pasos | 31,213 s | 30,487 s | **−2,38 %** |
+| Tiempo backward | 20,022 s | 19,592 s | **−2,19 %** |
+| Training loss media | 3,2091804 | 3,2091800 | −0,00001 % |
+
+El segundo resultado fue homeostasis_fused_scatter (+1,96 % de velocidad); el tercero, affinity_off (+1,47 %). Las variantes de dos y seis hilos empeoraron notablemente el tiempo en este runner. Las sustituciones Delta por bmm, la eliminación de diagnósticos y no_grad para el resumen no mejoraron el resultado de forma consistente. Por tanto, no se han promovido cambios en los mecanismos Delta ni se han desactivado órganos.
+
+**Importante: es una selección provisional, no una victoria que haya superado el gate.** El protocolo había fijado un mínimo de +3 % de aceleración y una regresión máxima de loss del 0,5 %; ninguna de las 20 candidatas alcanzó el umbral de velocidad (0/20 elegibles). Se adopta MKLDNN off como mejor configuración observada para el siguiente ciclo, pero el margen del 2,38 % procede de una sola comparación de 100 pasos y puede incluir variación del runner. No es un holdout ni evidencia de mejor calidad o generalización. Debe confirmarse con repeticiones más largas antes de considerarlo una optimización robusta.
+
+La configuración activa queda registrada en config/lumen_cpu_profile.json. El informe agregado y los informes individuales se conservaron como artefactos de la ejecución. El benchmark también incorporó una migración de compatibilidad para los checkpoints step-140.700 anteriores a las trazas persistentes de elegibilidad: únicamente inicializa a cero esos buffers nuevos ausentes y mantiene estricta la comprobación de cualquier otra clave inesperada o ausente.
 ## Cómo se investiga
 
 El proyecto no acepta una mejora solo porque baje la loss o porque un workflow se llame `fast`.

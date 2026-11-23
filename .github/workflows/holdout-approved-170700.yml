@@ -1,10 +1,10 @@
-name: LUMEN vs Transformer — paired holdout at 170700
+name: LUMEN vs Transformer — paired holdout at 185700
 
 on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/holdout-approved-170700.yml"
+      - ".github/workflows/holdout-approved-185700.yml"
   workflow_dispatch:
 
 permissions:
@@ -12,11 +12,11 @@ permissions:
   actions: read
 
 concurrency:
-  group: lumen-transformer-holdout-170700
+  group: lumen-transformer-holdout-185700
   cancel-in-progress: false
 
 env:
-  SOURCE_RUN_ID: "45177953462"
+  SOURCE_RUN_ID: "45200252793"
   DATA_RUN_ID: "45149684913"
   OMP_NUM_THREADS: "4"
   MKL_NUM_THREADS: "4"
@@ -44,18 +44,18 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.DATA_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Download Lumen checkpoint from completed 170700 training
+      - name: Download Lumen checkpoint from completed 185700 training
         uses: actions/download-artifact@v7
         with:
-          name: lumen-approved-neuroplasticity-step170700-45177953462
+          name: lumen-approved-neuroplasticity-step185700-45200252793
           path: lumen
           repository: ${{ github.repository }}
           run-id: ${{ env.SOURCE_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Download Transformer checkpoint from completed 170700 training
+      - name: Download Transformer checkpoint from completed 185700 training
         uses: actions/download-artifact@v7
         with:
-          name: transformer-control-step170700-45177953462
+          name: transformer-control-step185700-45200252793
           path: transformer
           repository: ${{ github.repository }}
           run-id: ${{ env.SOURCE_RUN_ID }}
@@ -65,8 +65,8 @@ jobs:
           set -euo pipefail
           test -s prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl
           test -s prepared/artifacts/spanish-v2/tokenizer.json
-          LUMEN_CKPT="$(find lumen -name step_170700.pt -print -quit)"
-          TRANSFORMER_CKPT="$(find transformer -name step_170700.pt -print -quit)"
+          LUMEN_CKPT="$(find lumen -name step_185700.pt -print -quit)"
+          TRANSFORMER_CKPT="$(find transformer -name step_185700.pt -print -quit)"
           test -n "$LUMEN_CKPT" && test -s "$LUMEN_CKPT"
           test -n "$TRANSFORMER_CKPT" && test -s "$TRANSFORMER_CKPT"
           export LUMEN_CKPT TRANSFORMER_CKPT
@@ -78,8 +78,8 @@ jobs:
           assert len(rows)==2431, f"Expected frozen 2431-question holdout, got {len(rows)}"
           l=torch.load(os.environ["LUMEN_CKPT"],map_location="cpu",weights_only=False)
           t=torch.load(os.environ["TRANSFORMER_CKPT"],map_location="cpu",weights_only=False)
-          assert int(l.get("step",-1))==170700, l.get("step")
-          assert int(t.get("step",-1))==170700, t.get("step")
+          assert int(l.get("step",-1))==185700, l.get("step")
+          assert int(t.get("step",-1))==185700, t.get("step")
           print("Lumen checkpoint architecture_id:",l.get("architecture_id"))
           assert isinstance(l.get("model"),dict) and l.get("model"), "Lumen checkpoint missing model state_dict"
           assert t.get("architecture_id")=="decoder_transformer_4l_d192_h4_ff576_tied_v1"
@@ -87,7 +87,7 @@ jobs:
           assert l.get("data_sha256")==t.get("data_sha256")
           assert l.get("optimizer") and t.get("optimizer")
           assert l.get("rng") and t.get("rng")
-          print("Verified both step-170700 checkpoints and model state dictionaries.")
+          print("Verified both step-185700 checkpoints and model state dictionaries.")
           print("Shared frozen holdout rows:",len(rows))
           print("Shared tokenizer SHA256:",l.get("tokenizer_sha256"))
           print("Shared training data SHA256:",l.get("data_sha256"))
@@ -105,18 +105,18 @@ jobs:
             --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
             --lumen "$LUMEN_CKPT" \
             --transformer "$TRANSFORMER_CKPT" \
-            --expected-step 170700 \
-            --out results/step170700_paired_v2_personality_holdout.json \
+            --expected-step 185700 \
+            --out results/step185700_paired_v2_personality_holdout.json \
             --threads 4 --max-len 128
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: ronin-step170700-paired-v2-personality-holdout-${{ github.run_id }}
-          path: results/step170700_paired_v2_personality_holdout.json
+          name: ronin-step185700-paired-v2-personality-holdout-${{ github.run_id }}
+          path: results/step185700_paired_v2_personality_holdout.json
           if-no-files-found: warn
           retention-days: 90
       - name: Report holdout result
         if: always()
         run: |
-          echo "Paired 170700 holdout run: ${{ github.run_id }}"
-          test -s results/step170700_paired_v2_personality_holdout.json
+          echo "Paired 185700 holdout run: ${{ github.run_id }}"
+          test -s results/step185700_paired_v2_personality_holdout.json

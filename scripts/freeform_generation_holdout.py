@@ -25,12 +25,34 @@ def load_rows(path: str):
 
 
 def freeform_prompt(raw: str) -> str:
-    # The source holdout is multiple-choice. Keep context/question only:
-    # discard every option and any pre-existing answer marker/content.
+    # Strip all multiple-choice leakage, then turn the remaining item into a
+    # natural, explicit open question. In particular, "¿Qué describe mejor a X?"
+    # becomes "¿Quién es X?", which tests identity/description rather than
+    # recognition among supplied options.
     text = str(raw).strip()
     text = re.split(r"\n\s*Opciones\s*:", text, maxsplit=1, flags=re.IGNORECASE)[0]
     text = re.split(r"\n\s*Respuesta\s*:", text, maxsplit=1, flags=re.IGNORECASE)[0]
-    return text.rstrip() + "\nRespuesta:"
+    match = re.search(r"\n\s*Pregunta\s*:\s*(.*)$", text, flags=re.IGNORECASE | re.DOTALL)
+    if match:
+        prefix = text[:match.start()].strip()
+        question = match.group(1).strip()
+    else:
+        prefix, question = "", text.strip()
+
+    question = re.sub(
+        r"^¿?\s*Qué\s+describe\s+mejor\s+a\s+(.+?)\s*\?$",
+        r"¿Quién es \1? Descríbelo según el contexto disponible.",
+        question,
+        flags=re.IGNORECASE,
+    )
+    if not question.startswith("¿") and not question.endswith("?"):
+        question = question.rstrip(".") + "?"
+    parts = []
+    if prefix:
+        parts.append(prefix)
+    parts.append("Pregunta: " + question)
+    parts.append("Responde con tus propias palabras. No hay opciones de respuesta; utiliza el contexto disponible.")
+    return "\n".join(parts) + "\nRespuesta:"
 
 
 def generate(model, tokenizer, prompt: str, *, is_lumen: bool,

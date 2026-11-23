@@ -124,7 +124,7 @@ def run_training(root: Path, label: str, profile: dict, args, out: Path) -> dict
         "profile_file": profile_path.name,
         "sleep_skipped": "Sleep skipped" in raw,
         "sleep_calls": raw.count("sleep_called:"),
-        "nonfinite_marker": "NONFINITE" in raw or bool(re.search(r"\\b(?:nan|inf)\\b", raw, re.IGNORECASE)),
+        "nonfinite_marker": "NONFINITE" in raw or bool(re.search(r"\b(?:nan|inf)\b", raw, re.IGNORECASE)),
     }
     if proc.returncode == 0 and len(records) == 100 and not result["nonfinite_marker"]:
         losses = [r["loss"] for r in records]

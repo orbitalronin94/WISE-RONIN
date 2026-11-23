@@ -60,7 +60,7 @@ El benchmark de 100 pasos es un filtro de ingeniería, no evidencia de generaliz
 
 Workflow: `.github/workflows/benchmark-neuroplasticity-18.yml`.
 
-Cada candidato dispone de un runner independiente. Dentro de ese runner se ejecuta primero el control de `main` y después el candidato, ambos desde el mismo checkpoint promovido de paso 155.700, mismo corpus v2 + personalidad de 250k, tokenizer/cache, semilla 42, secuencia RNG, batch 8, contexto 128 y perfil CPU. El candidato activa un solo delta funcional sobre la base de señales compartidas de esta PR. No se usa holdout.
+Cada candidato dispone de un runner independiente. Dentro de ese runner se ejecutan control y candidato en orden alterno según el identificador, para equilibrar el calentamiento de caché del sistema. Ambos parten del mismo checkpoint promovido de paso 155.700, mismo corpus v2 + personalidad de 250k, tokenizer/cache, semilla 42, estado RNG, batch 8 y contexto 128. El perfil CPU del control se lee directamente del fichero versionado en el `main` congelado (`80a3354cd462d0969915ca745a46babd59729f86`); la candidata hereda ese perfil y añade un solo delta funcional sobre la base de señales compartidas de esta PR. No se usa holdout.
 
 La matriz inicial contiene:
 
@@ -83,11 +83,11 @@ La matriz inicial contiene:
 17. `17_prioritized_replay`: replay priorizado/comprimido; se fuerza el ciclo de sueño dentro del bloque para medirlo.
 18. `18_sleep_downscaling`: downscaling durante sueño; se fuerza el ciclo dentro del bloque para medirlo.
 
-El gate de promoción de esta campaña exige simultáneamente: loss media de 100 pasos menor, pasos/segundo mayor, última ventana de 20 pasos no peor, dead máximo no mayor y ausencia de NaN/Inf. Los empates no pasan. Cada candidato conserva `main-control.log`, `candidate.log`, perfiles y `comparison.json` en su artefacto.
+El gate de promoción de esta campaña exige simultáneamente: loss media de 100 pasos menor, pasos/segundo mayor, última ventana de 20 pasos no peor, dead máximo no mayor y ausencia de NaN/Inf. Los empates no pasan. La velocidad se calcula a partir de la suma de los tiempos `profile_1` del trainer (100 pasos), excluyendo arranque, carga de corpus y carga del modelo; el tiempo de sueño queda incluido en el tiempo de paso. Cada informe conserva los SHA exactos de `main` y de la candidata. Cada candidato conserva `main-control.log`, `candidate.log`, perfiles y `comparison.json` en su artefacto.
 
 ### Aprobados y pendientes
 
-El workflow agrega automáticamente `AGGREGATE.md` y `approved_candidates.json`. Solo los aprobados se incluyen en el perfil combinado para el siguiente entrenamiento. Los demás permanecen pendientes con su motivo y logs; no se borran ni se etiquetan como descartados. Si ninguno pasa, no se activa ningún candidato.
+El workflow agrega automáticamente `AGGREGATE.md` y `approved_candidates.json`. Incluso si falta un artefacto, los 18 candidatos quedan contabilizados: los que no tengan resultado se anotan como pendientes por ejecución ausente. Solo los aprobados se incluyen en el perfil combinado para el siguiente entrenamiento. Los demás permanecen pendientes con su motivo y logs; no se borran ni se etiquetan como descartados. Si ninguno pasa, no se activa ningún candidato. Si pasan uno o más y no hay conflictos de configuración, el mismo workflow lanza una continuación de 1.000 pasos desde 155.700 con exclusivamente esos cambios aprobados; si no pasa ninguno, esa etapa queda omitida.
 
 **Dependencia compartida:** el productor común de señales forma parte de todos los candidatos de esta PR; el candidato 01 mide su coste/beneficio en neutro. Por tanto, la aprobación de un órgano acredita el paquete «base compartida + delta del órgano», no una atribución causal aislada del delta respecto a la base.
 

@@ -91,14 +91,23 @@ def main():
         db.executemany("INSERT INTO sim_text VALUES(?,?)",batch_text)
         db.executemany("INSERT INTO sim_band VALUES(?,?,?)",batch_bands); db.commit()
     if base_count!=m2["train_rows"]: raise RuntimeError(f"v2 train rows {base_count} != manifest {m2['train_rows']}")
-    # Exact protected-evaluation hashes.
-    eval_pair=set(); eval_comp=set()
+    # Exact protected-evaluation hashes, including every MC answer option.
+    eval_pair=set(); eval_comp=set(); eval_prompts=set()
     for fn in ("validation.jsonl","holdout_multiple_choice.jsonl"):
         for _,r in rows(v2/fn):
             p=str(r.get("prompt",r.get("question","")) or "")
-            c=str(r.get("completion",r.get("answer","")) or "")
+            c=str(r.get("completion","") or "")
+            if p: eval_prompts.add(h(p))
             if p or c: eval_pair.add(h(p+"\n"+c))
             if len(norm(c))>=40: eval_comp.add(h(c))
+            choices=r.get("choices",[])
+            if isinstance(choices,dict): choices=[choices[k] for k in sorted(choices)]
+            if isinstance(choices,list):
+                for choice in choices:
+                    choice=str(choice or "")
+                    if choice:
+                        eval_pair.add(h(p+"\n"+choice))
+                        if len(norm(choice))>=40: eval_comp.add(h(choice))
     # Scan only additions, not the copied v2 rows.
     new_seen=set(); add_n=0; bad=[]; task_counts=collections.Counter()
     rng=random.Random(20261123)
@@ -112,7 +121,7 @@ def main():
             dup_pair.append({"category":cat,"id":r.get("id"),"source_id":r.get("source_id"),"line":line_no})
         if ch and db.execute("SELECT 1 FROM completion_hash WHERE k=?",(ch,)).fetchone():
             dup_completion.append({"category":cat,"id":r.get("id"),"source_id":r.get("source_id"),"line":line_no})
-        if pair in eval_pair or (ch and ch in eval_comp):
+        if pair in eval_pair or (ch and ch in eval_comp) or h(p) in eval_prompts:
             eval_hits.append({"category":cat,"id":r.get("id"),"line":line_no})
         if pair in new_seen: counts["duplicate_within_additions"]+=1
         new_seen.add(pair)

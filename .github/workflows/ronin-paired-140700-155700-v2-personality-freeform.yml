@@ -1,0 +1,414 @@
+name: RONIN paired 155700 to 155700 — v2 plus 50k personality, with concurrent freeform probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/LAUNCH_LUMEN_TRANSFORMER_140700_155700_V2_PERSONALITY.txt
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-paired-140700-155700-v2-personality
+  cancel-in-progress: false
+
+env:
+  LUMEN_PARENT_RUN_ID: "45136184396"
+  TRANSFORMER_PARENT_RUN_ID: "45136184396"
+  V2_PREPARED_RUN_ID: "45136184396"
+  PERSONALITY_REPO: orbitalronin94/MINIRONIN
+  PERSONALITY_REF: bd40e34aca78dfb95cad48b33ae99a804cee3633
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  prepare-data:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: ronin-v2-plus-personality-250k-45136184396
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: "45136184396"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify frozen v2 plus personality input
+        run: |
+          set -euo pipefail
+          test -s prepared/data/spanish-v2-plus-personality-250k.jsonl
+          test -s prepared/data/spanish-v2-plus-personality-token-cache.pt
+          test -s prepared/artifacts/spanish-v2/tokenizer.json
+          test -s prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl
+          python - <<'PY'
+          import json, hashlib
+          from pathlib import Path
+          p=Path("prepared/data/spanish-v2-plus-personality-250k.jsonl")
+          print("combined corpus sha256:",hashlib.sha256(p.read_bytes()).hexdigest())
+          print("combined rows:",sum(1 for _ in p.open(encoding="utf-8")))
+          print("tokenizer sha256:",hashlib.sha256(Path("prepared/artifacts/spanish-v2/tokenizer.json").read_bytes()).hexdigest())
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ronin-v2-plus-personality-250k-${{ github.run_id }}
+          path: prepared/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+  train-lumen:
+    needs: prepare-data
+    runs-on: ubuntu-24.04
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install current CPU training runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+          python -c "import sys,torch,numpy,tokenizers; print(sys.version); print('torch',torch.__version__,'numpy',numpy.__version__,'tokenizers',tokenizers.__version__)"
+      - name: Download exact Lumen step-140700 parent
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-lumen-step155700-v2-personality-45136184396
+          path: lumen-parent
+          repository: ${{ github.repository }}
+          run-id: ${{ env.LUMEN_PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download paired training input
+        uses: actions/download-artifact@v6
+        with:
+          name: ronin-v2-plus-personality-250k-${{ github.run_id }}
+          path: prepared
+      - name: Verify Lumen lineage and transition eligibility
+        run: |
+          set -euo pipefail
+          test -s lumen-parent/checkpoints/lumen-v2-155700/step_155700.pt
+          python - <<'PY'
+          import torch, hashlib
+          s=torch.load("lumen-parent/checkpoints/lumen-v2-133500/latest_good.pt",map_location="cpu",weights_only=False)
+          assert s["step"]==155700
+          assert s["architecture_id"]=="ronin_lumen_v3_2_parallel_delta"
+          assert s["pilot_all_rows"] is True and s["phase"]==1
+          assert s["training_config"]["batch"]==8 and s["training_config"]["max_len"]==128
+          assert s["training_config"]["lr"]==3e-5
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          assert s.get("optimizer") and s.get("scheduler_transition") and s.get("rng")
+          assert int(s["scheduler_transition"]["current_step"]) in (140700,140701)
+          print("Lumen parent exact:",s["step"],"lr:",s["optimizer"]["param_groups"][0]["lr"])
+          PY
+      - name: Preserve the Lumen organ and Delta runtime profile
+        run: |
+          mkdir -p config checkpoints/lumen-v2-140700 logs
+          cat > config/lumen_organ_delta2_profile.json <<'JSON'
+          {
+            "threads": 4,
+            "interop_threads": 2,
+            "mkldnn_enabled": true,
+            "foreach": false,
+            "cpu_affinity": true,
+            "delta_pre_normalize": false,
+            "homeostasis_fused_scatter": false,
+            "delta_parallel_refinements": 2,
+            "organs": {
+              "pain": {"response": 0.30, "decay": 0.55},
+              "pleasure": {"response": 0.75},
+              "pain_budget_gain": 0.10,
+              "pleasure_budget_gain": 0.1125
+            }
+          }
+          JSON
+      - name: Train Lumen 15000 additional steps, preserving weights and optimizer moments
+        run: |
+          set -euo pipefail
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.train \
+            --steps 15000 --resume lumen-parent/checkpoints/lumen-v2-133500/latest_good.pt \
+            --phase 1 --pilot-all-rows --no-sleep --allow-corpus-transition \
+            --data prepared/data/spanish-v2-plus-personality-250k.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
+            --batch 8 --max-len 128 --seed 42 \
+            --runtime-profile config/lumen_organ_delta2_profile.json \
+            --lr 3e-5 --warmup 100 --total-steps 155700 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 140700 --transition-end 155700 \
+            --warmup-transition 100 --transition-plateau-steps 6000 \
+            --transition-min-lr-ratio 0.5 \
+            --log-every 100 --checkpoint-every 500 --recovery-checkpoint-every 100 \
+            --parameter-check-every 100 --ckpt-dir checkpoints/lumen-v2-140700 \
+            2>&1 | tee logs/lumen-133200-140700-v2-personality.log
+      - name: Verify final Lumen checkpoint
+        run: |
+          python - <<'PY'
+          import torch
+          s=torch.load("checkpoints/lumen-v2-140700/step_140700.pt",map_location="cpu",weights_only=False)
+          assert s["step"]==140700 and s["architecture_id"]=="ronin_lumen_v3_2_parallel_delta"
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          assert s.get("optimizer") and s.get("rng") and s.get("scheduler_transition")
+          print("Lumen final checkpoint verified at",s["step"])
+          PY
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ronin-lumen-step140700-v2-personality-${{ github.run_id }}
+          path: |
+            checkpoints/lumen-v2-140700/
+            logs/lumen-133200-140700-v2-personality.log
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+
+  train-transformer:
+    needs: prepare-data
+    runs-on: ubuntu-24.04
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install current CPU training runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+          python -c "import sys,torch,numpy,tokenizers; print(sys.version); print('torch',torch.__version__,'numpy',numpy.__version__,'tokenizers',tokenizers.__version__)"
+      - name: Download exact Transformer step-133200 synchronized parent
+        uses: actions/download-artifact@v6
+        with:
+          name: ronin-transformer-step140700-v2-personality-45136184396
+          path: transformer-parent
+          repository: ${{ github.repository }}
+          run-id: ${{ env.TRANSFORMER_PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download paired training input
+        uses: actions/download-artifact@v6
+        with:
+          name: ronin-v2-plus-personality-250k-${{ github.run_id }}
+          path: prepared
+      - name: Verify Transformer lineage and transition eligibility
+        run: |
+          set -euo pipefail
+          test -s transformer-parent/checkpoints/transformer-v2-155700/step_140700.pt
+          python - <<'PY'
+          import torch
+          s=torch.load("transformer-parent/checkpoints/transformer-sync-133200/step_133200.pt",map_location="cpu",weights_only=False)
+          assert s["step"]==133200
+          assert s["architecture_id"]=="decoder_transformer_4l_d192_h4_ff576_tied_v1"
+          assert s["training_config"]["batch"]==8 and s["training_config"]["max_len"]==128
+          assert s["training_config"]["lr"]==7.5e-5
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          assert s.get("optimizer") and s.get("scheduler_transition") and s.get("rng")
+          assert int(s["scheduler_transition"]["current_step"]) in (133200,133201)
+          print("Transformer parent exact:",s["step"],"lr:",s["optimizer"]["param_groups"][0]["lr"])
+          PY
+      - name: Train Transformer 15000 additional steps, preserving weights and optimizer moments
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/transformer-v2-140700 logs
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.transformer_baseline \
+            --steps 7500 --resume transformer-parent/checkpoints/transformer-sync-133200/step_133200.pt \
+            --allow-corpus-transition \
+            --data prepared/data/spanish-v2-plus-personality-250k.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --token-cache prepared/data/spanish-v2-plus-personality-token-cache.pt \
+            --batch 8 --max-len 128 --seed 42 --threads 4 \
+            --lr 7.5e-5 --warmup 100 --total-steps 140700 \
+            --scheduler-transition --restart-scheduler-transition \
+            --transition-start 133200 --transition-end 140700 \
+            --warmup-transition 100 --transition-plateau-steps 6000 \
+            --transition-min-lr-ratio 0.5 \
+            --parameter-check-every 100 --ckpt-dir checkpoints/transformer-v2-140700 \
+            2>&1 | tee logs/transformer-133200-140700-v2-personality.log
+      - name: Verify final Transformer checkpoint
+        run: |
+          python - <<'PY'
+          import torch
+          s=torch.load("checkpoints/transformer-v2-140700/step_140700.pt",map_location="cpu",weights_only=False)
+          assert s["step"]==140700 and s["architecture_id"]=="decoder_transformer_4l_d192_h4_ff576_tied_v1"
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          assert s.get("optimizer") and s.get("rng") and s.get("scheduler_transition")
+          print("Transformer final checkpoint verified at",s["step"])
+          PY
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ronin-transformer-step140700-v2-personality-${{ github.run_id }}
+          path: |
+            checkpoints/transformer-v2-140700/
+            logs/transformer-133200-140700-v2-personality.log
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+
+  final-holdout:
+    needs: [prepare-data, train-lumen, train-transformer]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install current CPU evaluation runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+      - uses: actions/download-artifact@v6
+        with:
+          name: ronin-v2-plus-personality-250k-${{ github.run_id }}
+          path: prepared
+      - uses: actions/download-artifact@v6
+        with:
+          name: ronin-lumen-step140700-v2-personality-${{ github.run_id }}
+          path: lumen
+      - uses: actions/download-artifact@v6
+        with:
+          name: ronin-transformer-step140700-v2-personality-${{ github.run_id }}
+          path: transformer
+      - name: Evaluate both models on the untouched v2 holdout
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/evaluate_multiple_choice_holdout.py \
+            --holdout prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --lumen lumen/checkpoints/lumen-v2-140700/step_140700.pt \
+            --transformer transformer/checkpoints/transformer-v2-140700/step_140700.pt \
+            --expected-step 140700 --out results/step140700_paired_v2_personality_holdout.json \
+            --threads 4 --max-len 128
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ronin-step140700-paired-v2-personality-holdout-${{ github.run_id }}
+          path: results/step140700_paired_v2_personality_holdout.json
+          if-no-files-found: warn
+          retention-days: 90
+
+  freeform-holdout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 144df71125acdb27da4a575a59efdab443a263d3
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU inference runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download frozen v2 holdout, tokenizer and personality training bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-v2-plus-personality-250k-${{ github.run_id }}
+          path: prepared
+      - name: Download current Lumen step-140700 checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-lumen-step140700-v2-personality-45136184396
+          path: lumen
+          repository: ${{ github.repository }}
+          run-id: "45136184396"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download current Transformer step-140700 checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-transformer-step140700-v2-personality-45136184396
+          path: transformer
+          repository: ${{ github.repository }}
+          run-id: "45136184396"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify exact current paired checkpoints
+        run: |
+          set -euo pipefail
+          test -s lumen/checkpoints/lumen-v2-140700/step_140700.pt
+          test -s transformer/checkpoints/transformer-v2-140700/step_140700.pt
+          python - <<'PY'
+          import torch
+          l=torch.load("lumen/checkpoints/lumen-v2-140700/step_140700.pt",map_location="cpu",weights_only=False)
+          t=torch.load("transformer/checkpoints/transformer-v2-140700/step_140700.pt",map_location="cpu",weights_only=False)
+          assert l["step"] == t["step"] == 140700
+          assert l["tokenizer_sha256"] == t["tokenizer_sha256"]
+          assert l["architecture_id"] == "ronin_lumen_v3_2_parallel_delta"
+          assert t["architecture_id"] == "decoder_transformer_4l_d192_h4_ff576_tied_v1"
+          print("Verified exact current paired checkpoints at 140700.")
+          PY
+      - name: Generate the same 100 free-form answers from both current models
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/freeform_generation_holdout.py \
+            --holdout prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --lumen lumen/checkpoints/lumen-v2-140700/step_140700.pt \
+            --transformer transformer/checkpoints/transformer-v2-140700/step_140700.pt \
+            --out-dir results/freeform-step140700 \
+            --sample-size 100 --seed 31000 --expected-step 140700 \
+            --threads 4 --max-len 128 --max-new-tokens 64
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path("results/freeform-step140700")
+          old=p/"step31000_freeform_100.json"
+          data=json.loads(old.read_text(encoding="utf-8"))
+          data["step"]=140700
+          data["sample_seed"]=31000
+          data["evaluation_note"]="Unofficial free-form generation probe at the current 140700 checkpoints; not an accuracy score and not a replacement for the frozen 2431-question multiple-choice holdout."
+          (p/"step140700_freeform_100.json").write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          md=(p/"step31000_freeform_100.md").read_text(encoding="utf-8")
+          md=md.replace("31k","140.7k").replace("31.000","140.700").replace("step31000","step140700")
+          md += "\n\n> Sonda informal de generación libre en el check 140.700; no es una puntuación de exactitud ni sustituye al holdout oficial de 2.431 preguntas.\n"
+          (p/"step140700_freeform_100.md").write_text(md,encoding="utf-8")
+          old.unlink()
+          (p/"step31000_freeform_100.md").unlink()
+          PY
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ronin-step140700-freeform-100-${{ github.run_id }}
+          path: results/freeform-step140700/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6
+
+  summary:
+    needs: [prepare-data, train-lumen, train-transformer, final-holdout, freeform-holdout]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Report paired experiment status
+        env:
+          PREPARE: ${{ needs.prepare-data.result }}
+          LUMEN: ${{ needs.train-lumen.result }}
+          TRANSFORMER: ${{ needs.train-transformer.result }}
+          HOLDOUT: ${{ needs.final-holdout.result }}
+          FREEFORM: ${{ needs.freeform-holdout.result }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          echo "Paired 140700 -> 155700, 200k Spanish-v2 sample + 50k Lumen personality, run ${RUN_ID}"
+          echo "Preparation: ${PREPARE}"
+          echo "Lumen: ${LUMEN}"
+          echo "Transformer: ${TRANSFORMER}"
+          echo "Untouched v2 holdout: ${HOLDOUT}"
+          echo "Current-check freeform probe: ${FREEFORM}"
+          test "${PREPARE}" = success
+          test "${LUMEN}" = success
+          test "${TRANSFORMER}" = success
+          test "${HOLDOUT}" = success
+          test "${FREEFORM}" = success

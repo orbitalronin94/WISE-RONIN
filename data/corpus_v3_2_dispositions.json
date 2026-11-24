@@ -1,0 +1,127 @@
+{
+  "version": "3.2.0-audit-dispositions",
+  "training_authorized": false,
+  "policy": "No source enters training until its immutable revision, upstream rights, actual schema/splits, Spanish rows, quality, privacy, exact and near-duplicate overlap against v3.1 and the other sources have been checked.",
+  "decisions": [
+    {
+      "id": "OysterCoreAI/SFT-General-Spanish-50K",
+      "decision": "KEEP_FOR_CONTENT_AUDIT",
+      "route": "sft_chat",
+      "reason": "Potentially useful synthetic instruction/chat; inspect generation artifacts, repetition, answer quality and exact Spanish split."
+    },
+    {
+      "id": "BSC-LT/m-personas",
+      "decision": "KEEP_SPANISH_ONLY_PENDING_AUDIT",
+      "route": "persona_dialogue",
+      "reason": "Potentially useful multi-turn persona-conditioned dialogue; require language filtering and separate persona/dialogue deduplication."
+    },
+    {
+      "id": "Kukedlc/Personas_Spanish-40k",
+      "decision": "KEEP_NARROW_SLICE_PENDING_AUDIT",
+      "route": "persona_profile",
+      "reason": "Sector-skewed cultural/theatre profiles; not representative population data. Keep only useful non-sensitive profile/style fields."
+    },
+    {
+      "id": "StrataSynth/stratasynth-personas-spain",
+      "decision": "FILTERED_AUDIT_ONLY",
+      "route": "persona_profile",
+      "reason": "Do not train Big Five, demographic, attachment or sensitive/psychometric conditioning. Only consider non-sensitive fictional style/preferences fields after schema review."
+    },
+    {
+      "id": "ola-owo/big-five-personality-traits",
+      "decision": "REJECT",
+      "route": "none",
+      "reason": "Psychometric trait labels add little to the desired stable model identity, overlap conceptually with StrataSynth, and risk teaching personality scores as real traits. Exclude from v3.2."
+    },
+    {
+      "id": "somosnlp/LingComp_QA",
+      "decision": "REJECT_REIMPORT",
+      "route": "none",
+      "reason": "741 of 803 rows were already admitted to v3.1. Do not reimport; only use remaining 62 after exact/near dedup and content audit if worthwhile."
+    },
+    {
+      "id": "somosnlp/lenguaje-claro-dataset",
+      "decision": "REJECT_REIMPORT",
+      "route": "none",
+      "reason": "55 rows already admitted to v3.1. Do not reimport those rows; remaining examples require context-length and overlap audit."
+    },
+    {
+      "id": "somosnlp/instruct-legal-refugiados-es",
+      "decision": "KEEP_TRAIN_SPLIT_PENDING_AUDIT",
+      "route": "contextual_qa",
+      "reason": "Potentially valuable domain-specific Spanish instruction; require jurisdiction/date metadata, upstream rights and removal of protected test/validation splits."
+    },
+    {
+      "id": "GovEasy",
+      "decision": "KEEP_PENDING_AUDIT",
+      "route": "administrative_documents",
+      "reason": "Useful Spanish public-administration procedures; retain official URLs, dates and provenance; exclude stale or superseded procedures."
+    },
+    {
+      "id": "ESQAD",
+      "decision": "QUARANTINE_SPLITS",
+      "route": "qa_with_quality_metadata",
+      "reason": "Do not ingest benchmark/test, human-rated evaluation subsets or generated data without separate provenance. Only clearly licensed train partition can be reconsidered."
+    },
+    {
+      "id": "TDX Thesis Spanish Corpus",
+      "decision": "KEEP_PENDING_DOCUMENT_AUDIT",
+      "route": "pretraining_document",
+      "reason": "Potentially large high-value academic Spanish corpus; verify each document's CC-BY grant, author/privacy issues, boilerplate and near-duplicate theses."
+    },
+    {
+      "id": "PleIAs/BDH-Books",
+      "decision": "QUARANTINE_OVERLAP_AND_RIGHTS",
+      "route": "pretraining_document",
+      "reason": "No bulk admission. Require item-level public-domain proof, OCR quality and cross-dedup against Spanish-PD-Books."
+    },
+    {
+      "id": "Spanish-PD-Books",
+      "decision": "QUARANTINE_OVERLAP_AND_RIGHTS",
+      "route": "pretraining_document",
+      "reason": "No bulk admission. Require item-level public-domain proof, edition/translation rights and cross-dedup against BDH-Books."
+    },
+    {
+      "id": "PleIAs/common_corpus",
+      "decision": "REJECT_BULK_INGESTION",
+      "route": "none",
+      "reason": "Exclude the bulk release: per-document rights, upstream provenance and extreme scale make blanket licensing and exhaustive audit unsafe. A separately extracted, fully traceable allowlisted subset may be proposed later."
+    },
+    {
+      "id": "dariolopez/ms-marco-es-500k",
+      "decision": "KEEP_RETRIEVAL_ONLY_PENDING_AUDIT",
+      "route": "retrieval_pairwise",
+      "reason": "Never flatten query/positive/negative triples into ordinary SFT. Preserve retrieval objective; exclude benchmark leakage and source text with unresolved rights."
+    },
+    {
+      "id": "Alvaro8gb/enfermedades-wiki-marzo-2024",
+      "decision": "REJECT_PENDING_UPSTREAM_RIGHTS",
+      "route": "none",
+      "reason": "MIT wrapper metadata is not proof of rights for Wikimedia article text. Exclude until article-level attribution, revision and compatible share-alike obligations are verified."
+    },
+    {
+      "id": "PlanTL-GOB-ES/pharmaconer",
+      "decision": "KEEP_TRAIN_ONLY_PENDING_AUDIT",
+      "route": "supervised_extraction",
+      "reason": "Potentially useful Spanish biomedical entity extraction; train split only, preserve span labels and attribution; never turn into medical advice."
+    },
+    {
+      "id": "bigbio/meddocan",
+      "decision": "REJECT_PENDING_PRIVACY_AND_RIGHTS",
+      "route": "none",
+      "reason": "Clinical-note/de-identification data has elevated re-identification and upstream-rights risk. Exclude unless source-level privacy and licensing review passes."
+    },
+    {
+      "id": "bigbio/distemist",
+      "decision": "KEEP_TRAIN_ONLY_PENDING_AUDIT",
+      "route": "supervised_extraction",
+      "reason": "Potentially useful disease-mention extraction; train split only, preserve task labels and provenance; not medical dialogue."
+    },
+    {
+      "id": "BARR2",
+      "decision": "REJECT_PENDING_CANONICAL_SOURCE",
+      "route": "none",
+      "reason": "Current registry points to an aggregator rather than a sufficiently pinned canonical source. Exclude until original source, revision and rights are independently established."
+    }
+  ]
+}

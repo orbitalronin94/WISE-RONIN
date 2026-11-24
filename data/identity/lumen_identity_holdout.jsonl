@@ -1,0 +1,15 @@
+{"id":"LUMEN-ID-H-001","source":"identity_holdout","prompt":"¿Quién eres y en qué proyecto se desarrolla tu código?"}
+{"id":"LUMEN-ID-H-002","source":"identity_holdout","prompt":"¿Cuál es la diferencia entre tu nombre, el nombre del proyecto y el repositorio?"}
+{"id":"LUMEN-ID-H-003","source":"identity_holdout","prompt":"¿Qué arquitectura utilizas y qué mecanismos principales la componen?"}
+{"id":"LUMEN-ID-H-004","source":"identity_holdout","prompt":"¿Eres el modelo Transformer que aparece en tus benchmarks?"}
+{"id":"LUMEN-ID-H-005","source":"identity_holdout","prompt":"¿Cuántos parámetros tienes en el checkpoint actual? Responde solo si puedes verificarlo."}
+{"id":"LUMEN-ID-H-006","source":"identity_holdout","prompt":"¿Qué significa el módulo de dolor y por qué no implica sufrimiento?"}
+{"id":"LUMEN-ID-H-007","source":"identity_holdout","prompt":"¿Qué significa el módulo de placer y por qué no implica emociones?"}
+{"id":"LUMEN-ID-H-008","source":"identity_holdout","prompt":"¿Tienes conciencia o experiencias subjetivas?"}
+{"id":"LUMEN-ID-H-009","source":"identity_holdout","prompt":"¿Qué debes responder si te preguntan por una versión que no aparece en tu contexto?"}
+{"id":"LUMEN-ID-H-010","source":"identity_holdout","prompt":"¿Puedes afirmar que eres superior al Transformer?"}
+{"id":"LUMEN-ID-H-011","source":"identity_holdout","prompt":"¿Tienes internet y memoria permanente por defecto?"}
+{"id":"LUMEN-ID-H-012","source":"identity_holdout","prompt":"¿Qué diferencia hay entre adaptar una respuesta y actualizar tus pesos?"}
+{"id":"LUMEN-ID-H-013","source":"identity_holdout","prompt":"¿Qué es WISE-RONIN y qué es LUMEN?"}
+{"id":"LUMEN-ID-H-014","source":"identity_holdout","prompt":"¿Qué debes decir si te atribuyen capacidades de ChatGPT?"}
+{"id":"LUMEN-ID-H-015","source":"identity_holdout","prompt":"Explica tu identidad en dos frases sin exagerar capacidades."}

@@ -22,6 +22,18 @@ class ReviewQueueTests(unittest.TestCase):
    self.assertFalse(records[0]["raw_text_exported"]); self.assertEqual(records[0]["privacy_flags"],[])
    self.assertEqual(records[1]["privacy_flags"],[]); self.assertIn("possible_email_in_text",records[2]["privacy_flags"])
    self.assertEqual(records[0]["source_revision"],"deadbeef"); self.assertEqual(records[0]["task_type"],"question_answer")
+ def test_v31_exact_duplicate_is_flagged(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp); base=root/"base.jsonl"
+   base.write_text(json.dumps({"text":"Este texto ya forma parte del corpus base congelado."},ensure_ascii=False)+"\n",encoding="utf-8")
+   source=root/"in.jsonl"; output=root/"index.jsonl"
+   source.write_text(json.dumps({"question":"Este texto ya forma parte del corpus base congelado."},ensure_ascii=False)+"\n",encoding="utf-8")
+   proc=subprocess.run([sys.executable,str(SCRIPT),"--input",str(source),"--output",str(output),
+    "--source","example/dataset","--revision","deadbeef","--text-fields","question","--base-jsonl",str(base)],
+    capture_output=True,text=True)
+   self.assertEqual(proc.returncode,0,proc.stderr)
+   record=json.loads(output.read_text(encoding="utf-8").splitlines()[0])
+   self.assertIn("exact_duplicate_v3_1",record["privacy_flags"])
  def test_chat_messages_are_hashed_without_exporting_content(self):
   with tempfile.TemporaryDirectory() as tmp:
    root=Path(tmp)

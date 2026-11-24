@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import re
+import random
 import unicodedata
 from collections import Counter
 from pathlib import Path
@@ -239,8 +240,7 @@ def main():
             seen_pairs.add(pair)
             new_prompt_answers[prompt] = norm(answer)
             added += 1
-            if len(review_candidates) < args.review_per_source:
-                review_candidates.append(record)
+            review_candidates.append(record)
         source_stats[source["repo_id"]] = {
             "revision": revision,
             "license": actual_license,
@@ -248,6 +248,8 @@ def main():
             "rows_added": added,
             "rejected": dict(rejected),
         }
+        if len(review_candidates) > args.review_per_source:
+            review_candidates = random.Random(42).sample(review_candidates, args.review_per_source)
         review_by_source[source["repo_id"]] = review_candidates
 
     if not additions:

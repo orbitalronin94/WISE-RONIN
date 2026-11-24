@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sqlite3
 import shutil
 from collections import Counter
@@ -27,6 +28,15 @@ CHUNKABLE_TASKS = {
     "raw_text_pretraining", "lm_text", "persona_profile",
     "persona_dialogue", "synthetic_persona_voice",
 }
+EMAIL_RE = re.compile(r"\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", re.I)
+DNI_RE = re.compile(r"\\b(?:\\d{8}[A-Z]|[XYZ]\\d{7}[A-Z])\\b", re.I)
+PHONE_RE = re.compile(r"(?<!\\w)(?:\\+34[\\s.-]?)?(?:[6789]\\d{2})[\\s.-]?\\d{3}[\\s.-]?\\d{3}(?!\\w)")
+
+
+def has_personal_identifier(text: str) -> bool:
+    return bool(EMAIL_RE.search(text) or DNI_RE.search(text) or PHONE_RE.search(text))
+
+
 PERSONALITY_TASKS = {
     "persona_profile", "persona_dialogue", "synthetic_persona_voice",
     "persona_dialogue_lm", "dialogue_and_assistant_style_lm",
@@ -193,6 +203,15 @@ def main():
         completion = str(row.get("completion") or "")
         if not completion.strip():
             reject(row, "empty_completion")
+            return
+        if row.get("split") == "holdout" or source == "holdout_500.jsonl":
+            reject(row, "holdout_contamination")
+            return
+        if str(row.get("language") or "") != "es":
+            reject(row, "non_spanish_or_unverified_language")
+            return
+        if has_personal_identifier(prompt + "\\n" + completion):
+            reject(row, "personal_identifier_pattern")
             return
 
         hits = find_attractors(

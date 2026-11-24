@@ -56,6 +56,12 @@ La regla se implementa en scripts/filter_corpus_attractors.py y la lista queda v
 5. **Compatibilidad del entrenador:** train/dataset.py exige prompt y completion y trunca a max_len=128; los deltas v3.2 contienen text. Hace falta un adaptador explícito antes de entrenar.
 6. **Licencias:** la licencia del código del dataset no basta; se debe registrar la licencia del texto subyacente por documento o colección y excluir fuentes incompatibles/no verificadas.
 
+## Carga de entrenamiento para corpus grande
+
+El loader de manifiestos ya no materializa todos los objetos JSONL en RAM. Construye índices laterales compactos de offsets de 64 bits por shard, verifica cada SHA-256 mientras recorre los ficheros y permite muestreo aleatorio perezoso de filas. El trainer accede a las filas seleccionadas por lote; no crea una lista Python de millones de diccionarios. Los índices se guardan en `.corpus_index/` y pueden reconstruirse sin alterar los shards congelados.
+
+El token-cache heredado no se acepta para este modo indexado: pertenece a un corpus/hash concreto y su representación empaquetada cargaría el conjunto completo en memoria. Para v4 se usa tokenización por lote en el muestreo aleatorio. Antes de declarar entrenable el artefacto se ejecutarán pruebas de lectura aleatoria, verificación de hashes y rechazo de shards corruptos.
+
 ## Objetivo de corpus v4
 
 - **Objetivo de esta tanda:** al menos 1,8 M de filas documentales nuevas, 10,11× las 178.090 filas documentales de la base emparejada.

@@ -34,6 +34,21 @@ class ReviewQueueTests(unittest.TestCase):
    self.assertEqual(proc.returncode,0,proc.stderr)
    record=json.loads(output.read_text(encoding="utf-8").splitlines()[0])
    self.assertIn("exact_duplicate_v3_1",record["privacy_flags"])
+ def test_ner_tokens_are_indexed_without_exporting_tokens(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp)
+   source=root/"in.jsonl"; output=root/"index.jsonl"
+   row={"tokens":["La","molécula","activa","es","atenolol","."],"ner_tags":["O","O","O","O","B-NORMALIZABLES","O"]}
+   source.write_text(json.dumps(row,ensure_ascii=False)+"\n",encoding="utf-8")
+   proc=subprocess.run([sys.executable,str(SCRIPT),"--input",str(source),"--output",str(output),
+    "--source","example/ner","--revision","deadbeef","--text-fields","unused",
+    "--tokens-field","tokens","--tags-field","ner_tags"],capture_output=True,text=True)
+   self.assertEqual(proc.returncode,0,proc.stderr)
+   record=json.loads(output.read_text(encoding="utf-8").splitlines()[0])
+   self.assertEqual(record["task_type"],"sequence_labeling")
+   self.assertEqual(record["token_count"],6); self.assertEqual(record["tag_count"],6)
+   self.assertEqual(record["tag_alignment"],"aligned")
+   self.assertNotIn("tokens",record); self.assertNotIn("ner_tags",record)
  def test_chat_messages_are_hashed_without_exporting_content(self):
   with tempfile.TemporaryDirectory() as tmp:
    root=Path(tmp)

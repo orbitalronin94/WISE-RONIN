@@ -87,12 +87,12 @@ def test_base_document_is_blocked_if_any_sibling_row_contains_attractor(tmp_path
 
     path = tmp_path / "base.jsonl"
     rows = [
-        {"source_id": "doc-1", "prompt": "", "completion": "Texto neutral sobre ciencia."},
-        {"source_id": "doc-1", "prompt": "", "completion": "Texto con contexto documental prohibido."},
-        {"source_id": "doc-2", "prompt": "", "completion": "Texto neutral sobre astronomía."},
+        {"source": "fixture", "source_id": "doc-1", "prompt": "", "completion": "Texto neutral sobre ciencia."},
+        {"source": "fixture", "source_id": "doc-1", "prompt": "", "completion": "Texto con contexto documental prohibido."},
+        {"source": "fixture", "source_id": "doc-2", "prompt": "", "completion": "Texto neutral sobre astronomía."},
     ]
     path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8")
     _denylist, patterns = load_denylist(__import__("pathlib").Path("data/corpus_v4_attractor_denylist.json"))
     blocked = find_blocked_base_documents(path, patterns)
-    assert "doc-1" in blocked
-    assert "doc-2" not in blocked
+    assert "fixture::doc-1" in blocked
+    assert "fixture::doc-2" not in blocked

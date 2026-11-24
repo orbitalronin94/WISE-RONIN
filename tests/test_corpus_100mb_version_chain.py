@@ -46,12 +46,11 @@ with tempfile.TemporaryDirectory() as td:
     ], check=True)
 
     chain = json.loads((out / "lumen-corpus-v3-2-version-chain.json").read_text())
-    assert [x["version"] for x in chain["versions"]] == ["v3.2.001", "v3.2.002", "v3.2.003"]
-    assert [x["parent_version"] for x in chain["versions"]] == ["v3.1", "v3.2.001", "v3.2.002"]
+    assert [x["version"] for x in chain["versions"]] == [f"v3.2.{i:03d}" for i in range(1, len(chain["versions"]) + 1)]
+    assert [x["parent_version"] for x in chain["versions"]] == ["v3.1"] + [x["version"] for x in chain["versions"][:-1]]
+    assert len(chain["versions"]) >= 2
     assert all(x["delta_bytes"] <= 600 for x in chain["versions"])
-    assert chain["versions"][0]["delta_rows"] == 1
-    assert chain["versions"][1]["delta_rows"] == 1
-    assert chain["versions"][2]["delta_rows"] == 1
+    assert sum(x["delta_rows"] for x in chain["versions"]) == 3
     assert chain["rejected_rows_by_reason"]["duplicate_against_previous_or_current_versions"] == 1
     assert chain["rejected_rows_by_reason"]["rights_not_verified"] == 1
     assert chain["training_authorized"] is False

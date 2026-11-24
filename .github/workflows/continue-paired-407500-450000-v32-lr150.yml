@@ -1,0 +1,286 @@
+name: LUMEN vs Transformer — v3.2.005 continuation 407500 to 450000 (LR x1.5)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/continue-paired-407500-450000-v32-lr150.yml
+      - .github/workflows/train-paired-block-v32.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-v32-paired-407500-450000-lr150
+  cancel-in-progress: false
+
+env:
+  SOURCE_RUN_ID: "45398272055"
+  TARGET_LR: "7.5e-5"
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install checkpoint inspection runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch
+      - name: Download frozen v3.2.005 inputs
+        uses: actions/download-artifact@v7
+        with:
+          name: paired-v32-inputs-45398272055
+          path: source-inputs
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact step-407500 LUMEN checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-step-407500-v32-45398272055
+          path: source-lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact step-407500 Transformer checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: transformer-step-407500-v32-45398272055
+          path: source-transformer
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify lineage and retarget configured LR by exactly 50 percent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s source-inputs/data/spanish-v3-2.005-train.jsonl
+          test -s source-inputs/data/spanish-v3-2.005-token-cache.pt
+          test -s source-inputs/artifacts/tokenizer.json
+          test -s source-inputs/config/lumen-runtime-profile.json
+          test -s source-inputs/eval/holdout_multiple_choice.jsonl
+          mkdir -p prepared parents/lumen/checkpoint parents/transformer/checkpoint
+          cp -a source-inputs/. prepared/
+          rm -rf prepared/parent
+          cp source-lumen/checkpoint/step_407500.pt parents/lumen/checkpoint/step_407500.pt
+          cp source-transformer/checkpoint/step_407500.pt parents/transformer/checkpoint/step_407500.pt
+          if [ -s source-lumen/lumen-wall.json ]; then cp source-lumen/lumen-wall.json parents/lumen/lumen-wall.json; fi
+          if [ -s source-transformer/transformer-wall.json ]; then cp source-transformer/transformer-wall.json parents/transformer/transformer-wall.json; fi
+          python - <<'PY'
+          import hashlib, json, torch
+          from pathlib import Path
+          root=Path("prepared")
+          sha=lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
+          manifest=json.loads((root/"data/spanish-v3-2.005-manifest.json").read_text())
+          tok_sha=sha(root/"artifacts/tokenizer.json")
+          assert manifest["total_train_rows"] == 279613
+          assert manifest["user_training_authorized"] is True
+          assert tok_sha == "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          assert len([x for x in (root/"eval/holdout_multiple_choice.jsonl").read_text().splitlines() if x.strip()]) == 2431
+          expected_arch={
+            "lumen":"ronin_lumen_v3_3_neuroplasticity",
+            "transformer":"decoder_transformer_4l_d192_h4_ff576_tied_v1",
+          }
+          for model in ("lumen","transformer"):
+            p=Path("parents")/model/"checkpoint/step_407500.pt"
+            s=torch.load(p,map_location="cpu",weights_only=False)
+            assert int(s["step"]) == 407500
+            assert s["architecture_id"] == expected_arch[model]
+            assert s.get("optimizer") and s.get("rng") and s.get("scheduler_transition")
+            assert s.get("data_sha256") == manifest["data_sha256"]
+            assert s.get("tokenizer_sha256") == tok_sha
+            cfg=s.get("training_config") or {}
+            assert abs(float(cfg.get("lr",-1))-5e-5) < 1e-12, (model,cfg.get("lr"))
+            assert int(s["scheduler_transition"]["current_step"]) in (407500,407501)
+            cfg["lr"]=7.5e-5
+            s["training_config"]=cfg
+            torch.save(s,p)
+            check=torch.load(p,map_location="cpu",weights_only=False)
+            assert abs(check["training_config"]["lr"]-7.5e-5)<1e-12
+            print(f"{model}: step=407500, old configured LR=5e-5, new configured LR=7.5e-5; optimizer/RNG preserved")
+          lumen=torch.load(Path("parents/lumen/checkpoint/step_407500.pt"),map_location="cpu",weights_only=False)
+          assert lumen.get("runtime_profile",{}).get("profile_id") == "check0_selected_H02_H03_H04_H05_H06_H09_H18"
+          assert lumen.get("compute_policy",{}).get("lazy_backward") is True
+          print(json.dumps({"train_rows":manifest["total_train_rows"],"tokenizer_sha256":tok_sha,"holdout_rows":2431,"lr_multiplier":1.5},indent=2))
+          PY
+      - name: Publish immutable training inputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: paired-v32-inputs-${{ github.run_id }}
+          path: prepared/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+      - name: Publish retargeted LUMEN parent checkpoint
+        uses: actions/upload-artifact@v7
+        with:
+          name: lumen-step-407500-v32-${{ github.run_id }}
+          path: parents/lumen/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+      - name: Publish retargeted Transformer parent checkpoint
+        uses: actions/upload-artifact@v7
+        with:
+          name: transformer-step-407500-v32-${{ github.run_id }}
+          path: parents/transformer/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+
+  lumen-417500:
+    needs: prepare
+    uses: ./.github/workflows/train-paired-block-v32.yml
+    with:
+      model: lumen
+      parent_step: 407500
+      target_step: 417500
+      steps: 10000
+      parent_artifact: lumen-step-407500-v32-${{ github.run_id }}
+      restart_scheduler_transition: true
+  lumen-427500:
+    needs: lumen-417500
+    uses: ./.github/workflows/train-paired-block-v32.yml
+    with:
+      model: lumen
+      parent_step: 417500
+      target_step: 427500
+      steps: 10000
+      parent_artifact: lumen-step-417500-v32-${{ github.run_id }}
+  lumen-437500:
+    needs: lumen-427500
+    uses: ./.github/workflows/train-paired-block-v32.yml
+    with:
+      model: lumen
+      parent_step: 427500
+      target_step: 437500
+      steps: 10000
+      parent_artifact: lumen-step-427500-v32-${{ github.run_id }}
+  lumen-447500:
+    needs: lumen-437500
+    uses: ./.github/workflows/train-paired-block-v32.yml
+    with:
+      model: lumen
+      parent_step: 437500
+      target_step: 447500
+      steps: 10000
+      parent_artifact: lumen-step-437500-v32-${{ github.run_id }}
+  lumen-450000:
+    needs: lumen-447500
+    uses: ./.github/workflows/train-paired-block-v32.yml
+    with:
+      model: lumen
+      parent_step: 447500
+      target_step: 450000
+      steps: 2500
+      parent_artifact: lumen-step-447500-v32-${{ github.run_id }}
+
+  transformer-417500:
+    needs: prepare
+    uses: ./.github/workflows/train-paired-block-v32.yml
+    with:
+      model: transformer
+      parent_step: 407500
+      target_step: 417500
+      steps: 10000
+      parent_artifact: transformer-step-407500-v32-${{ github.run_id }}
+      restart_scheduler_transition: true
+  transformer-427500:
+    needs: transformer-417500
+    uses: ./.github/workflows/train-paired-block-v32.yml
+    with:
+      model: transformer
+      parent_step: 417500
+      target_step: 427500
+      steps: 10000
+      parent_artifact: transformer-step-417500-v32-${{ github.run_id }}
+  transformer-437500:
+    needs: transformer-427500
+    uses: ./.github/workflows/train-paired-block-v32.yml
+    with:
+      model: transformer
+      parent_step: 427500
+      target_step: 437500
+      steps: 10000
+      parent_artifact: transformer-step-427500-v32-${{ github.run_id }}
+  transformer-447500:
+    needs: transformer-437500
+    uses: ./.github/workflows/train-paired-block-v32.yml
+    with:
+      model: transformer
+      parent_step: 437500
+      target_step: 447500
+      steps: 10000
+      parent_artifact: transformer-step-437500-v32-${{ github.run_id }}
+  transformer-450000:
+    needs: transformer-447500
+    uses: ./.github/workflows/train-paired-block-v32.yml
+    with:
+      model: transformer
+      parent_step: 447500
+      target_step: 450000
+      steps: 2500
+      parent_artifact: transformer-step-447500-v32-${{ github.run_id }}
+
+  final-holdout:
+    needs: [lumen-450000, transformer-450000]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU evaluation runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download unchanged v3.2.005 evaluation inputs
+        uses: actions/download-artifact@v7
+        with:
+          name: paired-v32-inputs-${{ github.run_id }}
+          path: inputs
+      - name: Download final LUMEN checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-step-450000-v32-${{ github.run_id }}
+          path: lumen
+      - name: Download final Transformer checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: transformer-step-450000-v32-${{ github.run_id }}
+          path: transformer
+      - name: Evaluate both step-450000 checkpoints on unchanged holdout
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/evaluate_multiple_choice_holdout.py \
+            --holdout inputs/eval/holdout_multiple_choice.jsonl \
+            --tokenizer inputs/artifacts/tokenizer.json \
+            --lumen lumen/checkpoint/step_450000.pt \
+            --transformer transformer/checkpoint/step_450000.pt \
+            --expected-lumen-step 450000 --expected-transformer-step 450000 \
+            --out results/v32_step450000_paired_holdout.json \
+            --threads 4 --max-len 128
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ronin-v32-step450000-paired-holdout-${{ github.run_id }}
+          path: results/v32_step450000_paired_holdout.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6

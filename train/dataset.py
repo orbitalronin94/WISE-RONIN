@@ -29,24 +29,59 @@ class BPETokenizer:
         return ids
 
 def load_jsonl(path):
+    """Load a single JSONL file or a verified, training-authorized shard manifest."""
     path = Path(path)
-    if not path.is_file():
-        raise FileNotFoundError(f"Training corpus not found: {path}")
+    manifest_path = path / "manifest.json" if path.is_dir() else (
+        path if path.name == "manifest.json" else None
+    )
+    if manifest_path is None:
+        if not path.is_file():
+            raise FileNotFoundError(f"Training corpus not found: {path}")
+        sources = [(path, None)]
+        manifest = None
+    else:
+        if not manifest_path.is_file():
+            raise FileNotFoundError(f"Corpus manifest not found: {manifest_path}")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("training_authorized") is not True:
+            raise ValueError("Corpus manifest is not authorized for training")
+        shard_entries = manifest.get("shards")
+        if not isinstance(shard_entries, list) or not shard_entries:
+            raise ValueError("Corpus manifest has no immutable shards")
+        sources = [(manifest_path.parent / item["file"], item) for item in shard_entries]
+
     rows = []
     digest = hashlib.sha256()
-    with path.open(encoding="utf-8") as handle:
-        for line_no, line in enumerate(handle, 1):
-            digest.update(line.encode("utf-8"))
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            if row.get("split") == "holdout" or row.get("source") == "holdout_500.jsonl":
-                raise ValueError(f"Holdout contamination marker at line {line_no}")
-            if "prompt" not in row or "completion" not in row:
-                raise ValueError(f"Missing prompt/completion at line {line_no}")
-            rows.append(row)
+    for shard_path, shard in sources:
+        if not shard_path.is_file():
+            raise FileNotFoundError(f"Training corpus shard not found: {shard_path}")
+        shard_digest = hashlib.sha256()
+        shard_rows = 0
+        with shard_path.open(encoding="utf-8") as handle:
+            for line_no, line in enumerate(handle, 1):
+                encoded_line = line.encode("utf-8")
+                digest.update(encoded_line)
+                shard_digest.update(encoded_line)
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if row.get("split") == "holdout" or row.get("source") == "holdout_500.jsonl":
+                    raise ValueError(f"Holdout contamination marker at {shard_path}:{line_no}")
+                if "prompt" not in row or "completion" not in row:
+                    raise ValueError(f"Missing prompt/completion at {shard_path}:{line_no}")
+                if row.get("language") != "es":
+                    raise ValueError(f"Non-Spanish or unverified language at {shard_path}:{line_no}")
+                rows.append(row)
+                shard_rows += 1
+        if shard is not None:
+            if shard_rows != int(shard.get("rows", -1)):
+                raise ValueError(f"Shard row count mismatch: {shard_path}")
+            if shard_digest.hexdigest() != shard.get("sha256"):
+                raise ValueError(f"Shard SHA-256 mismatch: {shard_path}")
     if not rows:
         raise ValueError("Training JSONL is empty")
+    if manifest is not None and len(rows) != int(manifest.get("total_rows", -1)):
+        raise ValueError("Corpus manifest total row count does not match its shards")
     return rows, digest.hexdigest()
 
 def encode_rows(rows, tokenizer, max_len):

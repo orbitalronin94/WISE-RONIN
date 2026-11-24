@@ -192,19 +192,26 @@ def main():
     db.commit()
     db.close()
 
+    summary_path = out / "lumen-corpus-v3-2-version-chain.json"
+    prior = {}
+    if summary_path.exists():
+        prior = json.loads(summary_path.read_text(encoding="utf-8"))
+    all_versions = list(prior.get("versions", [])) + versions
+    all_rejected = dict(prior.get("rejected_rows_by_reason", {}))
+    for reason, count in rejected.items():
+        all_rejected[reason] = all_rejected.get(reason, 0) + count
     summary = {
         "schema": "lumen-corpus-version-chain-v1",
-        "starting_parent": a.parent_version,
-        "versions_created": len(versions),
-        "versions": versions,
-        "rejected_rows_by_reason": rejected,
+        "starting_parent": prior.get("starting_parent", a.parent_version),
+        "versions_created": len(all_versions),
+        "versions": all_versions,
+        "rejected_rows_by_reason": all_rejected,
         "block_limit_bytes": a.max_block_bytes,
         "cumulative_chain": True,
         "training_authorized": False,
         "admission_mode": "automated_batch_policy_v1" if a.allow_auto_approved else "human_reviewed",
         "note": "Each version is its parent plus one immutable delta. Automated admission is limited to rows passing the source-specific policy; it does not authorize training."
     }
-    summary_path = out / "lumen-corpus-v3-2-version-chain.json"
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"versions_created": len(versions), "versions": [x["version"] for x in versions],
                       "summary": str(summary_path), "training_authorized": False}))

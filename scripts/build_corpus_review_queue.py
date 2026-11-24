@@ -49,14 +49,15 @@ def main():
     p.add_argument("--input",required=True); p.add_argument("--output",required=True)
     p.add_argument("--source",required=True); p.add_argument("--revision",required=True)
     p.add_argument("--split",default="train")
-    p.add_argument("--text-fields",required=True,help="Explicit comma-separated prose field allowlist")
+    p.add_argument("--text-fields",default="",help="Explicit comma-separated prose field allowlist")
     p.add_argument("--base-jsonl",help="Optional frozen v3.1 JSONL for exact duplicate references")
     p.add_argument("--messages-field",help="Optional list-of-{role,content} chat field, e.g. messages")
     p.add_argument("--tokens-field",help="Optional list[str] field for token-classification datasets")
     p.add_argument("--tags-field",help="Optional parallel annotation-tag list, e.g. ner_tags")
     a=p.parse_args()
     fields=tuple(x.strip() for x in a.text_fields.split(",") if x.strip())
-    if not fields: raise SystemExit("at least one text field must be allowlisted")
+    if not fields and not a.messages_field and not a.tokens_field:
+        raise SystemExit("provide --text-fields, --messages-field or --tokens-field")
     base=set()
     if a.base_jsonl:
         with Path(a.base_jsonl).open(encoding="utf-8") as f:

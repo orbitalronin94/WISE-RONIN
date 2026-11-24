@@ -77,3 +77,22 @@ def test_openculture_metadata_text_checks_nested_fields_and_skips_body():
     assert "hemeroteca" in flattened
     assert "ciencia" in flattened
     assert "El cuerpo no debe duplicarse" not in flattened
+
+
+
+def test_base_document_is_blocked_if_any_sibling_row_contains_attractor(tmp_path):
+    import json
+    from scripts.merge_corpus_v4 import find_blocked_base_documents
+    from scripts.build_corpus_v4_openculture import load_denylist
+
+    path = tmp_path / "base.jsonl"
+    rows = [
+        {"source_document_id": "doc-1", "prompt": "", "completion": "Texto neutral sobre ciencia."},
+        {"source_document_id": "doc-1", "prompt": "", "completion": "Texto con contexto documental prohibido."},
+        {"source_document_id": "doc-2", "prompt": "", "completion": "Texto neutral sobre astronomía."},
+    ]
+    path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\\n" for row in rows), encoding="utf-8")
+    _denylist, patterns = load_denylist(__import__("pathlib").Path("data/corpus_v4_attractor_denylist.json"))
+    blocked = find_blocked_base_documents(path, patterns)
+    assert "doc-1" in blocked
+    assert "doc-2" not in blocked

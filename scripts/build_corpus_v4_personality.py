@@ -31,7 +31,7 @@ SOURCES = [
         "repo": "BSC-LT/m-personas",
         "revision": "6fab205a86a9244c90a2782e28055027f45ddd03",
         "split": "es",
-        "quota_share": 0.625,
+        "quota_share": 0.6060606061,
         "license": "Apache-2.0",
         "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
         "attribution": "BSC-LT mPersonas dataset, Apache-2.0",

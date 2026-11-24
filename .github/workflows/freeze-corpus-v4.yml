@@ -1,0 +1,243 @@
+name: Freeze corpus v4 — merge, deduplicate and verify
+
+on:
+  push:
+    branches: [corpus-v4-diversity-attractor-gate]
+    paths:
+      - scripts/trigger_merge_corpus_v4.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: wise-ronin-corpus-v4-freeze
+  cancel-in-progress: false
+
+jobs:
+  freeze:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      PYTHONUNBUFFERED: "1"
+      HF_HUB_DISABLE_XET: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: corpus-v4-diversity-attractor-gate
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install merge and verification dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "datasets>=3,<4" "tokenizers>=0.20,<1" "langid>=1.1.6" pyarrow pytest
+
+      - name: Find latest successful v4 candidate runs
+        id: runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, urllib.request
+          repo=os.environ["REPO"]
+          token=os.environ["GH_TOKEN"]
+          url=f"https://api.github.com/repos/{repo}/actions/runs?per_page=100&branch=corpus-v4-diversity-attractor-gate"
+          req=urllib.request.Request(url,headers={
+              "Authorization":f"Bearer {token}",
+              "Accept":"application/vnd.github+json",
+              "X-GitHub-Api-Version":"2022-11-28",
+          })
+          with urllib.request.urlopen(req,timeout=60) as response:
+              runs=json.load(response)["workflow_runs"]
+          names={
+              "openculture":"Build corpus v4 OpenCulture — 1.8M rows",
+              "personality":"Build corpus v4 personality and dialogue — 160K rows",
+          }
+          for key,name in names.items():
+              candidates=[
+                  r for r in runs
+                  if r.get("name")==name
+                  and r.get("head_branch")=="corpus-v4-diversity-attractor-gate"
+                  and r.get("status")=="completed"
+                  and r.get("conclusion")=="success"
+              ]
+              if not candidates:
+                  raise SystemExit(f"No successful candidate workflow found: {name}")
+              run=max(candidates,key=lambda r:r["created_at"])
+              artifact_name=(
+                  f"wise-ronin-corpus-v4-openculture-{run['id']}"
+                  if key=="openculture"
+                  else f"wise-ronin-corpus-v4-personality-{run['id']}"
+              )
+              print(f"{key}_run_id={run['id']}")
+              print(f"{key}_artifact={artifact_name}")
+          PY
+
+      - name: Download exact v3.2.005 base and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: paired-v32-inputs-45405758303
+          path: inputs
+          repository: ${{ github.repository }}
+          run-id: 45405758303
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download OpenCulture candidate shards
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.runs.outputs.openculture_artifact }}
+          path: openculture
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.runs.outputs.openculture_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download personality and dialogue candidate shards
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.runs.outputs.personality_artifact }}
+          path: personality
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.runs.outputs.personality_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify original corpus and exact tokenizer hashes
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path("inputs")
+          base=root/"data/spanish-v3-2.005-train.jsonl"
+          tokenizer=root/"artifacts/tokenizer.json"
+          manifest=json.loads((root/"data/spanish-v3-2.005-manifest.json").read_text())
+          sha=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+          assert sha(base)==manifest["data_sha256"]
+          assert sha(tokenizer)==manifest["tokenizer_sha256"]
+          assert sha(tokenizer)=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          print("Verified base corpus and tokenizer lineage.")
+          PY
+
+      - name: Compile and test final merge
+        run: |
+          python -m py_compile scripts/merge_corpus_v4.py scripts/build_corpus_v4_openculture.py
+          PYTHONPATH=. pytest -q tests/test_corpus_attractor_filter.py tests/test_corpus_v4_merge.py
+
+      - name: Merge, filter, deduplicate and freeze 100 MiB shards
+        run: |
+          python scripts/merge_corpus_v4.py \
+            --base-jsonl inputs/data/spanish-v3-2.005-train.jsonl \
+            --openculture-dir openculture \
+            --personality-dir personality \
+            --tokenizer inputs/artifacts/tokenizer.json \
+            --output-dir artifacts/corpus-v4-frozen \
+            --chunk-tokens 126 \
+            --max-shard-bytes 104857600 \
+            --minimum-raw-text-rows 1800000 \
+            --minimum-personality-dialogue-rows 160000 \
+            --minimum-personality-share 0.10 \
+            --maximum-personality-share 0.15
+
+      - name: Independently verify frozen corpus invariants
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          from tokenizers import Tokenizer
+          from scripts.build_corpus_v4_openculture import load_denylist, find_attractors
+          root=Path("artifacts/corpus-v4-frozen")
+          m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          tokenizer=Tokenizer.from_file("inputs/artifacts/tokenizer.json")
+          denylist,patterns=load_denylist(root/"attractor_denylist.json")
+          assert m["training_authorized"] is False
+          assert m["raw_text_target_met"] is True
+          assert m["personality_target_met"] is True
+          assert m["raw_text_pretraining_rows"] >= 1800000
+          assert 0.10 <= m["personality_dialogue_share"] <= 0.15
+          total=0
+          tokens=0
+          for shard in m["shards"]:
+              p=root/shard["file"]
+              assert p.stat().st_size <= 104857600
+              assert hashlib.sha256(p.read_bytes()).hexdigest()==shard["sha256"]
+              with p.open(encoding="utf-8") as handle:
+                  count=0
+                  for line in handle:
+                      if not line.strip():
+                          continue
+                      row=json.loads(line)
+                      prompt=str(row.get("prompt") or "")
+                      completion=str(row.get("completion") or "")
+                      assert row.get("language")=="es"
+                      assert len(tokenizer.encode((prompt+"\n"+completion).strip(),add_special_tokens=False).ids)<=126
+                      assert not find_attractors(
+                          prompt+"\n"+completion+"\n"+" ".join(
+                              str(row.get(k) or "") for k in
+                              ("title","creator","source_document_id","source_url","persona_theme","task_family","domain","type","theme")
+                          ),patterns
+                      )
+                      count+=1
+                      tokens+=int(row.get("token_count",0))
+              assert count==shard["rows"]
+              total+=count
+          assert total==m["total_rows"]
+          assert tokens==m["token_count_without_special_tokens"]
+          print(json.dumps({
+              "total_rows":total,
+              "raw_text_rows":m["raw_text_pretraining_rows"],
+              "personality_dialogue_rows":m["personality_dialogue_rows"],
+              "personality_share":m["personality_dialogue_share"],
+              "tokens":tokens,
+              "task_counts":m["task_counts"],
+              "source_counts":m["source_counts"],
+              "license_counts":m["license_counts"],
+              "rejection_counts":m["rejection_counts"],
+              "attractor_rejections":m["attractor_rejections_by_term"],
+              "shards":len(m["shards"]),
+          },ensure_ascii=False,indent=2))
+          PY
+
+      - name: Write freeze report
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path("artifacts/corpus-v4-frozen")
+          m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          lines=[
+            "# WISE-RONIN corpus v4.0.0 — freeze report",
+            "",
+            f"- Total rows: **{m['total_rows']:,}**",
+            f"- Raw-text rows: **{m['raw_text_pretraining_rows']:,}**",
+            f"- Personality/dialogue rows: **{m['personality_dialogue_rows']:,}** ({m['personality_dialogue_share']:.2%})",
+            f"- Tokens (without special tokens): **{m['token_count_without_special_tokens']:,}**",
+            f"- 100 MiB shards: **{len(m['shards'])}**",
+            f"- Tokenizer SHA-256: {m['tokenizer_sha256']}",
+            f"- Denylist SHA-256: {m['denylist_sha256']}",
+            f"- Source plan SHA-256: {m['source_plan_sha256']}",
+            "- Training authorized: **false**",
+            "",
+            "## Sources",
+          ]
+          lines += [f"- {k}: {v:,}" for k,v in m["source_counts"].items()]
+          lines += ["","## Licenses"] + [f"- {k}: {v:,}" for k,v in m["license_counts"].items()]
+          lines += ["","## Rejections"] + [f"- {k}: {v:,}" for k,v in m["rejection_counts"].items()]
+          (root/"CORPUS_V4_FREEZE_REPORT.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+          PY
+
+      - name: Upload frozen v4.0.0 corpus and audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-corpus-v4-frozen-${{ github.run_id }}
+          path: artifacts/corpus-v4-frozen/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+
+      - name: Publish freeze summary
+        run: |
+          cat artifacts/corpus-v4-frozen/CORPUS_V4_FREEZE_REPORT.md >> "$GITHUB_STEP_SUMMARY"

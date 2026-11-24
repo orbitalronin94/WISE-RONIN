@@ -11,20 +11,37 @@
   "delta_trace_norm_diagnostics_on_demand": true,
   "delta_share_causal_masks": true,
   "homeostasis_fused_scatter": false,
-  "profile_id": "screening_winner_plus_delta_exact_fastpaths_v2",
+  "organs": {
+    "pain": {
+      "response": 0.2
+    },
+    "pleasure": {
+      "response": 0.5
+    },
+    "pain_budget_gain": 0.15,
+    "pleasure_budget_gain": 0.15
+  },
+  "plasticity": {
+    "mode": "custom",
+    "threshold_scale": 0.85,
+    "eligibility_retention": 0.98
+  },
+  "sleep_downscale": 0.99,
+  "sleep_interval_steps": 50,
+  "profile_id": "check0_selected_H02_H03_H04_H05_H06_H09_H18",
   "benchmark_metadata": {
-    "source": "GitHub Actions run 45158484545, 20 matched 100-step hypotheses",
-    "run_url": "https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45158484545",
-    "parent_step": 140700,
-    "final_step": 140800,
-    "seed": 42,
-    "intraop_threads": 4,
-    "interop_threads": 2,
-    "mkldnn_enabled": false,
-    "foreach": false,
-    "cpu_affinity": true,
-    "delta_pre_normalize": false,
-    "homeostasis_fused_scatter": false,
-    "selection_note": "Enables only Delta fastpaths intended to preserve outputs/state/gradients while reducing duplicate einsum work, host synchronization and repeated mask allocation. They remain experimental until PR validation and paired throughput measurement. homeostasis_fused_scatter remains disabled because prior screening did not show a win."
+    "source": "GitHub Actions run 45394137485, paired check-0 screening",
+    "run_url": "https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45394137485",
+    "selection": [
+      "H02: pain response=0.20; speed +0.06%; mean loss delta -0.001678",
+      "H03: pleasure response=0.50; speed +2.19%; mean loss delta -0.000802",
+      "H04: pain budget gain=0.15; speed +0.26%; mean loss delta +0.002235",
+      "H05: pleasure budget gain=0.15; speed +0.58%; mean loss delta -0.003742",
+      "H06: plasticity threshold scale=0.85; speed +0.83%; mean loss unchanged",
+      "H09: eligibility retention=0.98; speed +8.40%; mean loss delta +0.000003",
+      "H18: sleep downscale=0.99, interval=50; speed +2.63%; mean loss unchanged"
+    ],
+    "selection_note": "User-selected composite screening profile. These deltas were screened independently from fresh initialization for 1,000 steps; the combined interaction is not yet validated. H18 sleep did not execute on fresh check 0 because no slow-memory records were consolidated. The 400k resumed run will determine whether H18 executes against the populated parent memory. H04 is retained by explicit user choice despite a small positive loss delta.",
+    "scope": "provisional training profile; not a claim of holdout superiority"
   }
 }

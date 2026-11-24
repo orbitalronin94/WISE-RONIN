@@ -64,3 +64,22 @@ def test_sharded_corpus_rejects_bad_shard_hash(tmp_path):
         raise AssertionError("Corrupt shard hash was accepted")
 
 # Regression coverage for the v4 lazy-shard loader.
+
+
+
+def test_sharded_corpus_rejects_bad_shard_byte_count(tmp_path):
+    shard = _write_shard(tmp_path, "part-0.jsonl", [
+        {"prompt": "", "completion": "Texto.", "language": "es"},
+    ])
+    shard["bytes"] += 1
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        "training_authorized": True,
+        "total_rows": 1,
+        "shards": [shard],
+    }), encoding="utf-8")
+    try:
+        load_jsonl(tmp_path)
+    except ValueError as exc:
+        assert "byte count mismatch" in str(exc)
+    else:
+        raise AssertionError("Corrupt shard byte count was accepted")

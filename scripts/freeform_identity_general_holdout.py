@@ -1,4 +1,4 @@
-"""Unprompted free-form generation on a fixed random Spanish question sample.
+"""Unprompted free-form generation on a fixed set of 100 Spanish questions.
 
 The multiple-choice options and gold answer are removed before either model sees
 the prompt. Both models receive identical prompts and greedy decoding settings.
@@ -98,7 +98,7 @@ def main():
     ]
     if len(eligible) < args.sample_size:
         raise ValueError(f"Only {len(eligible)} eligible prompts for sample size {args.sample_size}")
-    sample = random.Random(args.seed).sample(eligible, args.sample_size)
+    sample = eligible[:args.sample_size] if args.sample_size == len(eligible) else random.Random(args.seed).sample(eligible, args.sample_size)
 
     lumen_state = torch.load(args.lumen, map_location="cpu", weights_only=False)
     if int(lumen_state.get("step", -1)) != args.expected_step:
@@ -151,7 +151,7 @@ def main():
     }
     stem = f"step{args.expected_step}_freeform_100"
     (out_dir / f"{stem}.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8"
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     lines = [
         f"# LUMEN vs Transformer — 100 respuestas libres ({args.expected_step:,})",
@@ -179,7 +179,7 @@ def main():
             "---",
             "",
         ])
-    (out_dir / f"{stem}.md").write_text("\\n".join(lines), encoding="utf-8")
+    (out_dir / f"{stem}.md").write_text("\n".join(lines), encoding="utf-8")
     print(f"Wrote {len(results)} paired free-form generations to {out_dir}", flush=True)
 
 

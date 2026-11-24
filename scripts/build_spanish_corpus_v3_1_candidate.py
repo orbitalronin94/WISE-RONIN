@@ -284,7 +284,7 @@ def main():
         "language": "es",
         "shared_by": ["Lumen", "Transformer"],
         "original_base_rows": len(base_rows),
-        "verified_base_rows_retained": len(accepted_base),
+        "base_rows_retained_after_filters": len(accepted_base),
         "quarantined_base_rows": len(base_rows) - len(accepted_base),
         "quarantine_reasons": dict(quarantine),
         "added_rows": len(additions),

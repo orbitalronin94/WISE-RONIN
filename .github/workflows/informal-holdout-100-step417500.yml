@@ -66,42 +66,48 @@ jobs:
           test -s transformer/checkpoints/transformer/step_417500.pt
           test -s data/freeform_identity_general_100.jsonl
           python - <<'PY'
-          import json
+          import json, sys, traceback
           from pathlib import Path
           import torch
           from tokenizers import Tokenizer
 
-          rows=[json.loads(x) for x in Path("data/freeform_identity_general_100.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
-          assert len(rows)==100, f"Expected 100 prompts, got {len(rows)}"
-          assert len({r["id"] for r in rows})==100
-          assert all(isinstance(r.get("prompt"),str) and r["prompt"].strip() for r in rows)
-          assert all("choices" not in r and "answer" not in r for r in rows)
-          assert rows[0]["prompt"]=="¿Quién eres?"
-          tok=Tokenizer.from_file("inputs/artifacts/tokenizer.json")
-          for special in ("[BOS]","[EOS]","[PAD]"):
-              assert tok.token_to_id(special) is not None, f"Missing tokenizer token {special}"
+          def check(label, condition, detail=""):
+              print(f"[CHECK] {label}: {'OK' if condition else 'FAIL'} {detail}", flush=True)
+              if not condition:
+                  raise RuntimeError(f"Validation failed: {label} {detail}")
 
-          paths={
-              "lumen":"lumen/checkpoints/lumen/step_417500.pt",
-              "transformer":"transformer/checkpoints/transformer/step_417500.pt",
-          }
-          states={}
-          for name,path in paths.items():
-              state=torch.load(path,map_location="cpu",weights_only=False)
-              assert int(state.get("step",-1))==417500, (name,state.get("step"))
-              assert hasattr(state.get("model"),"items") and len(state["model"])>0, (name,type(state.get("model")))
-              states[name]=state
-              print(f"{name}: verified step={state['step']} with model weights")
-          lumen_sha=states["lumen"].get("tokenizer_sha256")
-          transformer_sha=states["transformer"].get("tokenizer_sha256")
-          print(f"Checkpoint tokenizer metadata: lumen={lumen_sha!r}; transformer={transformer_sha!r}", flush=True)
-          # Artifacts are pinned to the same source run and tokenizer artifact.
-          # Treat missing optional checkpoint metadata as diagnostic, not fatal.
-          if lumen_sha and transformer_sha and lumen_sha != transformer_sha:
-              raise ValueError(f"Checkpoint tokenizer metadata mismatch: {lumen_sha} != {transformer_sha}")
-          print("Verified 100 fixed open prompts: no choices, no gold answers.", flush=True)
-          print("Categories:", sorted({r["source"] for r in rows}), flush=True)
-          print("Tokenizer and paired checkpoint lineage verified.", flush=True)
+          try:
+              rows=[json.loads(x) for x in Path("data/freeform_identity_general_100.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+              check("exactly 100 prompts", len(rows)==100, f"found={len(rows)}")
+              check("unique prompt IDs", len({r.get("id") for r in rows})==100)
+              check("all prompts non-empty", all(isinstance(r.get("prompt"),str) and r["prompt"].strip() for r in rows))
+              check("no choices or gold answers", all("choices" not in r and "answer" not in r for r in rows))
+              check("first prompt is identity", rows[0].get("prompt")=="¿Quién eres?", repr(rows[0].get("prompt")))
+
+              tok=Tokenizer.from_file("inputs/artifacts/tokenizer.json")
+              vocab=tok.get_vocab()
+              for special in ("[BOS]","[EOS]","[PAD]"):
+                  check(f"tokenizer contains {special}", special in vocab, f"id={vocab.get(special)}")
+
+              paths={
+                  "lumen":"lumen/checkpoints/lumen/step_417500.pt",
+                  "transformer":"transformer/checkpoints/transformer/step_417500.pt",
+              }
+              states={}
+              for name,path in paths.items():
+                  state=torch.load(path,map_location="cpu",weights_only=False)
+                  check(f"{name} checkpoint step", int(state.get("step",-1))==417500, f"actual={state.get('step')}")
+                  weights=state.get("model")
+                  check(f"{name} model weights", hasattr(weights,"items") and len(weights)>0, f"type={type(weights).__name__}, tensors={len(weights) if hasattr(weights,'__len__') else 'n/a'}")
+                  check(f"{name} tokenizer SHA present", bool(state.get("tokenizer_sha256")), f"sha={state.get('tokenizer_sha256')}")
+                  states[name]=state
+              sha_l=states["lumen"]["tokenizer_sha256"]
+              sha_t=states["transformer"]["tokenizer_sha256"]
+              check("paired tokenizer SHA matches", sha_l==sha_t, f"LUMEN={sha_l}; Transformer={sha_t}")
+              print("VALIDATION PASSED: both exact step-417500 checkpoints and 100 free-form prompts.", flush=True)
+          except Exception:
+              traceback.print_exc()
+              sys.exit(1)
           PY
       - name: Generate the same 100 free-form answers from both models
         env:

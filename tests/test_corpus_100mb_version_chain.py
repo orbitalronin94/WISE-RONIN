@@ -59,7 +59,7 @@ with tempfile.TemporaryDirectory() as td:
     auto_out = root / "auto-out"
     auto_row = row("A policy approved batch record " + "echo " * 35,
                    review_status="auto_accept", review_method="batch_policy_v1")
-    auto_source.write_text(json.dumps(auto_row) + "\\n", encoding="utf-8")
+    auto_source.write_text(json.dumps(auto_row) + "\n", encoding="utf-8")
     denied = subprocess.run([sys.executable, str(BUILDER), "--input", str(auto_source),
         "--base-jsonl", str(base), "--output-dir", str(auto_out)], capture_output=True, text=True)
     assert denied.returncode == 0

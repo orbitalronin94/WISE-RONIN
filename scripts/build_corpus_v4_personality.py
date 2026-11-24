@@ -252,6 +252,9 @@ def main():
     finally:
         writer.close()
         db.close()
+    dedup_path = args.output_dir / "dedup.sqlite"
+    if dedup_path.exists():
+        dedup_path.unlink()
 
     manifest = {
         "schema": "wise-ronin-corpus-v4-personality-manifest-v1",

@@ -58,7 +58,7 @@ jobs:
               runs=json.load(response)["workflow_runs"]
           names={
               "openculture":"Build corpus v4 OpenCulture — 1.8M rows",
-              "personality":"Build corpus v4 personality and dialogue — 160K rows",
+              "personality":"Build corpus v4 personality and dialogue — 165K rows",
           }
           for key,name in names.items():
               candidates=[

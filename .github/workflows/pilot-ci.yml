@@ -73,6 +73,9 @@ jobs:
               Path(".github/workflows/lumen-memory-sleep-3000-4000.yml"),
               Path(".github/workflows/ronin-longrun-3000-8000-parallel.yml"),
               Path(".github/workflows/benchmark-lumen-hotspots.yml"),
+              Path(".github/workflows/build-corpus-v4-openculture.yml"),
+              Path(".github/workflows/build-corpus-v4-personality.yml"),
+              Path(".github/workflows/freeze-corpus-v4.yml"),
           ):
               workflow = yaml.safe_load(workflow_path.read_text())
               for job_name, job in workflow.get("jobs", {}).items():

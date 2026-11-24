@@ -1,5 +1,5 @@
 name: Build corpus v4 personality and dialogue — 160K rows
-# Conversation quality gate now uses a lower threshold than documentary OCR filtering.
+# Preserve explicit per-source license URLs in dialogue/persona shards.
 
 on:
   push:

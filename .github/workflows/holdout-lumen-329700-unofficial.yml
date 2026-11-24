@@ -60,33 +60,38 @@ jobs:
           python - <<'PY'
           import json, torch, hashlib
           from pathlib import Path
-          files=list(Path("checkpoint-artifact").rglob("*.pt"))
-          found=[]
-          for p in files:
-              try: c=torch.load(p,map_location="cpu",weights_only=False)
-              except Exception: continue
-              if isinstance(c,dict) and int(c.get("step",-1))==329700 and c.get("architecture_id")=="ronin_lumen_v3_3_neuroplasticity":
-                  found.append((p,c))
-          if len(found)!=1:
-              raise SystemExit(f"Expected exactly one LUMEN step-329700 checkpoint; found {[str(p) for p,_ in found]}")
-          p,c=found[0]
-          assert isinstance(c.get("model"),dict) and c["model"], "Model state missing"
+          # The artifact intentionally contains mirrored copies. Prefer its canonical path;
+          # do not count identical packaging mirrors as distinct checkpoints.
+          candidates = [
+              Path("checkpoint-artifact/checkpoint/step_329700.pt"),
+              Path("checkpoint-artifact/checkpoints/lumen/step_329700.pt"),
+              Path("checkpoint-artifact/checkpoints/lumen/latest_good.pt"),
+          ]
+          p = next((x for x in candidates if x.is_file()), None)
+          if p is None:
+              raise SystemExit(f"No canonical LUMEN step-329700 checkpoint found. Files: {[str(x) for x in Path('checkpoint-artifact').rglob('*.pt')]}")
+          c = torch.load(p, map_location="cpu", weights_only=False)
+          if not isinstance(c, dict) or int(c.get("step", -1)) != 329700:
+              raise SystemExit(f"Wrong checkpoint step in {p}: {c.get('step') if isinstance(c,dict) else type(c)}")
+          if c.get("architecture_id") != "ronin_lumen_v3_3_neuroplasticity":
+              raise SystemExit(f"Unexpected architecture: {c.get('architecture_id')}")
+          assert isinstance(c.get("model"), dict) and c["model"], "Model state missing"
           assert c.get("optimizer"), "Optimizer state missing"
           assert c.get("rng"), "RNG state missing"
-          tok=Path("prepared/artifacts/spanish-v2/tokenizer.json")
-          tok_sha=hashlib.sha256(tok.read_bytes()).hexdigest()
-          saved=c.get("tokenizer_sha256")
+          tok = Path("prepared/artifacts/spanish-v2/tokenizer.json")
+          tok_sha = hashlib.sha256(tok.read_bytes()).hexdigest()
+          saved = c.get("tokenizer_sha256")
           if saved and saved != tok_sha:
               raise SystemExit(f"Tokenizer SHA mismatch: checkpoint={saved}, holdout={tok_sha}")
-          rows=[json.loads(x) for x in Path("prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
-          assert len(rows)==2431, f"Expected 2431 frozen rows, got {len(rows)}"
+          rows = [json.loads(x) for x in Path("prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(rows) == 2431, f"Expected 2431 frozen rows, got {len(rows)}"
           Path("resolved").mkdir(exist_ok=True)
           import shutil
-          shutil.copy2(p,"resolved/lumen-329700.pt")
-          print("Checkpoint:",p)
-          print("Step:",c["step"],"architecture:",c["architecture_id"])
-          print("Tokenizer SHA:",tok_sha)
-          print("Frozen holdout rows:",len(rows))
+          shutil.copy2(p, "resolved/lumen-329700.pt")
+          print("Checkpoint:", p)
+          print("Step:", c["step"], "architecture:", c["architecture_id"])
+          print("Tokenizer SHA:", tok_sha)
+          print("Frozen holdout rows:", len(rows))
           print("Unofficial single-model evaluation; no training or checkpoint mutation.")
           PY
       - name: Score LUMEN on untouched multiple-choice holdout

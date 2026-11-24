@@ -4,7 +4,7 @@
 
 Auditoría inicial realizada sobre el artefacto acumulativo de la cadena v3.2 descargado desde GitHub Actions. Se inspeccionaron íntegramente los cinco deltas v3.2.001–v3.2.005 (JSONL), sus manifiestos y el índice de deduplicación incluido en el artefacto.
 
-**Límite de alcance:** el ZIP de la cadena contiene los deltas v3.2, no el JSONL completo del padre v3.1. Por tanto, las cifras por fuente que siguen describen los 81.825 registros añadidos en v3.2; no se presentan como una auditoría léxica completa de las 279.613 filas acumuladas.
+Además de los deltas, se descargó y examinó el JSONL exacto usado por el entrenamiento emparejado (279.613 filas, SHA-256 0f7db9d6c4264f68fd6a12a9fe5bfa708e4fc30c1df176de5a4f53081bfe79aa). La auditoría léxica global cubre ya el corpus efectivo completo. La distribución por fuente de los incrementos v3.2 sigue describiendo sus 81.825 filas nuevas.
 
 ## Hallazgos sobre v3.2
 
@@ -27,7 +27,7 @@ Así, **72.734/81.825 (88,9%)** de las nuevas filas v3.2 son perfiles, diálogos
 
 La cadena declara 279.613 filas acumuladas (197.788 de v3.1 + 81.825 deltas v3.2). Si la cifra operativa de la rama de entrenamiento es aproximadamente 180.000, hay que reconciliarla contra el manifiesto/artifact exacto antes de fijar el multiplicador. El objetivo mínimo solicitado se interpreta como 10× el corpus congelado efectivo, con 100× como objetivo aspiracional sujeto a datos elegibles reales.
 
-## Diagnóstico de atractores de LUMEN
+## Distribución del corpus completo v3.2.005\n\n| Grupo | Filas | Proporción |\n|---|---:|---:|\n| raw_text_pretraining | 178.090 | 63,7% |\n| persona_profile + persona_dialogue + synthetic_persona_voice | 72.734 | 26,0% |\n| Otros SFT / QA / tareas | 28.789 | 10,3% |\n| **Total** | **279.613** | **100%** |\n\nEl corpus ya tiene un bloque de personalidad sustancial: 72.734 filas. Para que no desaparezca estadísticamente cuando añadamos 1,8 M de texto general, el plan fija una franja final del 10–15% de ejemplos de personalidad/conversación. Con un corpus final en torno a 2,1 M, eso supone aproximadamente 210–315 mil filas de esa familia; habría que añadir en torno a 135–240 mil sobre las 72.734 existentes, después de aplicar filtros y deduplicación.\n\n## Diagnóstico de atractores de LUMEN
 
 Se inspeccionaron las 100 respuestas libres de LUMEN del holdout del paso 417.500. Entre los patrones recurrentes observables aparecen:
 - «Contexto documental»
@@ -60,7 +60,7 @@ La regla se implementa en scripts/filter_corpus_attractors.py y la lista queda v
 
 - **Mínimo:** 10× el número real de filas del corpus de entrenamiento congelado (si son 180.000, al menos 1,8 M).
 - **Aspiracional:** 100× (si son 180.000, 18 M), solo si la ingestión real produce suficientes documentos únicos, útiles y con derechos verificables.
-- El entrenador actual usa max_len=128 y espera prompt/completion, mientras los deltas v3.2 serializan text. El adaptador debe convertir texto documental a prompt vacío + completion y trocear a un máximo de 126 tokens BPE (reservando BOS/EOS); registrar source_document_id, chunk_index, offsets y procedencia. No almacenar párrafos de miles de palabras como una sola fila: el entrenador truncaría casi todo el documento.
+- El entrenador actual usa max_len=128 y espera prompt/completion, mientras los deltas fuente v3.2 serializan text. El adaptador debe convertir texto documental a prompt vacío + completion y trocear a un máximo de 126 tokens BPE (reservando BOS/EOS); registrar source_document_id, chunk_index, offsets y procedencia. No almacenar párrafos de miles de palabras como una sola fila: el entrenador truncaría casi todo el documento.
 - Mantener la personalidad como una franja estable de aproximadamente 10–15% del corpus final, no dejarla desaparecer bajo el volumen documental. La proporción se mide tras el filtro de atractores y deduplicación.
 - Congelar una versión inmutable con manifiesto, SHA-256, conteo de filas/tokens, distribución por dominio/tipo, licencia y reporte de rechazos.
 

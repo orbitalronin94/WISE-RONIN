@@ -24,7 +24,7 @@ def model_text(row: dict) -> str:
 def is_personality(row: dict) -> bool:
     source = str(row.get("source", "")).casefold()
     task = str(row.get("task", row.get("task_type", ""))).casefold()
-    return any(key in source for key in ("persona", "m-personas", "stratasynth")) or "persona" in task
+    return any(key in source for key in ("persona", "m-personas", "stratasynth")) or "persona" in task or "personality" in task
 
 class ChunkWriter:
     """Write accepted JSONL into immutable chunks capped at 100 MiB by default."""

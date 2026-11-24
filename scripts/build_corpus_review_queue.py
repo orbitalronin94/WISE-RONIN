@@ -19,9 +19,13 @@ def language_label(text):
     if en >= 3 and en > es: return "non_es_heuristic"
     return "unresolved"
 
-def extract_chunks(row, fields, messages_field):
+def extract_chunks(row, fields, messages_field, tokens_field):
     chunks = [(field, norm(row[field])) for field in fields
               if isinstance(row.get(field), str) and norm(row[field])]
+    if tokens_field and isinstance(row.get(tokens_field), list):
+        tokens = row[tokens_field]
+        if all(isinstance(token, str) for token in tokens) and tokens:
+            chunks.append((f"{tokens_field}[]", " ".join(tokens)))
     if messages_field and isinstance(row.get(messages_field), list):
         for message in row[messages_field]:
             if isinstance(message, dict) and isinstance(message.get("content"), str):
@@ -48,6 +52,8 @@ def main():
     p.add_argument("--text-fields",required=True,help="Explicit comma-separated prose field allowlist")
     p.add_argument("--base-jsonl",help="Optional frozen v3.1 JSONL for exact duplicate references")
     p.add_argument("--messages-field",help="Optional list-of-{role,content} chat field, e.g. messages")
+    p.add_argument("--tokens-field",help="Optional list[str] field for token-classification datasets")
+    p.add_argument("--tags-field",help="Optional parallel annotation-tag list, e.g. ner_tags")
     a=p.parse_args()
     fields=tuple(x.strip() for x in a.text_fields.split(",") if x.strip())
     if not fields: raise SystemExit("at least one text field must be allowlisted")
@@ -57,7 +63,7 @@ def main():
             for line in f:
                 try: row=json.loads(line)
                 except Exception: continue
-                chunks=[value for _,value in extract_chunks(row, fields, a.messages_field) if value] if isinstance(row,dict) else []
+                chunks=[value for _,value in extract_chunks(row, fields, a.messages_field, a.tokens_field) if value] if isinstance(row,dict) else []
                 if not chunks and isinstance(row,dict) and isinstance(row.get("text"),str) and norm(row["text"]):
                     chunks=[norm(row["text"])]
                 if chunks: base.add(hashlib.sha256("\n".join(chunks).encode()).hexdigest())
@@ -94,6 +100,18 @@ def main():
                     "language":language,"task_type":classify_task(row),"privacy_flags":flags,
                     "review_status":"pending","rights_status":"pending",
                     "privacy_status":"pending","quality_status":"pending","raw_text_exported":False}
+            if a.tokens_field:
+                tokens = row.get(a.tokens_field)
+                if isinstance(tokens, list):
+                    record["token_count"] = len(tokens)
+                    if a.tags_field:
+                        tags = row.get(a.tags_field)
+                        if isinstance(tags, list):
+                            record["tag_count"] = len(tags)
+                            record["tag_alignment"] = "aligned" if len(tokens) == len(tags) else "length_mismatch"
+                            record["tag_label_counts"] = {str(tag): tags.count(tag) for tag in sorted(set(tags), key=str)}
+                            if len(tokens) != len(tags):
+                                record["privacy_flags"].append("annotation_length_mismatch")}
             dst.write(json.dumps(record,ensure_ascii=False,sort_keys=True)+"\n")
     print(json.dumps({"stats":stats,"output":str(out),"raw_text_exported":False},sort_keys=True))
 

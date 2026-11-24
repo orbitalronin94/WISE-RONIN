@@ -223,6 +223,35 @@ jobs:
           print("Corpus v4.0.0 is authorized for training.")
           PY
 
+      - name: Smoke-test the actual frozen corpus with the production lazy loader
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          from model.config import CONFIG
+          from train.dataset import BPETokenizer, IndexedJsonlCorpus, load_jsonl
+          root=Path("artifacts/corpus-v4-frozen")
+          manifest=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          assert manifest["training_authorized"] is True
+          tokenizer=BPETokenizer(root/"tokenizer.json")
+          assert tokenizer.tokenizer.get_vocab_size()==CONFIG.vocab_size
+          assert tokenizer.tokenizer.token_to_id("[PAD]")==0
+          assert tokenizer.tokenizer.token_to_id("[EOS]") is not None
+          rows,digest=load_jsonl(root)
+          try:
+              assert isinstance(rows,IndexedJsonlCorpus)
+              assert len(rows)==manifest["total_rows"]
+              for index in sorted({0,len(rows)//2,len(rows)-1}):
+                  row=rows[index]
+                  assert row["language"]=="es"
+                  encoded=tokenizer.encode((str(row.get("prompt") or "")+"\n"+str(row["completion"])).strip(),128)
+                  assert 2<=len(encoded)<=128
+              print(f"Production lazy-loader smoke test passed: rows={len(rows)}, corpus_digest={digest}")
+          finally:
+              rows.close()
+              shutil.rmtree(root/".corpus_index",ignore_errors=True)
+          PY
+
       - name: Write freeze report
         run: |
           python - <<'PY'

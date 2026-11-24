@@ -345,18 +345,31 @@ def main():
                 raise ValueError(f"{label} candidate did not meet its row target")
             if label == "personality":
                 expected_sources = {
-                    "m_personas_es": ("BSC-LT/m-personas", "6fab205a86a9244c90a2782e28055027f45ddd03", "Apache-2.0", 20_000),
-                    "sft_general_spanish": ("OysterCoreAI/SFT-General-Spanish-50K", "25d2187", "CC-BY-4.0", 20_000),
+                    "m_personas_es": (
+                        "BSC-LT/m-personas",
+                        "6fab205a86a9244c90a2782e28055027f45ddd03",
+                        "Apache-2.0",
+                        "https://www.apache.org/licenses/LICENSE-2.0",
+                        20_000,
+                    ),
+                    "sft_general_spanish": (
+                        "OysterCoreAI/SFT-General-Spanish-50K",
+                        "25d2187",
+                        "CC-BY-4.0",
+                        "https://creativecommons.org/licenses/by/4.0/",
+                        20_000,
+                    ),
                 }
                 stats = source_manifest.get("source_stats", {})
-                for source_key, (repo, revision, license_name, minimum_rows) in expected_sources.items():
+                for source_key, (repo, revision, license_name, license_url, minimum_rows) in expected_sources.items():
                     source_info = stats.get(source_key, {})
                     if (
                         source_info.get("repo") != repo
                         or source_info.get("revision") != revision
                         or source_info.get("license") != license_name
+                        or source_info.get("license_url") != license_url
                     ):
-                        raise ValueError(f"Personality source lineage mismatch: {source_key}")
+                        raise ValueError(f"Personality source lineage/license mismatch: {source_key}")
                     if int(source_info.get("rows", 0)) < minimum_rows:
                         raise ValueError(f"Personality source contribution too small: {source_key}")
             if label == "openculture":

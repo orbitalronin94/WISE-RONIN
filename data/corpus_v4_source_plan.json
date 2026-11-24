@@ -163,6 +163,40 @@
       "candidate_license": "CC-BY-4.0",
       "admission": "candidate_for_dialogue_style_expansion",
       "notes": "Train split only (48.4k rows). Original synthetic editorial conversations; retain source attribution and task-family metadata. Validation/test splits excluded."
+    },
+    {
+      "dataset": "PlanTL-GOB-ES/SQAC",
+      "domain": [
+        "extractive_question_answering",
+        "encyclopedic_knowledge",
+        "news",
+        "general_factual_qa"
+      ],
+      "candidate_license": "conflicting_CC-BY-SA-4.0_metadata_vs_CC-BY-4.0_card_text",
+      "admission": "blocked_pending_license_reconciliation",
+      "notes": "15,036 train QA pairs, human-annotated. Source contexts from Wikipedia, Wikinews and AnCora. Do not ingest until the license discrepancy is resolved and source-specific attribution is preserved."
+    }
+  ],
+  "excluded_sources": [
+    {
+      "dataset": "BSC-LT/SIQA_es",
+      "reason": "Existing frozen evaluation/holdout source; never admit its validation rows to training."
+    },
+    {
+      "dataset": "BSC-LT/openbookqa-es",
+      "reason": "Existing frozen evaluation/holdout source; never admit its validation rows to training."
+    },
+    {
+      "dataset": "BSC-LT/EsBBQ",
+      "reason": "Dataset card exposes a test-only split; keep out of training."
+    },
+    {
+      "dataset": "IIC/AQuAS",
+      "reason": "CC BY-NC-SA 4.0 non-commercial license; excluded from this training corpus."
+    },
+    {
+      "dataset": "IIC/RagQuAS",
+      "reason": "CC BY-NC-SA 4.0 non-commercial license; excluded from this training corpus."
     }
   ]
 }

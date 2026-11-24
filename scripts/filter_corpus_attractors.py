@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import unicodedata
@@ -71,11 +72,21 @@ def main() -> int:
             normalized_text = normalize(text)
             hits = [raw for raw, pattern in compiled if pattern.search(normalized_text)]
             if hits:
-                row["_admission_rejection"] = {
-                    "reason": "lumen_attractor_denylist",
-                    "matched_terms": hits
-                }
-                bad.write(json.dumps(row, ensure_ascii=False) + "\n")
+                text_hash = hashlib.sha256(
+                    normalize(text).encode("utf-8")
+                ).hexdigest()
+                bad.write(json.dumps({
+                    "id": row.get("id"),
+                    "source": row.get("source"),
+                    "source_document_id": row.get("source_document_id"),
+                    "task": row.get("task") or row.get("task_type"),
+                    "content_sha256": text_hash,
+                    "content_characters": len(text),
+                    "admission_rejection": {
+                        "reason": "lumen_attractor_denylist",
+                        "matched_terms": hits
+                    }
+                }, ensure_ascii=False) + "\n")
                 counts.update(hits)
                 rejected += 1
             else:

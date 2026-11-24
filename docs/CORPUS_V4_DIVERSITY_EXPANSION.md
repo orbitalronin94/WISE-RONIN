@@ -90,7 +90,7 @@ El encadenado v3.2.001–v3.2.005 contiene cinco deltas acumulativos:
 | v3.2.004 | 9.091 | 35.885.349 |
 | v3.2.005 | 1.250 | 3.859.558 |
 
-Solo el primer delta alcanza aproximadamente 100 MiB; los otros cuatro son incrementos menores. También existe un artefacto de la rama v3.1 candidata de unos 3,15 GB cuyo documento de planificación atribuye 9.933.007 filas. **No se debe mezclar directamente con v3.2.005:** el manifiesto de v3.2 declara una base v3.1 candidata de 197.788 filas, por lo que hay dos linajes/versiones v3.1 que deben reconciliarse por SHA, manifiestos y procedencia antes de reutilizar el artefacto grande.
+Solo el primer delta alcanza aproximadamente 100 MiB; los otros cuatro son incrementos menores. También existe un artefacto de la rama v3.1 candidata de 3.150.120.091 bytes. Su manifiesto de build registra **16.445.885 filas y 2.014.093.292 tokens**: parte de una base v3.0 de 9.933.007 filas y añade 6.550.199 fragmentos de ALIA Cultural Heritage y 2.700 filas SLR. Eso equivale a unas **58,8×** las filas de v3.2.005. **No se debe mezclar directamente con v3.2.005:** el manifiesto de v3.2 declara una base v3.1 candidata de 197.788 filas, por lo que hay dos linajes incompatibles que deben reconciliarse por SHA, manifiestos y procedencia.
 
 El pipeline v4 escribe bloques JSONL de máximo 100 MiB sin comprimir, con número de filas, tamaño y SHA-256 por bloque. Un documento individual que supere el límite debe segmentarse por documento de origen, conservando source_document_id, offsets y hash del original.
 
@@ -142,3 +142,21 @@ Prueba local:
 - El script nunca modifica el corpus base y siempre emite training_authorized=false.
 
 **Siguiente hito:** reconciliar el artefacto v3.1 candidato de 3,15 GB, auditar las fuentes de mayor escala y construir el primer lote v4. No iniciar entrenamiento con una versión parcial.
+
+
+## 8. Auditoría previa del candidato grande v3.1
+
+El artefacto se construyó en el run 45155150980 y conserva el estado BUILT_NEEDS_FINAL_AUDIT, con training_authorized=false. El informe de su base v3.0 (run 45142717502) impone gates aún abiertos:
+
+- 19.740 near-duplicates confirmados con Jaccard de trigramas >=0,88 y ratio de longitud >=0,80.
+- 157.874 consultas superaron el límite de 1.000 candidatos; no se revisaron completamente.
+- 41 alertas heurísticas de posible marcador sensible: 13 en literatura y 28 en m-personas. No son incidentes confirmados; deben revisarse.
+- 608 documentos literarios de train tienen revisiones y derechos en el manifiesto upstream, pero los fragmentos v3 no conservan ID/hash de documento; hay que restaurar esa relación.
+- 63 completions largas repetidas frente a v2; cero duplicados exactos de pares y cero coincidencias exactas con validation/holdout.
+- La categoría de personalidad verifiable_personality contiene 50.000 registros, pero su manifiesto indica 40 tarjetas factuales y siete URLs institucionales: no son 50.000 hechos independientes.
+- Las 119.026 filas de synthetic_curricula derivan de 24×10 casos semilla revisados; no deben contarse como 119.026 piezas de conocimiento factual independiente.
+- La construcción v3.1 añadió 6.550.199 fragmentos ALIA con licencia declarada CC BY-SA 4.0; antes de mezclarlos en el corpus principal hay que resolver compatibilidad, atribución y obligaciones de compartir igual. La construcción retiró 75.016 filas marcadas y omitió 11.570 duplicados ALIA.
+
+La base v3.0 por sí sola ya representa aproximadamente 35,5× las filas de v3.2.005, pero no está autorizada: debe superar los gates de near-duplicates, desbordamiento de candidatos, alertas, trazabilidad literaria y derechos. El candidato completo de 16,45 M filas es una vía potencial para acercarse a 100×, pero no debe tratarse como corpus listo para entrenar.
+
+El workflow de auditoría del candidato v3.1 debe ejecutar el veto de atractores sobre el archivo completo, medir la proporción real de personalidad y generar un informe reproducible antes de crear bloques limpios.

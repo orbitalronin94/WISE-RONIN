@@ -56,7 +56,7 @@ def rowtext(row):
 def lang(row,s):
  if isinstance(row,dict):
   x=str(row.get("language",row.get("lang",""))).lower()
-  if x:return "es_declared" if x in {"es","es-es","spanish","spa"} or x.startswith("es-") else "non_es_declared"
+  if x:return "es_declared" if x in {"es","es-es","spanish","spa","español"} or x.startswith(("es-","es_","spa")) else "non_es_declared"
  w=set(norm(s).split()); es=len(w&{"que","de","la","el","en","los","una","para","con","por","como","del","este","esta","son"})
  en=len(w&{"the","of","and","to","in","is","for","with","that","this","from","are"})
  if es>=3 and es>en:return "es_heuristic"
@@ -81,7 +81,8 @@ def audit_split(db,repo,revision,config,split,limit,sample_n):
    stats["non_spanish_excluded"]+=1;continue
   if language=="language_unresolved":
    stats["language_unresolved_quarantined"]+=1
-  stats["spanish_rows_scanned"]+=1
+  else:
+   stats["spanish_rows_scanned"]+=1
   n=norm(s);stats["whitespace_tokens"]+=len(n.split())
   flags=[]
   if EMAIL.search(s):flags.append("possible_email")
@@ -138,19 +139,22 @@ def main():
  p.add_argument("--registry",required=True);p.add_argument("--db",required=True);p.add_argument("--output",required=True)
  p.add_argument("--base-jsonl",required=True)
  p.add_argument("--max-rows-per-split",type=int,default=0);p.add_argument("--sample-per-split",type=int,default=100)
- a=p.parse_args();db=sqlite3.connect(a.db);db.execute("PRAGMA journal_mode=WAL")
+ a=p.parse_args();registry=json.loads(Path(a.registry).read_text(encoding="utf-8"))
+ registry_sources={x.get("id"):x for x in registry.get("sources",[])}
+ db=sqlite3.connect(a.db);db.execute("PRAGMA journal_mode=WAL")
  db.execute("CREATE TABLE IF NOT EXISTS exact(digest TEXT PRIMARY KEY,source TEXT)")
  db.execute("CREATE TABLE IF NOT EXISTS sim(band INTEGER,value INTEGER,fingerprint TEXT,source TEXT)")
  db.execute("CREATE INDEX IF NOT EXISTS sim_idx ON sim(band,value)")
  base_count=index_base(db,a.base_jsonl)
- report={"training_authorized":False,"base_rows_indexed":base_count,"base_file":a.base_jsonl,"note":"All eligible train splits are streamed unless capped. Automated scan is not semantic/legal approval.","sources":{},"samples":[]}
+ report={"training_authorized":False,"base_rows_indexed":base_count,"base_file":a.base_jsonl,"registry_version":registry.get("version"),"note":"All eligible train splits are streamed unless capped. Automated scan is not semantic/legal approval.","sources":{},"samples":[]}
  for repo,route in ELIGIBLE.items():
   ent={"route":route,"configs":{}}
   try:
    info=api.dataset_info(repo)
    revision=info.sha
    card=info.card_data.to_dict() if info.card_data else {}
-   ent.update({"revision":revision,"declared_license":card.get("license")})
+   record=registry_sources.get(repo,{})
+   ent.update({"revision":revision,"declared_license_card":card.get("license"),"declared_license_registry":record.get("license"),"registry_entry_found":bool(record)})
    configs=get_dataset_config_names(repo,revision=revision) or ["default"]
    for config in configs:
     try:splits=get_dataset_split_names(repo,config_name=None if config=="default" else config,revision=revision)

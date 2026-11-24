@@ -45,13 +45,13 @@ jobs:
           path: artifacts/v3-1
       - name: Verify base artifact and record provenance
         run: |
-          test -n "$(find artifacts/v3-1 -type f -name 'train.jsonl' -print -quit)"
-          sha256sum "$(find artifacts/v3-1 -type f -name 'train.jsonl' -print -quit)"
+          test -n "$(find artifacts/v3-1 -type f -name 'spanish-v3-1-candidate.jsonl' -print -quit)"
+          sha256sum "$(find artifacts/v3-1 -type f -name 'spanish-v3-1-candidate.jsonl' -print -quit)"
       - name: Stream eligible source train splits
         run: |
           python scripts/audit_hf_corpus_v3_2.py \
             --registry data/corpus_v3_2_sources.json \
-            --base-jsonl "$(find artifacts/v3-1 -type f -name 'train.jsonl' -print -quit)" \
+            --base-jsonl "$(find artifacts/v3-1 -type f -name 'spanish-v3-1-candidate.jsonl' -print -quit)" \
             --db artifacts/corpus-v3-2-audit.sqlite \
             --output artifacts/corpus-v3-2-audit-report.json \
             --max-rows-per-split "${{ inputs.max_rows_per_split }}" \

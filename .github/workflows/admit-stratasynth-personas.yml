@@ -43,9 +43,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: lumen-corpus-v3-2-through-legal-qa-45369976573
-          repository: \${{ github.repository }}
+          repository: ${{ github.repository }}
           run-id: 45369976573
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/previous
       - name: Prepare cumulative chain and verify inherited dedup index
         run: |
@@ -64,12 +64,13 @@ jobs:
           assert base_rows >= 197000 and total_rows >= base_rows + 80575
           print({"frozen_v3_1_hashes": base_rows, "dedup_hashes_total": total_rows})
           PY
+          : > artifacts/empty-base-already-indexed.jsonl
       - name: Batch-normalize StrataSynth narrative fields
         run: |
           python scripts/admit_stratasynth_personas.py \
             --output artifacts/stratasynth-personas-auto-approved.jsonl \
             --report artifacts/stratasynth-personas-admission-report.json \
-            --max-rows "\${{ inputs.max_rows || '0' }}"
+            --max-rows "${{ inputs.max_rows || '0' }}"
       - name: Append new immutable corpus versions
         run: |
           python scripts/build_corpus_100mb_blocks.py \
@@ -84,7 +85,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lumen-corpus-v3-2-through-stratasynth-\${{ github.run_id }}
+          name: lumen-corpus-v3-2-through-stratasynth-${{ github.run_id }}
           path: |
             artifacts/stratasynth-personas-admission-report.json
             artifacts/corpus-v3-2-chain/*

@@ -15,7 +15,7 @@ import unicodedata
 from collections import Counter
 from pathlib import Path
 
-from datasets import load_dataset
+from datasets import Features, Value, load_dataset
 from tokenizers import Tokenizer
 import langid
 
@@ -28,6 +28,13 @@ SOURCES = [
         "license": "public_domain",
         "license_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Books",
         "share": 0.60,
+        "features": Features({
+            "identifier": Value("string"), "creator": Value("string"),
+            "title": Value("string"), "publication_date": Value("int32"),
+            "language": Value("string"), "language_code": Value("string"),
+            "text": Value("string"), "word_count": Value("int32"),
+            "character_count": Value("int32"),
+        }),
     },
     {
         "key": "spanish_pd_newspapers",
@@ -36,6 +43,12 @@ SOURCES = [
         "license": "public_domain",
         "license_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Newspapers",
         "share": 0.40,
+        "features": Features({
+            "id": Value("string"), "file_name": Value("string"),
+            "start_date": Value("string"), "end_date": Value("string"),
+            "edition": Value("string"), "word_count": Value("int64"),
+            "text": Value("string"),
+        }),
     },
 ]
 
@@ -220,7 +233,7 @@ def main():
             print(f"START {source['key']} quota={quota}", flush=True)
             dataset = load_dataset(
                 source["repo"], split="train", streaming=True,
-                revision=source["revision"]
+                revision=source["revision"], features=source["features"]
             ).shuffle(seed=args.seed, buffer_size=10_000)
             for index, item in enumerate(dataset):
                 if source_rows >= quota or total_rows >= args.target_rows:

@@ -58,5 +58,33 @@
   "notes": [
     "Historical rows are not deleted; the attractor gate is for new admissions.",
     "The separate v3.1 candidate artifact of approximately 3.15 GB is not reconciled to this v3.2 lineage and must not be merged blindly."
-  ]
+  ],
+  "v31_candidate": {
+    "build_run_id": 45155150980,
+    "artifact_bytes": 3150120091,
+    "rows": 16445885,
+    "exact_bpe_tokens": 2014093292,
+    "train_sha256": "d9836bf4ab1684444757e8b5221dc8d3ad34eb54d501baed103002b96e9d46be",
+    "base_v3_rows": 9933007,
+    "added_rows": {
+      "AIML-TUDA/SLR-Bench-Spanish": 2700,
+      "SINAI/ALIA-es-cultural-heritage": 6550199
+    },
+    "status": "BUILT_NEEDS_FINAL_AUDIT",
+    "training_authorized": false,
+    "unresolved_gates": {
+      "confirmed_near_duplicates": 19740,
+      "near_duplicate_queries_over_1000_candidates": 157874,
+      "possible_secret_marker_alerts": 41,
+      "literature_documents_missing_fragment_level_source_linkage": 608,
+      "repeated_completions_vs_v2": 63,
+      "exact_pair_duplicates_vs_v2": 0,
+      "exact_eval_contamination_hits": 0
+    },
+    "notes": [
+      "This candidate is not the same lineage as current v3.2.005, whose declared v3.1 base is 197,788 rows.",
+      "ALIA contribution is CC-BY-SA-4.0 and requires separate compatibility and provenance review.",
+      "50,000 verifiable_personality records derive from 40 fact cards and seven institutional URLs; 119,026 synthetic curricula derive from 24x10 reviewed seed cases."
+    ]
+  }
 }

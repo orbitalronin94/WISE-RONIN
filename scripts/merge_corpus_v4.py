@@ -86,7 +86,7 @@ def find_blocked_base_documents(path: Path, patterns):
         prompt = str(row.get("prompt") or "")
         completion = str(row.get("completion") or "")
         hits = find_attractors(
-            prompt + "\\n" + completion + "\\n" + metadata_text(row), patterns
+            prompt + "\n" + completion + "\n" + metadata_text(row), patterns
         )
         if hits:
             blocked[str(document_id)] = sorted(set(blocked.get(str(document_id), [])) | set(hits))

@@ -142,7 +142,7 @@ def main():
                 "prompt": clean_for_review(str(row.get("prompt", row.get("instruction", "")))),
                 "completion": clean_for_review(str(row.get("completion", row.get("response", row.get("answer", ""))))),
                 "text_preview": clean_for_review(body)[:2000],
-                "metadata": {k: row.get(k) for k in row if k not in {"prompt", "completion", "input", "context", "answer", "response", "output", "messages"}},
+                "metadata": redact_value({k: row.get(k) for k in row if k not in {"prompt", "completion", "input", "context", "answer", "response", "output", "messages"}}),
             }
             f.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
 

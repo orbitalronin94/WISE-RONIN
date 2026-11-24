@@ -64,7 +64,7 @@ jobs:
           set -euxo pipefail
           echo "Workspace: $PWD"
           find inputs lumen transformer -maxdepth 5 -type f -printf '%p %s bytes\n' | sort
-          for file in inputs/artifacts/tokenizer.json lumen/checkpoints/lumen/step_417500.pt transformer/checkpoints/transformer/step_417500.pt data/freeform_identity_general_100.jsonl; do
+          for file in inputs/artifacts/tokenizer.json lumen/checkpoint/step_417500.pt transformer/checkpoint/step_417500.pt data/freeform_identity_general_100.jsonl; do
             if [ ! -s "$file" ]; then echo "MISSING OR EMPTY: $file" >&2; exit 1; fi
             echo "OK: $file"
           done
@@ -88,8 +88,8 @@ jobs:
           OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/freeform_identity_general_holdout.py \
             --holdout data/freeform_identity_general_100.jsonl \
             --tokenizer inputs/artifacts/tokenizer.json \
-            --lumen lumen/checkpoints/lumen/step_417500.pt \
-            --transformer transformer/checkpoints/transformer/step_417500.pt \
+            --lumen lumen/checkpoint/step_417500.pt \
+            --transformer transformer/checkpoint/step_417500.pt \
             --expected-step 417500 \
             --sample-size 100 --seed 417500 --max-new-tokens 96 \
             --out-dir results/freeform-step417500 --threads 4 --max-len 128

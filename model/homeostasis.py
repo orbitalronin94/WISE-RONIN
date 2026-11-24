@@ -10,6 +10,7 @@ class Homeostasis(nn.Module):
         # Optional fused residual scatter path; parity-checked against the reference path.
         self.fused_scatter_add = False
         self.synaptic_scaling_enabled = False
+        self.track_input_activity = True
         self.bias = nn.Parameter(torch.zeros(dim))
         self.register_buffer("synaptic_scale", torch.ones(dim))
         # Input activity is retained as a diagnostic, not as the control signal.
@@ -25,7 +26,7 @@ class Homeostasis(nn.Module):
     def forward(self, x, collect_diagnostics=True):
         if collect_diagnostics:
             self.last_input_positive = float((x.detach() > 0).float().mean().item())
-        if self.training:
+        if self.training and self.track_input_activity:
             with torch.no_grad():
                 input_active = (x > 0).float().mean(dim=(0, 1))
                 self.m.mul_(0.99).add_(input_active, alpha=0.01)

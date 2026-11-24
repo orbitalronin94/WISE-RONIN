@@ -1,4 +1,5 @@
 name: Build corpus v4 personality and dialogue — 160K rows
+# Shared scripts package import enabled in the current revision.
 
 on:
   push:

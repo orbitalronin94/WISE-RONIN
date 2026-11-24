@@ -186,7 +186,12 @@ def main():
                 if not text.strip():
                     rejects["empty_conversation"] += 1
                     continue
-                hits = find_attractors(text, patterns)
+                metadata_probe = (
+                    f"{item.get('type') or ''} {item.get('theme') or ''}"
+                    if source["key"] == "m_personas_es"
+                    else f"{(item.get('metadata') or {}).get('task_family', '')} {(item.get('metadata') or {}).get('domain', '')}"
+                )
+                hits = find_attractors(text + "\n" + metadata_probe, patterns)
                 if hits:
                     rejects["attractor:" + "|".join(hits)] += 1
                     continue

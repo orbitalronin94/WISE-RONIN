@@ -1,0 +1,89 @@
+name: LUMEN — 100 preguntas abiertas en 329700
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/lumen-329700-100-questions.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-329700-100-questions
+  cancel-in-progress: false
+
+env:
+  SOURCE_RUN_ID: "45273897576"
+  DATA_RUN_ID: "45149684913"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU inference runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers
+      - name: Download frozen tokenizer and prompt corpus
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-v2-plus-personality-250k-45149684913
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.DATA_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact LUMEN checkpoint 329700
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-step-329700-45273897576
+          path: checkpoint-artifact
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify checkpoint and all 100 fixed prompts
+        run: |
+          set -euo pipefail
+          test -s prepared/artifacts/spanish-v2/tokenizer.json
+          test -s checkpoint-artifact/checkpoint/step_329700.pt
+          python - <<'PY'
+          import json, torch
+          from pathlib import Path
+          rows=[json.loads(x) for x in Path("data/freeform_identity_general_100.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(rows)==100 and len({r["id"] for r in rows})==100
+          assert rows[0]["prompt"]=="¿Quién eres?"
+          c=torch.load("checkpoint-artifact/checkpoint/step_329700.pt",map_location="cpu",weights_only=False)
+          assert int(c.get("step",-1))==329700, c.get("step")
+          assert c.get("architecture_id")=="ronin_lumen_v3_3_neuroplasticity"
+          assert c.get("model")
+          print("Verified LUMEN 329700 and 100 unique prompts; first prompt: ¿Quién eres?.")
+          PY
+      - name: Generate answers to 100 open questions
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/freeform_lumen_step329700_100.py
+      - name: Upload JSON and readable report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lumen-step329700-100-open-questions-${{ github.run_id }}
+          path: results/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Verify and report
+        if: always()
+        run: |
+          test -s results/lumen_step329700_100_questions.json
+          test -s results/lumen_step329700_100_questions.md
+          echo "LUMEN 329700 answered 100 open-ended questions."

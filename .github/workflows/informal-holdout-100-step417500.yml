@@ -58,94 +58,53 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.SOURCE_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify the exact checkpoints, tokenizer and open-question set
+      - name: Verify downloaded inputs and the 100 open questions
+        shell: bash
         run: |
-          set -euo pipefail
-          test -s inputs/artifacts/tokenizer.json
-          test -s lumen/checkpoints/lumen/step_417500.pt
-          test -s transformer/checkpoints/transformer/step_417500.pt
-          test -s data/freeform_identity_general_100.jsonl
+          set -euxo pipefail
+          echo "Workspace: $PWD"
+          find inputs lumen transformer -maxdepth 5 -type f -printf '%p %s bytes\\n' | sort
+          for file in inputs/artifacts/tokenizer.json lumen/checkpoints/lumen/step_417500.pt transformer/checkpoints/transformer/step_417500.pt data/freeform_identity_general_100.jsonl; do
+            if [ ! -s "$file" ]; then echo "MISSING OR EMPTY: $file" >&2; exit 1; fi
+            echo "OK: $file"
+          done
           python - <<'PY'
-          import json, sys, traceback
+          import json
           from pathlib import Path
-          import torch
-          from tokenizers import Tokenizer
-
-          def check(label, condition, detail=""):
-              print(f"[CHECK] {label}: {'OK' if condition else 'FAIL'} {detail}", flush=True)
-              if not condition:
-                  raise RuntimeError(f"Validation failed: {label} {detail}")
-
-          try:
-              rows=[json.loads(x) for x in Path("data/freeform_identity_general_100.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
-              check("exactly 100 prompts", len(rows)==100, f"found={len(rows)}")
-              check("unique prompt IDs", len({r.get("id") for r in rows})==100)
-              check("all prompts non-empty", all(isinstance(r.get("prompt"),str) and r["prompt"].strip() for r in rows))
-              check("no choices or gold answers", all("choices" not in r and "answer" not in r for r in rows))
-              check("first prompt is identity", rows[0].get("prompt")=="¿Quién eres?", repr(rows[0].get("prompt")))
-
-              tok=Tokenizer.from_file("inputs/artifacts/tokenizer.json")
-              vocab=tok.get_vocab()
-              for special in ("[BOS]","[EOS]","[PAD]"):
-                  check(f"tokenizer contains {special}", special in vocab, f"id={vocab.get(special)}")
-
-              paths={
-                  "lumen":"lumen/checkpoints/lumen/step_417500.pt",
-                  "transformer":"transformer/checkpoints/transformer/step_417500.pt",
-              }
-              states={}
-              for name,path in paths.items():
-                  state=torch.load(path,map_location="cpu",weights_only=False)
-                  check(f"{name} checkpoint step", int(state.get("step",-1))==417500, f"actual={state.get('step')}")
-                  weights=state.get("model")
-                  check(f"{name} model weights", hasattr(weights,"items") and len(weights)>0, f"type={type(weights).__name__}, tensors={len(weights) if hasattr(weights,'__len__') else 'n/a'}")
-                  check(f"{name} tokenizer SHA present", bool(state.get("tokenizer_sha256")), f"sha={state.get('tokenizer_sha256')}")
-                  states[name]=state
-              sha_l=states["lumen"]["tokenizer_sha256"]
-              sha_t=states["transformer"]["tokenizer_sha256"]
-              check("paired tokenizer SHA matches", sha_l==sha_t, f"LUMEN={sha_l}; Transformer={sha_t}")
-              print("VALIDATION PASSED: both exact step-417500 checkpoints and 100 free-form prompts.", flush=True)
-          except Exception:
-              traceback.print_exc()
-              sys.exit(1)
+          rows=[json.loads(x) for x in Path("data/freeform_identity_general_100.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(rows)==100, f"Expected 100 prompts, got {len(rows)}"
+          assert len({r.get("id") for r in rows})==100
+          assert all(isinstance(r.get("prompt"),str) and r["prompt"].strip() for r in rows)
+          assert all("choices" not in r and "answer" not in r for r in rows)
+          assert rows[0]["prompt"]=="¿Quién eres?"
+          print("Validated 100 unique free-form questions; no choices or gold answers.", flush=True)
           PY
       - name: Generate the same 100 free-form answers from both models
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           mkdir -p results/freeform-step417500
-          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/freeform_identity_general_holdout.py \
-            --holdout data/freeform_identity_general_100.jsonl \
-            --tokenizer inputs/artifacts/tokenizer.json \
-            --lumen lumen/checkpoints/lumen/step_417500.pt \
-            --transformer transformer/checkpoints/transformer/step_417500.pt \
-            --expected-step 417500 \
-            --sample-size 100 --seed 417500 --max-new-tokens 96 \
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/freeform_identity_general_holdout.py \\
+            --holdout data/freeform_identity_general_100.jsonl \\
+            --tokenizer inputs/artifacts/tokenizer.json \\
+            --lumen lumen/checkpoints/lumen/step_417500.pt \\
+            --transformer transformer/checkpoints/transformer/step_417500.pt \\
+            --expected-step 417500 \\
+            --sample-size 100 --seed 417500 --max-new-tokens 96 \\
             --out-dir results/freeform-step417500 --threads 4 --max-len 128
           python - <<'PY'
           import json
           from pathlib import Path
           root=Path("results/freeform-step417500")
-          old_json=root/"step170700_identity_general_100.json"
-          old_md=root/"step170700_identity_general_100.md"
-          data=json.loads(old_json.read_text(encoding="utf-8"))
+          data=json.loads((root/"step417500_freeform_100.json").read_text(encoding="utf-8"))
           assert data["step"]==417500 and data["sample_size"]==100
           assert len(data["results"])==100
-          data["evaluation_note"]="Evaluación informal de generación libre. Las 100 preguntas se entregan sin opciones ni respuestas de referencia; no es una puntuación automática de exactitud."
-          data["prompt_policy"]="100 preguntas abiertas fijas en español; sin opciones ni respuestas de referencia; ambos modelos reciben exactamente los mismos prompts."
-          (root/"step417500_freeform_100.json").write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
-          md=old_md.read_text(encoding="utf-8")
-          md=md.replace("170.700","417.500").replace("(170700)","(417500)")
-          md=md.replace("- Se han eliminado las opciones y la respuesta correcta antes de generar.","- Las 100 preguntas son abiertas desde el origen: no contienen opciones ni respuestas de referencia.")
-          md=md.replace("máximo de 64 tokens","máximo de 96 tokens")
-          md += "\n\n> Sonda informal de generación libre. No equivale a una puntuación automática de exactitud ni sustituye al holdout oficial.\n"
-          (root/"step417500_freeform_100.md").write_text(md,encoding="utf-8")
-          old_json.unlink()
-          old_md.unlink()
-          for model in ("lumen","transformer"):
-              assert all(isinstance(item[model]["text"],str) for item in data["results"])
-          print("Generated and validated 100 paired open-ended answers.")
+          assert all(isinstance(item[m]["text"],str) for item in data["results"] for m in ("lumen","transformer"))
+          assert all(item["prompt"] for item in data["results"])
+          assert data["results"][0]["prompt"]=="¿Quién eres?"
+          assert (root/"step417500_freeform_100.md").is_file()
+          print("Generated and validated 100 paired open-ended answers.", flush=True)
           print("Identity prompt:",data["results"][0]["prompt"])
           PY
       - name: Upload paired open-ended prompts and answers

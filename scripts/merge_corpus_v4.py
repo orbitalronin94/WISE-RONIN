@@ -276,6 +276,15 @@ def main():
                     if int(source_info.get("rows", 0)) < minimum_rows:
                         raise ValueError(f"OpenCulture source contribution too small: {source_key}")
             candidate_manifest_sha[label] = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+            candidate_files = {path.name: path for path in root.rglob("*.jsonl")}
+            for shard in source_manifest.get("shards", []):
+                shard_path = candidate_files.get(shard["file"])
+                if shard_path is None:
+                    raise FileNotFoundError(f"Missing {label} shard: {shard['file']}")
+                if shard_path.stat().st_size != int(shard["bytes"]):
+                    raise ValueError(f"{label} shard byte count mismatch: {shard['file']}")
+                if sha256_file(shard_path) != shard["sha256"]:
+                    raise ValueError(f"{label} shard SHA-256 mismatch: {shard['file']}")
             for row in iter_candidate_rows(root):
                 candidate_rows_seen[label] += 1
                 admit(row, label)

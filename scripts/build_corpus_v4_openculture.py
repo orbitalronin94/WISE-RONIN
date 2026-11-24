@@ -28,7 +28,7 @@ SOURCES = [
         "revision": "001eaf13681f483069361dd82195ce279e12ed63",
         "license": "public_domain",
         "license_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Books",
-        "share": 0.60,
+        "share": 0.50,
     },
     {
         "key": "spanish_pd_newspapers",
@@ -36,7 +36,17 @@ SOURCES = [
         "revision": "17509f22d33a5f82def051e853899b8b65d7a9e2",
         "license": "public_domain",
         "license_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Newspapers",
-        "share": 0.40,
+        "share": 0.25,
+    },
+    {
+        "key": "wikipedia_es",
+        "repo": "wikimedia/wikipedia",
+        "revision": "cf584d1dc131caa92a5cb910f41a8b7591b12732",
+        "path_prefix": "20231101.es/",
+        "license": "CC-BY-SA-3.0+GFDL",
+        "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+        "attribution": "Wikipedia contributors / Wikimedia Foundation; retain source article URL",
+        "share": 0.25,
     },
 ]
 
@@ -147,7 +157,11 @@ def stream_parquet_source(source, seed: int):
     files = api.list_repo_files(
         repo_id=source["repo"], repo_type="dataset", revision=source["revision"]
     )
-    parquet_files = sorted(name for name in files if name.lower().endswith(".parquet"))
+    parquet_files = sorted(
+        name for name in files
+        if name.lower().endswith(".parquet")
+        and (not source.get("path_prefix") or name.startswith(source["path_prefix"]))
+    )
     if not parquet_files:
         raise RuntimeError(f"No Parquet files found for {source['repo']}@{source['revision']}")
     import random
@@ -294,6 +308,8 @@ def main():
                         "chunk_index": chunk_index,
                         "license": source["license"],
                         "license_url": source["license_url"],
+                        "attribution": source.get("attribution", source["repo"]),
+                        "source_url": str(item.get("url") or ""),
                         "title": title,
                         "creator": creator,
                         "publication_date": date,

@@ -1,5 +1,5 @@
 name: Build corpus v4 personality and dialogue — 165K rows
-# Use quota_share allocation: 100K m-personas + 60K SFT-General Spanish.
+# Use quota_share allocation: 100K m-personas + 65K SFT-General Spanish.
 
 on:
   push:
@@ -13,7 +13,7 @@ on:
       target_rows:
         description: "Accepted unique dialogue/persona chunks"
         required: true
-        default: "160000"
+        default: "165000"
         type: string
 
 permissions:
@@ -31,7 +31,7 @@ jobs:
     env:
       PYTHONUNBUFFERED: "1"
       HF_HUB_DISABLE_XET: "1"
-      TARGET_ROWS: ${{ inputs.target_rows || '160000' }}
+      TARGET_ROWS: ${{ inputs.target_rows || '165000' }}
     steps:
       - uses: actions/checkout@v4
         with:

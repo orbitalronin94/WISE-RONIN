@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import sqlite3
+import shutil
 from collections import Counter
 from pathlib import Path
 
@@ -76,6 +77,7 @@ def main():
     parser.add_argument("--personality-dir", required=True, type=Path)
     parser.add_argument("--tokenizer", required=True, type=Path)
     parser.add_argument("--denylist", type=Path, default=Path("data/corpus_v4_attractor_denylist.json"))
+    parser.add_argument("--source-plan", type=Path, default=Path("data/corpus_v4_source_plan.json"))
     parser.add_argument("--output-dir", type=Path, default=Path("artifacts/corpus-v4-frozen"))
     parser.add_argument("--chunk-tokens", type=int, default=126)
     parser.add_argument("--max-shard-bytes", type=int, default=100 * 1024 * 1024)
@@ -262,6 +264,13 @@ def main():
         db.close()
         rejected_handle.close()
 
+    dedup_path = args.output_dir / "dedup.sqlite"
+    if dedup_path.exists():
+        dedup_path.unlink()
+    shutil.copy2(args.denylist, args.output_dir / "attractor_denylist.json")
+    if args.source_plan.is_file():
+        shutil.copy2(args.source_plan, args.output_dir / "source_plan.json")
+
     shard_rows = sum(item["rows"] for item in writer.shards)
     manifest = {
         "schema": "wise-ronin-corpus-v4-frozen-manifest-v1",
@@ -271,6 +280,7 @@ def main():
         "base_jsonl_sha256": sha256_file(args.base_jsonl),
         "tokenizer_sha256": sha256_file(args.tokenizer),
         "denylist_sha256": sha256_file(args.denylist),
+        "source_plan_sha256": sha256_file(args.source_plan) if args.source_plan.is_file() else None,
         "denylist_terms": denylist["terms"],
         "base_rows_seen": base_rows_seen,
         "candidate_rows_seen": dict(candidate_rows_seen),

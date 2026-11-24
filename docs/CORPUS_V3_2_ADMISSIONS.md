@@ -10,7 +10,8 @@ This ledger records the immutable source-specific batch admissions appended to f
 | v3.2.002 | v3.2.001 | BSC-LT/m-personas | 3,447 | 12,598,425 | 1,425,279 |
 | v3.2.003 | v3.2.002 | Kukedlc/Personas_Spanish-40k | 35,997 | 29,022,331 | 851,920 |
 | v3.2.004 | v3.2.003 | somosnlp/instruct-legal-refugiados-es | 9,091 | 35,885,349 | 4,239,968 |
-| **Total** | **v3.1** | **3 sources** | **80,575** | **182,362,459** | **18,027,105** |
+| v3.2.005 | v3.2.004 | StrataSynth/stratasynth-personas-spain | 1,250 | 3,859,558 | 453,682 |
+| **Total** | **v3.1** | **4 sources** | **81,825** | **186,222,017** | **18,480,787** |
 
 All three deltas are immutable, individually hashed, and below the 100 MiB ceiling. The chain summary and each version manifest contain the parent link, source revision, row count, byte count, token estimate and SHA-256. A whitespace-token count is not a tokenizer-ID count.
 
@@ -76,6 +77,19 @@ Flagged, unresolved, malformed and duplicate rows are quarantined. No data sourc
 - All 244 near-duplicate candidate row indices from the pinned audit were quarantined; this includes exact duplicates and cross-source near-duplicate candidates.
 - The phone detector is field-aware and requires phone-like grouping or explicit phone context, avoiding the broad numeric false positives from statutory citations.
 - Answers were machine-generated from legal source contexts. `legal_validity=not_independently_verified`; this is training material, not current legal advice.
+
+## Source 4 — StrataSynth/stratasynth-personas-spain
+
+- Revision: `aa06f584e2932f28ead13ead309711573605ca87`
+- Declared license at pinned revision: CC BY 4.0; retain StrataSynth attribution.
+- Split: `train`
+- Rows scanned: 1,250
+- Rows admitted: 1,250
+- Quarantined: 0
+- Admitted whitespace tokens: 453,682
+- Only `persona`, `daily_routine` and `speaking_style` are included.
+- Demographics, consumer preferences, personality/attachment scores, hobbies, skills and goals are excluded from the training text and metadata.
+- All entries are synthetic and population-conditioned. They are useful for voice/persona variation, not as records of real people or factual descriptions of Spain.
 
 ## Training gate
 

@@ -50,8 +50,6 @@ def test_shared_normalization_flag_is_inert_without_repetition_term():
     targets = torch.randint(0, 11, (2, 7))
     a = base.clone().requires_grad_(True)
     b = base.clone().requires_grad_(True)
-    activations = torch.randn(2, 2, 4)
-    router = torch.full((2, 2, 2), 0.5)
     activations = torch.randn(2, 7, 4)
     router = torch.full((2, 7, 2), 0.5)
 
@@ -75,12 +73,14 @@ def test_shared_normalization_handles_short_sequences_without_repetition():
     targets = torch.randint(0, 7, (2, 2))
     a = base.clone().requires_grad_(True)
     b = base.clone().requires_grad_(True)
+    activations = torch.randn(2, 2, 4)
+    router = torch.full((2, 2, 2), 0.5)
 
     loss_a, _ = perdida_total(
-        _output(a), targets, _Model(), use_jepa=False, use_rep=True,
+        _output(a, activations, router), targets, _Model(), use_jepa=False, use_rep=True,
     )
     loss_b, _ = perdida_total(
-        _output(b), targets, _Model(), use_jepa=False, use_rep=True,
+        _output(b, activations, router), targets, _Model(), use_jepa=False, use_rep=True,
         shared_loss_normalization=True,
     )
     loss_a.backward()

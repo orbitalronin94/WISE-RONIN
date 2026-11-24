@@ -8,3 +8,5 @@ if __name__ == "__main__":
     print("Corpus v4 freeze workflow trigger marker; no training is started here.")
 
 # Re-run freeze after both immutable candidate builders reached their exact quotas.
+
+# Trigger freeze again after correcting the v3.2.005 manifest's optional tokenizer field.

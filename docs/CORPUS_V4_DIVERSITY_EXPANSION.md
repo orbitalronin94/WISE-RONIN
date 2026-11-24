@@ -162,3 +162,18 @@ La base v3.0 por sí sola ya representa aproximadamente 35,5× las filas de v3.2
 El cache actual v3.2.005 contiene 22.240.374 tokens BPE efectivos (incluido EOS, sin padding), max_len=128 y tokenizer SHA d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe. El manifiesto v3.1 declara 2.014.093.292 tokens antes del límite de secuencia: una razón bruta de 90,6×, no una comparación efectiva todavía. El cache candidato debe construirse con max_len=128 para conocer la cifra comparable; el corte de 180 tokens hace probable una reducción importante.
 
 El workflow de auditoría del candidato v3.1 debe ejecutar el veto de atractores sobre el archivo completo, medir la proporción real de personalidad y generar un informe reproducible antes de crear bloques limpios.
+
+
+## 9. Mantener el peso de personalidad sin duplicar filas
+
+El cargador actual usa muestreo uniforme de filas (rng.choices en train/dataset.py). Si se incorpora un corpus documental de 10–16 millones de filas como un único JSONL, la probabilidad de ver personalidad cae en proporción a su porcentaje bruto, aunque v3.2.005 tenga hoy un 26,01%.
+
+Por eso v4 debe conservar particiones etiquetadas y no depender solo de un JSONL plano:
+- Mantener un conjunto único de perfiles/diálogos/voz/personality-QA separado del pretraining documental.
+- Medir la cuota por tokens efectivos después de max_len, no por filas ni por tokens previos al truncado.
+- Objetivo de entrenamiento: 20% mínimo y 25% preferido de tokens de personalidad/voz/identidad, sujeto a calidad y tamaño de muestra.
+- Añadir diversidad única de personalidad; no inflar el porcentaje replicando miles de veces las mismas filas.
+- Aplicar un límite de repetición por ejemplo y por fuente; si la cuota no puede cubrirse con suficiente variedad, ampliar primero el pool en vez de forzar el sampler.
+- Mantener identidad canónica en una partición pequeña y explícita; no repetir el mismo prefijo de identidad en decenas de miles de ejemplos si no aporta señal nueva.
+
+La auditoría del candidato grande debe calcular la proporción real de tareas de personalidad y, después, construir un sampler por tarea/token. No se debe declarar que conserva el peso de personalidad hasta medir esa cuota efectiva.

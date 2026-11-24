@@ -114,10 +114,21 @@ def main():
         reject_counts[reason] += 1
         if hits:
             attractor_counts.update(hits)
-        payload = dict(row)
-        payload["_admission_rejection"] = {
-            "reason": reason,
-            "matched_terms": hits or []
+        prompt = str(row.get("prompt") or "")
+        completion = str(row.get("completion") or row.get("text") or "")
+        payload = {
+            "id": row.get("id"),
+            "source": row.get("source"),
+            "source_document_id": row.get("source_document_id"),
+            "task": row.get("task") or row.get("task_type"),
+            "content_sha256": hashlib.sha256(
+                normalize(prompt + "\n" + completion).encode("utf-8")
+            ).hexdigest(),
+            "content_characters": len(prompt) + len(completion),
+            "admission_rejection": {
+                "reason": reason,
+                "matched_terms": hits or []
+            }
         }
         rejected_handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
 

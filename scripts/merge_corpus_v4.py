@@ -420,6 +420,15 @@ def main():
                     raise ValueError(f"{label} shard SHA-256 mismatch: {shard['file']}")
             for row in iter_candidate_rows(root):
                 candidate_rows_seen[label] += 1
+                required_provenance = (
+                    "source_revision", "source_document_id", "license",
+                    "license_url", "attribution",
+                )
+                missing = [field for field in required_provenance if not str(row.get(field) or "").strip()]
+                if missing:
+                    raise ValueError(
+                        f"{label} candidate row lacks provenance fields {missing}: {row.get('id')}"
+                    )
                 admit(row, label)
                 if counts["accepted_rows"] and counts["accepted_rows"] % 25_000 == 0:
                     db.commit()

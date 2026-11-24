@@ -70,11 +70,21 @@ def build_model_and_optimizer(checkpoint_path: Path):
         raise ValueError(f"expected step-389700 checkpoint, got {state.get('step')}")
     if state.get("architecture_id") != "ronin_lumen_v3_3_neuroplasticity":
         raise ValueError(f"unexpected architecture_id: {state.get('architecture_id')}")
+    runtime_profile = state.get("runtime_profile", {})
+    torch.set_num_threads(int(runtime_profile.get("threads", 4)))
+    torch.backends.mkldnn.enabled = bool(runtime_profile.get("mkldnn_enabled", True))
+    if runtime_profile.get("cpu_affinity") and hasattr(__import__("os"), "sched_getaffinity"):
+        os = __import__("os")
+        available = sorted(os.sched_getaffinity(0))
+        os.sched_setaffinity(0, set(available[:torch.get_num_threads()]))
     model = RoninLumen(v32_ze=bool(state.get("v32_ze", False))).cpu()
     model.load_state_dict(state["model"], strict=True)
     optimizer_state = state["optimizer"]
     lr = float(optimizer_state["param_groups"][0]["lr"])
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=CONFIG.weight_decay, foreach=False)
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=lr, weight_decay=CONFIG.weight_decay,
+        foreach=bool(runtime_profile.get("foreach", True)),
+    )
     optimizer.load_state_dict(optimizer_state)
     transition = state["scheduler_transition"]
     scheduler = CosineTransitionScheduler(
@@ -230,9 +240,23 @@ def one_run(label: str, candidate: str | None, checkpoint_path: Path,
                         for p in model.parameters()
                     ]
 
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0, foreach=False)
+            torch.nn.utils.clip_grad_norm_(
+                model.parameters(), 1.0,
+                foreach=bool(state.get("runtime_profile", {}).get("foreach", True)),
+                error_if_nonfinite=True,
+            )
             optimizer_started = time.perf_counter()
             optimizer.step()
+            full_health_check = (global_step % 100 == 0 or index == steps - 1)
+            if full_health_check:
+                invalid_parameters = any(not torch.isfinite(p.detach()).all() for p in model.parameters())
+                invalid_optimizer = any(
+                    isinstance(value, torch.Tensor) and value.is_floating_point()
+                    and value.numel() and not torch.isfinite(value).all()
+                    for values in optimizer.state.values() for value in values.values()
+                )
+                if invalid_parameters or invalid_optimizer:
+                    raise FloatingPointError(f"non-finite optimizer/model state at step {global_step}")
             scheduler.step()
             timings["optimizer"] += time.perf_counter() - optimizer_started
 

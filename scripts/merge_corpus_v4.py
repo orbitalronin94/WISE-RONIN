@@ -361,15 +361,38 @@ def main():
                         raise ValueError(f"Personality source contribution too small: {source_key}")
             if label == "openculture":
                 expected_sources = {
-                    "spanish_pd_books": ("PleIAs/Spanish-PD-Books", "001eaf13681f483069361dd82195ce279e12ed63", 500_000),
-                    "spanish_pd_newspapers": ("PleIAs/Spanish-PD-Newspapers", "17509f22d33a5f82def051e853899b8b65d7a9e2", 200_000),
-                    "wikipedia_es": ("wikimedia/wikipedia", "cf584d1dc131caa92a5cb910f41a8b7591b12732", 200_000),
+                    "spanish_pd_books": (
+                        "PleIAs/Spanish-PD-Books",
+                        "001eaf13681f483069361dd82195ce279e12ed63",
+                        "public_domain",
+                        "https://huggingface.co/datasets/PleIAs/Spanish-PD-Books",
+                        500_000,
+                    ),
+                    "spanish_pd_newspapers": (
+                        "PleIAs/Spanish-PD-Newspapers",
+                        "17509f22d33a5f82def051e853899b8b65d7a9e2",
+                        "public_domain",
+                        "https://huggingface.co/datasets/PleIAs/Spanish-PD-Newspapers",
+                        200_000,
+                    ),
+                    "wikipedia_es": (
+                        "wikimedia/wikipedia",
+                        "cf584d1dc131caa92a5cb910f41a8b7591b12732",
+                        "CC-BY-SA-3.0+GFDL",
+                        "https://creativecommons.org/licenses/by-sa/3.0/;https://www.gnu.org/copyleft/fdl.html",
+                        200_000,
+                    ),
                 }
                 stats = source_manifest.get("source_stats", {})
-                for source_key, (repo, revision, minimum_rows) in expected_sources.items():
+                for source_key, (repo, revision, license_name, license_url, minimum_rows) in expected_sources.items():
                     source_info = stats.get(source_key, {})
-                    if source_info.get("repo") != repo or source_info.get("revision") != revision:
-                        raise ValueError(f"OpenCulture source lineage mismatch: {source_key}")
+                    if (
+                        source_info.get("repo") != repo
+                        or source_info.get("revision") != revision
+                        or source_info.get("license") != license_name
+                        or source_info.get("license_url") != license_url
+                    ):
+                        raise ValueError(f"OpenCulture source lineage/license mismatch: {source_key}")
                     if int(source_info.get("rows", 0)) < minimum_rows:
                         raise ValueError(f"OpenCulture source contribution too small: {source_key}")
             candidate_manifest_sha[label] = hashlib.sha256(manifest_path.read_bytes()).hexdigest()

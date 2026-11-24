@@ -3,10 +3,10 @@
 import argparse, hashlib, json, re
 from pathlib import Path
 
-EMAIL = re.compile(r"\\b[\\w.+-]+@[\\w.-]+\\.[A-Za-z]{2,}\\b")
-NIF = re.compile(r"\\b\\d{8}[A-Z]\\b", re.I)
-PHONE = re.compile(r"(?<!\\w)(?:\\+?\\d[\\d .()/-]{7,}\\d)(?!\\w)")
-WORD = re.compile(r"[^\\W_]+", re.UNICODE)
+EMAIL = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
+NIF = re.compile(r"\b\d{8}[A-Z]\b", re.I)
+PHONE = re.compile(r"(?<!\w)(?:\+?\d[\d .()/-]{7,}\d)(?!\w)")
+WORD = re.compile(r"[^\W_]+", re.UNICODE)
 
 def norm(value):
     return " ".join(str(value).split())
@@ -44,7 +44,7 @@ def main():
                 try: row=json.loads(line)
                 except Exception: continue
                 chunks=[norm(row[k]) for k in fields if isinstance(row,dict) and isinstance(row.get(k),str) and norm(row[k])]
-                if chunks: base.add(hashlib.sha256("\\n".join(chunks).encode()).hexdigest())
+                if chunks: base.add(hashlib.sha256("\n".join(chunks).encode()).hexdigest())
     out=Path(a.output); out.parent.mkdir(parents=True,exist_ok=True)
     stats={"rows_seen":0,"rows_with_text":0,"empty_text":0,"exact_duplicate_v3_1":0,
            "language_es_heuristic":0,"language_non_es_heuristic":0,"language_unresolved":0,
@@ -59,7 +59,7 @@ def main():
             chunks=[(field,norm(row[field])) for field in fields if isinstance(row.get(field),str) and norm(row[field])]
             if not chunks: stats["empty_text"]+=1; continue
             stats["rows_with_text"]+=1
-            content="\\n".join(value for _,value in chunks)
+            content="\n".join(value for _,value in chunks)
             digest=hashlib.sha256(content.encode("utf-8")).hexdigest()
             language=language_label(content); stats["language_"+language]+=1
             flags=[]
@@ -78,7 +78,7 @@ def main():
                     "language":language,"task_type":classify_task(row),"privacy_flags":flags,
                     "review_status":"pending","rights_status":"pending",
                     "privacy_status":"pending","quality_status":"pending","raw_text_exported":False}
-            dst.write(json.dumps(record,ensure_ascii=False,sort_keys=True)+"\\n")
+            dst.write(json.dumps(record,ensure_ascii=False,sort_keys=True)+"\n")
     print(json.dumps({"stats":stats,"output":str(out),"raw_text_exported":False},sort_keys=True))
 
 if __name__=="__main__": main()

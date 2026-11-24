@@ -224,6 +224,12 @@ def main():
             source_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             if source_manifest.get("training_authorized") is not False:
                 raise ValueError(f"{label} candidate must remain unapproved for training")
+            if source_manifest.get("tokenizer_sha256") != sha256_file(args.tokenizer):
+                raise ValueError(f"{label} candidate tokenizer hash does not match the paired-model tokenizer")
+            if source_manifest.get("denylist_sha256") != sha256_file(args.denylist):
+                raise ValueError(f"{label} candidate denylist hash does not match the final merge policy")
+            if int(source_manifest.get("chunk_tokens", 999)) > args.chunk_tokens:
+                raise ValueError(f"{label} candidate chunks exceed the final merge token budget")
             if source_manifest.get("row_target_met") is not True:
                 raise ValueError(f"{label} candidate did not meet its row target")
             candidate_manifest_sha[label] = hashlib.sha256(manifest_path.read_bytes()).hexdigest()

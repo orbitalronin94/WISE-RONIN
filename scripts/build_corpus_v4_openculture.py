@@ -15,7 +15,7 @@ import unicodedata
 from collections import Counter
 from pathlib import Path
 
-from datasets import Features, Value, load_dataset
+from datasets import load_dataset
 from huggingface_hub import HfApi, hf_hub_url
 from tokenizers import Tokenizer
 import langid
@@ -29,30 +29,7 @@ SOURCES = [
         "license": "public_domain",
         "license_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Books",
         "share": 0.60,
-        "features": Features({
-            "identifier": Value("string"), "creator": Value("string"),
-            "title": Value("string"), "publication_date": Value("int32"),
-            "language": Value("string"), "language_code": Value("string"),
-            "text": Value("string"), "word_count": Value("int32"),
-            "character_count": Value("int32"),
-        }),
-    },
-    {
-        "key": "spanish_pd_newspapers",
-        "repo": "PleIAs/Spanish-PD-Newspapers",
-        "revision": "17509f22d33a5f82def051e853899b8b65d7a9e2",
-        "license": "public_domain",
-        "license_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Newspapers",
-        "share": 0.40,
-        "features": Features({
-            "directory": Value("string"), "identifier": Value("string"),
-            "...1": Value("int64"), "creator": Value("string"),
-            "language": Value("string"), "title": Value("string"),
-            "publication_date": Value("int64"), "lang": Value("string"),
-            "real_lang": Value("string"), "n": Value("int64"),
-            "rights": Value("string"), "file": Value("string"),
-            "word_count": Value("int64"), "text": Value("string"),
-        }),
+
     },
 ]
 
@@ -157,7 +134,8 @@ class ShardWriter:
 
 
 def stream_parquet_source(source, seed: int):
-    # Bypass stale dataset-card feature schemas: stream the actual immutable Parquet files.
+    # Parquet schemas vary across source shards. Infer each immutable file separately
+    # instead of forcing the entire repository through one stale dataset-card schema.
     api = HfApi()
     files = api.list_repo_files(
         repo_id=source["repo"], repo_type="dataset", revision=source["revision"]
@@ -165,18 +143,17 @@ def stream_parquet_source(source, seed: int):
     parquet_files = sorted(name for name in files if name.lower().endswith(".parquet"))
     if not parquet_files:
         raise RuntimeError(f"No Parquet files found for {source['repo']}@{source['revision']}")
-    urls = [
-        hf_hub_url(
+    import random
+    random.Random(seed).shuffle(parquet_files)
+    for file_index, name in enumerate(parquet_files):
+        url = hf_hub_url(
             repo_id=source["repo"], filename=name, repo_type="dataset",
             revision=source["revision"]
         )
-        for name in parquet_files
-    ]
-    return load_dataset(
-        "parquet", data_files={"train": urls}, split="train", streaming=True,
-        features=source["features"]
-    ).shuffle(seed=seed, buffer_size=10_000)
-
+        shard = load_dataset(
+            "parquet", data_files={"train": [url]}, split="train", streaming=True
+        ).shuffle(seed=seed + file_index, buffer_size=2_000)
+        yield from shard
 
 def get_text(item):
     for key in ("text", "content", "document"):

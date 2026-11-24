@@ -106,8 +106,8 @@ def audit_split(db,repo,config,split,limit,sample_n):
    if any(x!=repo for x in near):stats["cross_source_near_duplicate_candidate"]+=1
   for band in range(4):
    val=(fp>>(band*16))&65535
-   db.execute("INSERT INTO sim VALUES (?,?,?)",(band,val,f"{fp:016x}"))
-  if len(samples)<sample_n and (i==0 or (i+1)%(max(1,limit//sample_n) if limit else 1000)==0):
+   db.execute("INSERT INTO sim VALUES (?,?,?,?)",(band,val,f"{fp:016x}",repo))
+  if len(samples)<sample_n and (i<sample_n or (i+1)%(max(1,limit//sample_n) if limit else 1000)==0):
    samples.append({"source":repo,"config":config,"split":split,"row_index":i,"language":lang(row,s),"flags":flags,"excerpt":s[:700]})
   if i and i%10000==0:db.commit();print(f"{repo}/{config}/{split}: {i}",flush=True)
  db.commit();stats["elapsed_seconds"]=round(time.time()-started,2)
@@ -125,7 +125,7 @@ def index_base(db,path):
    fp=simhash(n)
    for band in range(4):
     val=(fp>>(band*16))&65535
-    db.execute("INSERT INTO sim VALUES (?,?,?)",(band,val,f"{fp:016x}"))
+    db.execute("INSERT INTO sim VALUES (?,?,?,?)",(band,val,f"{fp:016x}","v3.1"))
    count+=1
    if count%10000==0:db.commit();print(f"Indexed v3.1 rows: {count}",flush=True)
  db.commit()
@@ -138,7 +138,7 @@ def main():
  p.add_argument("--max-rows-per-split",type=int,default=0);p.add_argument("--sample-per-split",type=int,default=100)
  a=p.parse_args();db=sqlite3.connect(a.db);db.execute("PRAGMA journal_mode=WAL")
  db.execute("CREATE TABLE IF NOT EXISTS exact(digest TEXT PRIMARY KEY,source TEXT)")
- db.execute("CREATE TABLE IF NOT EXISTS sim(band INTEGER,value INTEGER,fingerprint TEXT)")
+ db.execute("CREATE TABLE IF NOT EXISTS sim(band INTEGER,value INTEGER,fingerprint TEXT,source TEXT)")
  db.execute("CREATE INDEX IF NOT EXISTS sim_idx ON sim(band,value)")
  base_count=index_base(db,a.base_jsonl)
  report={"training_authorized":False,"base_rows_indexed":base_count,"base_file":a.base_jsonl,"note":"All eligible train splits are streamed unless capped. Automated scan is not semantic/legal approval.","sources":{},"samples":[]}

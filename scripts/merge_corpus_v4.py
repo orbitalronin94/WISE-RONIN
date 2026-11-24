@@ -117,6 +117,14 @@ def find_blocked_base_documents(path: Path, patterns):
     return blocked
 
 
+def missing_candidate_provenance(row: dict):
+    required = (
+        "source_revision", "source_document_id", "license",
+        "license_url", "attribution",
+    )
+    return [field for field in required if not str(row.get(field) or "").strip()]
+
+
 def normalize_base(row: dict, index: int):
     row = dict(row)
     if not isinstance(row.get("completion"), str):
@@ -420,11 +428,7 @@ def main():
                     raise ValueError(f"{label} shard SHA-256 mismatch: {shard['file']}")
             for row in iter_candidate_rows(root):
                 candidate_rows_seen[label] += 1
-                required_provenance = (
-                    "source_revision", "source_document_id", "license",
-                    "license_url", "attribution",
-                )
-                missing = [field for field in required_provenance if not str(row.get(field) or "").strip()]
+                missing = missing_candidate_provenance(row)
                 if missing:
                     raise ValueError(
                         f"{label} candidate row lacks provenance fields {missing}: {row.get('id')}"

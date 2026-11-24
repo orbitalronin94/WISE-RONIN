@@ -94,6 +94,23 @@ La agenda previa no se pierde ni se duplica sin motivo:
 - Chunking adaptativo → candidato de H11/H13 solo si comparte cálculos y conserva la ruta residual.
 - Todas las propuestas pendientes conservan su estado; el torneo no las convierte en mecanismos activos por documentarlas.
 
+## Inventario de optimizaciones que ya existen en main
+
+La campaña debe distinguir una idea ya integrada de una variante nueva:
+
+- **Proyecciones Delta:** `_project_sequence` concatena los pesos K/V/Q y ejecuta una proyección lineal conjunta dentro de cada órgano. H11 debe comparar reutilización adicional solo si hay cálculo idéntico entre módulos; no duplicar una fusión que ya existe.
+- **Máscaras causales:** `_cached_causal_masks` y `share_causal_masks` ya permiten compartir máscaras inmutables entre órganos. H13 compara la ruta efectiva de cache frente a construcción local, verificando device/dtype/shape y ausencia de cache de estado dinámico.
+- **Lazy backward y surprise gate:** ya están integrados en el trainer principal mediante flags. H14 debe comparar el baseline sin flags, el perfil existente y el criterio temporal nuevo; no contar el gate existente como novedad.
+- **Homeostasis:** Top-K y una ruta `fused_scatter_add` ya existen; el flujo residual sigue transmitiendo la representación. H01 prueba variantes de selección, no apaga el residual.
+- **Delta:** el camino paralelo usa `bmm`; `reuse_write_update`, `trace_norm_diagnostics_on_demand` y `share_causal_masks` ya son opciones internas. No se debe cambiar el número de refinamientos en la misma hipótesis que comparte tensores.
+- **Loss:** la penalización de repetición ya usa un `log_softmax` compartido internamente. H15 estudia compartir además la normalización con CE; requiere igualdad de loss y gradientes.
+- **Runtime:** hay perfiles con MKLDNN y afinidad OpenMP; `foreach` está disponible y fused AdamW depende de soporte de PyTorch. H16 debe registrar configuración efectiva y no asumir que `fused=true` acelera CPU.
+- **Memoria elástica:** las escrituras lentas actuales recorren muestras y slots, con reglas secuenciales de normalización/reemplazo. H17 debe preservar exactamente el orden y el estado, o restringir la ruta rápida a un caso demostrado equivalente.
+- **Embedding vivo:** `bincount` actualiza uso en cada forward aunque las propuestas de poda se consulten a intervalos. H19 puede muestrear contabilidad solo si el resultado sigue siendo válido para sus consumidores.
+- **Homeostasis EMA:** `m` y `effective_m` son buffers distintos; `effective_m` regula el bias. Aun así, H20 no puede desactivar `m` sin probar consumidores, checkpoint compatibility y telemetría.
+- **Chunking adaptativo:** `choose_chunk_size` convierte la media de sorpresa a Python con `.item()` en cada llamada. Es un hotspot candidato para H18, pero cualquier alternativa debe conservar el tamaño de chunk o declararse como cambio algorítmico.
+- **Señal compartida:** `SignalContext` ya centraliza sorpresa/incertidumbre, aunque valida finitud con una reducción tensorial. H11/H12/H18 deben perfilar esta validación antes de moverla o diferirla.
+
 ## Seguridad y no regresión
 
 1. **Rama limpia:** el torneo parte de un SHA congelado de `main`; no se mezclan prototipos no validados.

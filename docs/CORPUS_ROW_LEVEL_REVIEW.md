@@ -46,7 +46,7 @@ The SFT source uses a messages array plus metadata; keep the role sequence and s
 | StrataSynth/stratasynth-personas-spain | persona, daily_routine, speaking_style | Exclude demographics and personality/psychometric fields pending explicit privacy/quality review |
 | somosnlp/instruct-legal-refugiados-es | question, context, answer | Preserve context-grounded QA; do not duplicate prompt/prompt_es variants |
 | dariolopez/ms-marco-es-500k | query, passage | Retrieval-only; never route to generative pretraining |
-| BSC-LT/m-personas | unresolved | Adapter blocked pending schema discovery |
+| BSC-LT/m-personas | persona,prompt,messages[].content | Use default config / es split at pinned revision 6fab205a86a9244c90a2782e28055027f45ddd03; exclude source_text |
 | PlanTL-GOB-ES/pharmaconer | tokens, ner_tags (viewer) or train-set_1.1.conll | Preserve document IDs, offsets, IOB tags and train-only split |
 | bigbio/distemist | tokens, ner_tags or original span files | Preserve entity offsets/concept links and train-only split |
 

@@ -187,13 +187,13 @@ def get_text(item):
 
 
 def get_document_id(item, source_key: str, index: int) -> str:
+    # Newspaper files identify an issue; prefer that over publication-level identifiers.
+    file_name = item.get("file_name") or item.get("file")
+    if file_name is not None and str(file_name).strip():
+        return f"{item.get('directory', item.get('id', source_key))}/{file_name}"
     identifier = item.get("identifier")
     if identifier is not None and str(identifier).strip():
         return str(identifier)
-    # Newspaper "id" is the publication ISSN; pair it with file_name for issue identity.
-    file_name = item.get("file_name") or item.get("file")
-    if file_name is not None and str(file_name).strip():
-        return f"{item.get('id', source_key)}/{file_name}"
     for key in ("id", "publication_id"):
         value = item.get(key)
         if value is not None and str(value).strip():

@@ -53,6 +53,28 @@ def row_token_count(tokenizer: Tokenizer, prompt: str, completion: str) -> int:
     return len(tokenizer.encode(text, add_special_tokens=False).ids)
 
 
+def metadata_text(row: dict) -> str:
+    """Flatten every metadata value so denylist checks cannot miss nested fields."""
+    excluded = {"prompt", "completion", "text", "id", "content_sha256", "sha256"}
+    values = []
+
+    def visit(value, key=""):
+        if key.lower() in excluded:
+            return
+        if isinstance(value, str):
+            if value.strip():
+                values.append(value)
+        elif isinstance(value, dict):
+            for child_key, child_value in value.items():
+                visit(child_value, str(child_key))
+        elif isinstance(value, (list, tuple)):
+            for child_value in value:
+                visit(child_value, key)
+
+    visit(row)
+    return "\n".join(values)
+
+
 def normalize_base(row: dict, index: int):
     row = dict(row)
     if not isinstance(row.get("completion"), str):
@@ -145,11 +167,9 @@ def main():
             reject(row, "empty_completion")
             return
 
-        metadata_probe = " ".join(
-            str(row.get(key) or "")
-            for key in ("title", "creator", "source_document_id", "source_url", "persona_theme", "task_family", "domain", "type", "theme")
+        hits = find_attractors(
+            prompt + "\n" + completion + "\n" + metadata_text(row), patterns
         )
-        hits = find_attractors(prompt + "\n" + completion + "\n" + metadata_probe, patterns)
         if hits:
             reject(row, "lumen_attractor_denylist", hits)
             return

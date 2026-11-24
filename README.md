@@ -274,4 +274,28 @@ Se integra únicamente este ganador; no se incorporan las otras 17 hipótesis de
 
 ## Experimento emparejado v3.2 desde 400.000
 
-La campaña de 7.500 pasos por modelo desde los checkpoints exactos de 400.000 utiliza el corpus v3.2.005, el tokenizer congelado compartido y el mismo holdout español de 2.431 preguntas. LUMEN ejecuta lazy-backward + surprise-gate; Transformer permanece como control. El cambio de corpus queda registrado explícitamente en la genealogía del checkpoint; no se altera el hash del tokenizer ni el estado del optimizador.
+La continuación prevista es de **7.500 pasos por modelo**, desde los checkpoints exactos LUMEN y Transformer de **400.000**, hasta 407.500. Utiliza el corpus español **v3.2.005** (279.613 filas: 197.788 de base v3.1 candidata + 81.825 filas de las versiones v3.2.001–v3.2.005), tokenizer congelado compartido y el holdout intacto de 2.431 preguntas. Los artefactos fuente siguen disponibles en los runs [45273897576](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45273897576), [45348639929](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45348639929), [45370714342](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45370714342) y [45149684913](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45149684913).
+
+**Incidencia del intento anterior:** el run [45383676172](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45383676172) descargó y ensambló los artefactos, pero la preparación se detuvo antes de entrenar porque el SHA-256 esperado del tokenizer tenía un dígito incorrecto. El digest verificado por el token cache es `d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe`. El workflow corregido valida ese hash y utiliza el perfil versionado del repositorio en lugar de copiar el perfil runtime antiguo del artefacto de entrada.
+
+### Perfil LUMEN seleccionado tras el cribado check 0
+
+Se integran conjuntamente, como perfil provisional, las siete candidatas elegidas por el usuario:
+
+| Hipótesis | Mecanismo activado | Velocidad vs main | Δ loss media |
+|---|---|---:|---:|
+| H02 | Respuesta de dolor = 0,20 | +0,06 % | −0,001678 |
+| H03 | Respuesta de placer = 0,50 | +2,19 % | −0,000802 |
+| H04 | Ganancia presupuestaria de dolor = 0,15 | +0,26 % | +0,002235 |
+| H05 | Ganancia presupuestaria de placer = 0,15 | +0,58 % | −0,003742 |
+| H06 | Escala de umbral de plasticidad = 0,85 | +0,83 % | 0 |
+| H09 | Retención de elegibilidad = 0,98 | +8,40 % | +0,000003 |
+| H18 | Downscaling de sueño = 0,99; intervalo = 50 pasos | +2,63 % | 0 |
+
+El perfil conserva los fast paths CPU/Delta ya seleccionados y activa además los parámetros de las hipótesis anteriores. H04 se mantiene por decisión explícita aunque su pequeña regresión de loss fue del 0,1 % relativo; se medirá de nuevo en el bloque largo.
+
+**Límite experimental importante:** cada candidata se cribó por separado durante 1.000 pasos desde inicialización fresca. El efecto conjunto de las siete no está demostrado y esta campaña es precisamente la primera prueba de su interacción en un checkpoint maduro. H18 tampoco llegó a ejecutar sueño en check 0 porque no existían registros consolidados en la memoria lenta; el checkpoint de 400k sí ofrece el contexto para comprobar si el mecanismo se activa. El log del nuevo entrenamiento debe confirmar llamadas de sueño con registros reales, no solo que el parámetro esté configurado.
+
+LUMEN mantiene lazy-backward + surprise-gate (`loss <= 1.8`); Transformer permanece como control de cómputo sin esos mecanismos. Ambos conservan sus estados de optimizador/RNG y registran la transición explícita de corpus. El tokenizer no cambia. El holdout no entra en entrenamiento.
+
+El workflow corregido conserva el objetivo común **400.000 → 407.500** y publica checkpoints, logs y evaluación emparejada. El resultado de 7.500 pasos medirá throughput, loss, estabilidad, activación real del sueño y holdout por separado; no se promoverá la composición solo por el resultado de un cribado corto.

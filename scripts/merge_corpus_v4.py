@@ -88,6 +88,7 @@ def main():
     denylist, patterns = load_denylist(args.denylist)
     writer = ShardWriter(args.output_dir, args.max_shard_bytes)
     rejected_path = args.output_dir / "rejected_rows.jsonl"
+    rejected_handle = rejected_path.open("w", encoding="utf-8")
     db = sqlite3.connect(args.output_dir / "dedup.sqlite")
     db.execute("CREATE TABLE IF NOT EXISTS rows (sha256 TEXT PRIMARY KEY)")
     db.commit()
@@ -112,8 +113,7 @@ def main():
             "reason": reason,
             "matched_terms": hits or []
         }
-        with rejected_path.open("a", encoding="utf-8") as out:
-            out.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        rejected_handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
     def admit(row, origin):
         nonlocal raw_text_rows, personality_rows
@@ -188,6 +188,7 @@ def main():
             if task in PERSONALITY_TASKS:
                 personality_rows += 1
 
+    candidate_manifest_sha = {}
     try:
         for index, row in enumerate(iter_jsonl_file(args.base_jsonl)):
             base_rows_seen += 1
@@ -206,6 +207,9 @@ def main():
             source_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             if source_manifest.get("training_authorized") is not False:
                 raise ValueError(f"{label} candidate must remain unapproved for training")
+            if source_manifest.get("row_target_met") is not True:
+                raise ValueError(f"{label} candidate did not meet its row target")
+            candidate_manifest_sha[label] = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
             for row in iter_candidate_rows(root):
                 candidate_rows_seen[label] += 1
                 admit(row, label)
@@ -213,14 +217,12 @@ def main():
                     db.commit()
                     print(f"{label} candidates={candidate_rows_seen[label]} accepted={counts['accepted_rows']}", flush=True)
             counts[f"{label}_manifest_rows"] = int(source_manifest.get("actual_rows", 0))
-            counts[f"{label}_manifest_sha256"] = hashlib.sha256(
-                manifest_path.read_bytes()
-            ).hexdigest()
 
         db.commit()
     finally:
         writer.close()
         db.close()
+        rejected_handle.close()
 
     shard_rows = sum(item["rows"] for item in writer.shards)
     manifest = {
@@ -234,10 +236,7 @@ def main():
         "denylist_terms": denylist["terms"],
         "base_rows_seen": base_rows_seen,
         "candidate_rows_seen": dict(candidate_rows_seen),
-        "candidate_manifest_sha256": {
-            "openculture": counts.get("openculture_manifest_sha256"),
-            "personality": counts.get("personality_manifest_sha256"),
-        },
+        "candidate_manifest_sha256": candidate_manifest_sha,
         "total_rows": shard_rows,
         "raw_text_pretraining_rows": raw_text_rows,
         "personality_dialogue_rows": personality_rows,

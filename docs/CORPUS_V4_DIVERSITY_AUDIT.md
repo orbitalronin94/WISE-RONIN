@@ -60,7 +60,7 @@ La regla se implementa en scripts/filter_corpus_attractors.py y la lista queda v
 
 El loader de manifiestos ya no materializa todos los objetos JSONL en RAM. Construye índices laterales compactos de offsets de 64 bits por shard, verifica cada SHA-256 mientras recorre los ficheros y permite muestreo aleatorio perezoso de filas. El trainer accede a las filas seleccionadas por lote; no crea una lista Python de millones de diccionarios. Los índices se guardan en `.corpus_index/` y pueden reconstruirse sin alterar los shards congelados.
 
-El token-cache heredado no se acepta para este modo indexado: pertenece a un corpus/hash concreto y su representación empaquetada cargaría el conjunto completo en memoria. Para v4 se usa tokenización por lote en el muestreo aleatorio. Antes de declarar entrenable el artefacto se ejecutarán pruebas de lectura aleatoria, verificación de hashes y rechazo de shards corruptos.
+El token-cache heredado no se acepta para este modo indexado: pertenece a un corpus/hash concreto y su representación empaquetada cargaría el conjunto completo en memoria. Para v4 se usa tokenización por lote en el muestreo aleatorio. Antes de declarar entrenable el artefacto se ejecutarán pruebas de lectura aleatoria, verificación de hashes y rechazo de shards corruptos. El artefacto congelado incluye también una copia de `tokenizer.json`; el trainer debe invocarse con `--data <directorio-v4> --tokenizer <directorio-v4>/tokenizer.json`, sin `--token-cache`.
 
 ## Objetivo de corpus v4
 

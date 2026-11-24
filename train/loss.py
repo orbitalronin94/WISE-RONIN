@@ -3,9 +3,10 @@ import torch
 from torch.nn import functional as F
 
 
-def repetition_loss_shared_normalization(logits):
-    """Exact triple-token repetition probability with one shared log-softmax."""
-    log_probs = F.log_softmax(logits, dim=-1)
+def repetition_loss_shared_normalization(logits, log_probs=None):
+    """Exact triple-token repetition probability; accepts reusable log-probabilities."""
+    if log_probs is None:
+        log_probs = F.log_softmax(logits, dim=-1)
     log_triple = torch.logsumexp(
         log_probs[:, :-2] + log_probs[:, 1:-1] + log_probs[:, 2:],
         dim=-1,
@@ -14,14 +15,26 @@ def repetition_loss_shared_normalization(logits):
 
 
 def perdida_total(output, targets, model, use_jepa=True, use_rep=True,
-                  use_free_energy=False, beta=0.01, pad_id=0):
+                  use_free_energy=False, beta=0.01, pad_id=0,
+                  shared_loss_normalization=False):
     logits = output["logits"]
     _, steps, vocab = logits.shape
-    token_loss = F.cross_entropy(
-        logits[:, :-1].reshape(-1, vocab),
-        targets[:, 1:].reshape(-1),
-        ignore_index=pad_id,
-    )
+    shared_log_probs = None
+    if shared_loss_normalization and use_rep and steps >= 3:
+        # One normalization serves both token CE and the triple-repeat term.
+        # The full sequence is needed by repetition; CE consumes its next-token slice.
+        shared_log_probs = F.log_softmax(logits, dim=-1)
+        token_loss = F.nll_loss(
+            shared_log_probs[:, :-1].reshape(-1, vocab),
+            targets[:, 1:].reshape(-1),
+            ignore_index=pad_id,
+        )
+    else:
+        token_loss = F.cross_entropy(
+            logits[:, :-1].reshape(-1, vocab),
+            targets[:, 1:].reshape(-1),
+            ignore_index=pad_id,
+        )
     latent_loss = logits.new_zeros(())
     if use_jepa and steps > 8:
         hidden = output["hidden"]
@@ -41,7 +54,7 @@ def perdida_total(output, targets, model, use_jepa=True, use_rep=True,
 
     repetition_loss = logits.new_zeros(())
     if use_rep and steps >= 3:
-        repetition_loss = repetition_loss_shared_normalization(logits)
+        repetition_loss = repetition_loss_shared_normalization(logits, shared_log_probs)
 
     complexity = output.get("free_energy_complexity", logits.new_zeros(()))
     if not use_free_energy:

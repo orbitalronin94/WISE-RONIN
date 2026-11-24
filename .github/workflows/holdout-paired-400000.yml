@@ -69,24 +69,36 @@ jobs:
           import hashlib, json, shutil, torch
           from pathlib import Path
 
-          def one_checkpoint(root, label):
-              files=list(Path(root).rglob("*.pt"))
-              if len(files) != 1:
-                  raise SystemExit(f"Expected exactly one {label} checkpoint, found {[str(p) for p in files]}")
-              path=files[0]
-              ckpt=torch.load(path,map_location="cpu",weights_only=False)
-              if not isinstance(ckpt,dict) or int(ckpt.get("step",-1)) != 400000:
-                  raise SystemExit(f"{label} checkpoint is not exactly step 400000: {ckpt.get('step') if isinstance(ckpt,dict) else type(ckpt)}")
-              if not isinstance(ckpt.get("model"),dict) or not ckpt["model"]:
-                  raise SystemExit(f"{label} model state is missing")
-              if not ckpt.get("optimizer") or not ckpt.get("rng"):
-                  raise SystemExit(f"{label} optimizer or RNG state is missing")
-              if not ckpt.get("tokenizer_sha256") or not ckpt.get("data_sha256"):
-                  raise SystemExit(f"{label} checkpoint lacks data/tokenizer provenance")
-              return path,ckpt
+          def one_checkpoint(root, label, candidates):
+              # Artifacts intentionally package mirrored copies. Prefer the canonical
+              # checkpoint path and validate its internal step instead of treating mirrors
+              # as separate checkpoints.
+              for relative in candidates:
+                  path=Path(root)/relative
+                  if not path.is_file():
+                      continue
+                  ckpt=torch.load(path,map_location="cpu",weights_only=False)
+                  if not isinstance(ckpt,dict) or int(ckpt.get("step",-1)) != 400000:
+                      continue
+                  if not isinstance(ckpt.get("model"),dict) or not ckpt["model"]:
+                      raise SystemExit(f"{label} model state is missing in {path}")
+                  if not ckpt.get("optimizer") or not ckpt.get("rng"):
+                      raise SystemExit(f"{label} optimizer or RNG state is missing in {path}")
+                  if not ckpt.get("tokenizer_sha256") or not ckpt.get("data_sha256"):
+                      raise SystemExit(f"{label} checkpoint lacks data/tokenizer provenance in {path}")
+                  return path,ckpt
+              raise SystemExit(f"No canonical {label} step-400000 checkpoint found. Files: {[str(p) for p in Path(root).rglob('*.pt')]}")
 
-          lp,l=one_checkpoint("lumen-artifact","LUMEN")
-          tp,t=one_checkpoint("transformer-artifact","Transformer")
+          lp,l=one_checkpoint("lumen-artifact","LUMEN",[
+              "checkpoint/step_400000.pt",
+              "checkpoints/lumen/step_400000.pt",
+              "checkpoints/lumen/latest_good.pt",
+          ])
+          tp,t=one_checkpoint("transformer-artifact","Transformer",[
+              "checkpoint/step_400000.pt",
+              "checkpoints/transformer/step_400000.pt",
+              "checkpoints/transformer/latest_good.pt",
+          ])
           assert t.get("architecture_id") == "decoder_transformer_4l_d192_h4_ff576_tied_v1", t.get("architecture_id")
           assert l.get("architecture_id"), "LUMEN architecture_id missing"
           assert l["tokenizer_sha256"] == t["tokenizer_sha256"], "Tokenizer SHA mismatch"

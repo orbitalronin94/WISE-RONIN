@@ -74,6 +74,7 @@ jobs:
           test -s source-inputs/eval/holdout_multiple_choice.jsonl
           mkdir -p prepared parents/lumen/checkpoint parents/transformer/checkpoint
           cp -a source-inputs/. prepared/
+          rm -rf prepared/parent
           cp source-lumen/checkpoint/step_407500.pt parents/lumen/checkpoint/step_407500.pt
           cp source-transformer/checkpoint/step_407500.pt parents/transformer/checkpoint/step_407500.pt
           if [ -s source-lumen/lumen-wall.json ]; then cp source-lumen/lumen-wall.json parents/lumen/lumen-wall.json; fi

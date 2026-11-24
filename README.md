@@ -146,6 +146,9 @@ La comparación es casi emparejada, con 50 actualizaciones de diferencia entre c
 [Artefacto completo con predicciones por pregunta](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45257284512/artifacts/14859702424). La ficha de promoción y procedencia está en [experiments/step_219700_promotion.json](experiments/step_219700_promotion.json).
 ## Corpus y evaluación
 
+La referencia de trabajo más reciente para la próxima campaña es [Corpus v3.2 — estado, manifiestos y auditoría](docs/CORPUS_V3_2_NEXT_TRAIN.md). Está enlazada para continuar la revisión, pero **no está autorizada aún para entrenamiento** (`training_authorized=false`); la campaña de 400k mantiene el snapshot v2 congelado.
+
+
 Los tramos 66k→73,5k y 73,5k→133,2k utilizaron el corpus español v2 congelado, preparado con seed 42. Los tramos 133,2k→140,7k y 140,7k→155,7k utilizaron la misma base v2 más 50.000 ejemplos de personalidad factual adaptados a Lumen-Ronin; no incorporaron literatura, M-Personas ni los currículos sintéticos adicionales del candidato v3. El manifiesto registra 9.357.876 filas de entrenamiento, 1.413 de validación y 2.431 de holdout. La muestra determinista compartida de entrenamiento contiene 200.000 filas (20k v1, 72k CSIC y 108k TDX); tokenizer de 4.096 IDs, PAD=0 y EOS presente. Hash del tokenizer: `d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe`. CSIC y TDX se incorporaron bajo CC BY 4.0; CoWeSe quedó excluido por derechos de los textos de origen.
 
 | Split | Filas |

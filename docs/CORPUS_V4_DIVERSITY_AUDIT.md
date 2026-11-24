@@ -25,7 +25,7 @@ Distribución por tipo de tarea:
 
 Así, **72.734/81.825 (88,9%)** de las nuevas filas v3.2 son perfiles, diálogos o voces de persona; solo 11,1% son QA jurídico contextual. El incremento añade volumen, pero no la diversidad temática que necesitamos. v3.2.001 es el único delta cercano al límite de 100 MiB; los otros cuatro son mucho menores. La cadena es acumulativa, no cinco bloques de 100 MB.
 
-La cadena declara 279.613 filas acumuladas (197.788 de v3.1 + 81.825 deltas v3.2). Si la cifra operativa de la rama de entrenamiento es aproximadamente 180.000, hay que reconciliarla contra el manifiesto/artifact exacto antes de fijar el multiplicador. El objetivo mínimo solicitado se interpreta como 10× el corpus congelado efectivo, con 100× como objetivo aspiracional sujeto a datos elegibles reales.
+La base exacta emparejada con los modelos contiene **279.613 filas** (197.788 de v3.1 + 81.825 deltas v3.2), de las cuales **178.090 son `raw_text_pretraining`**. La cifra de ~180.000 corresponde al bloque documental, no al total del corpus. Por tanto, el objetivo actual de 1,8 M de filas documentales equivale a **10,11× el bloque documental de partida**, pero no a 10× todas las filas de la base. Para llegar a 10× el total completo harían falta 2.796.130 filas finales; ese objetivo no debe confundirse con el alcance actual de v4.
 
 ## Distribución del corpus completo v3.2.005\n\n| Grupo | Filas | Proporción |\n|---|---:|---:|\n| raw_text_pretraining | 178.090 | 63,7% |\n| persona_profile + persona_dialogue + synthetic_persona_voice | 72.734 | 26,0% |\n| Otros SFT / QA / tareas | 28.789 | 10,3% |\n| **Total** | **279.613** | **100%** |\n\nEl corpus ya tiene un bloque de personalidad sustancial: 72.734 filas (26,0%). El filtro actual rechaza 6.845 de esas filas por atractores, dejando 65.889. Sin ampliación, al sumar 1,8 M de texto general el bloque caería a cerca del 3%. El plan fija una franja final del 10–15% de personalidad/conversación. El builder reserva 100.000 fragmentos para m-personas y 60.000 para diálogo SFT español (el primer benchmark de ingesta produjo 80.000 y 60.287 respectivamente, por lo que se reajustó el reparto). Junto a las filas conservadas deja aproximadamente 225.889 filas de personalidad/diálogo sobre un total previsto de 2,22 M (≈10,2%). No intenta conservar artificialmente el 26% original: eso exigiría cientos de miles de ejemplos adicionales y aumentaría el riesgo de sobrepeso sintético.\n\n## Diagnóstico de atractores de LUMEN
 
@@ -58,8 +58,9 @@ La regla se implementa en scripts/filter_corpus_attractors.py y la lista queda v
 
 ## Objetivo de corpus v4
 
-- **Mínimo:** 10× el número real de filas del corpus de entrenamiento congelado (si son 180.000, al menos 1,8 M).
-- **Aspiracional:** 100× (si son 180.000, 18 M), solo si la ingestión real produce suficientes documentos únicos, útiles y con derechos verificables.
+- **Objetivo de esta tanda:** al menos 1,8 M de filas documentales nuevas, 10,11× las 178.090 filas documentales de la base emparejada.
+- **No equivale a 10× el corpus completo:** la base tiene 279.613 filas; 10× el total exigiría 2.796.130 filas finales. El informe de congelación debe mostrar ambos multiplicadores y no confundirlos.
+- **Aspiracional:** 100× el bloque documental (17,81 M nuevas) solo si la ingestión produce suficientes documentos únicos, útiles y con derechos verificables.
 - El entrenador actual usa max_len=128 y espera prompt/completion, mientras los deltas fuente v3.2 serializan text. El adaptador debe convertir texto documental a prompt vacío + completion y trocear a un máximo de 126 tokens BPE (reservando BOS/EOS); registrar source_document_id, chunk_index, offsets y procedencia. No almacenar párrafos de miles de palabras como una sola fila: el entrenador truncaría casi todo el documento.
 - Mantener la personalidad como una franja estable de aproximadamente 10–15% del corpus final, no dejarla desaparecer bajo el volumen documental. La proporción se mide tras el filtro de atractores y deduplicación.
 - Congelar una versión inmutable con manifiesto, SHA-256, conteo de filas/tokens, distribución por dominio/tipo, licencia y reporte de rechazos.

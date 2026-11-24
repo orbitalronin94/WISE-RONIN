@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: ronin-paired-main-21000-to-26000
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   PARENT_RUN_ID: "45025897082"
@@ -28,6 +28,8 @@ env:
 
 jobs:
   quality-gate:
+    # Preserve manual recovery, but never auto-run this obsolete 21k-26k campaign on code pushes.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

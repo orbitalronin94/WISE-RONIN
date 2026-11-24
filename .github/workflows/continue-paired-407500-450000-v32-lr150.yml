@@ -1,4 +1,5 @@
 name: LUMEN vs Transformer — v3.2.005 continuation 407500 to 450000 (LR x1.5)
+# The reusable block validates the exhausted 400000->407500 scheduler before restarting at 407500.
 
 on:
   workflow_dispatch:

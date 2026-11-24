@@ -80,8 +80,6 @@ def privacy_flags(text: str) -> list[str]:
         flags.append("dni_like")
     if PHONE_RE.search(text):
         flags.append("phone_like")
-    if URL_RE.search(text):
-        flags.append("url")
     return flags
 
 

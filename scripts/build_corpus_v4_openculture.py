@@ -15,7 +15,7 @@ import unicodedata
 from collections import Counter
 from pathlib import Path
 
-from datasets import load_dataset
+from datasets import Features, Value, load_dataset
 from huggingface_hub import HfApi, hf_hub_url
 from tokenizers import Tokenizer
 import langid
@@ -29,6 +29,13 @@ SOURCES = [
         "license": "public_domain",
         "license_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Books",
         "share": 0.60,
+        "features": Features({
+            "identifier": Value("string"), "creator": Value("string"),
+            "title": Value("string"), "publication_date": Value("int32"),
+            "language": Value("string"), "language_code": Value("string"),
+            "text": Value("string"), "word_count": Value("int32"),
+            "character_count": Value("int32"),
+        }),
     },
     {
         "key": "spanish_pd_newspapers",
@@ -37,6 +44,15 @@ SOURCES = [
         "license": "public_domain",
         "license_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Newspapers",
         "share": 0.40,
+        "features": Features({
+            "directory": Value("string"), "identifier": Value("string"),
+            "...1": Value("int64"), "creator": Value("string"),
+            "language": Value("string"), "title": Value("string"),
+            "publication_date": Value("int64"), "lang": Value("string"),
+            "real_lang": Value("string"), "n": Value("int64"),
+            "rights": Value("string"), "file": Value("string"),
+            "word_count": Value("int64"), "text": Value("string"),
+        }),
     },
 ]
 
@@ -157,7 +173,8 @@ def stream_parquet_source(source, seed: int):
         for name in parquet_files
     ]
     return load_dataset(
-        "parquet", data_files={"train": urls}, split="train", streaming=True
+        "parquet", data_files={"train": urls}, split="train", streaming=True,
+        features=source["features"]
     ).shuffle(seed=seed, buffer_size=10_000)
 
 
@@ -174,7 +191,7 @@ def get_document_id(item, source_key: str, index: int) -> str:
     if identifier is not None and str(identifier).strip():
         return str(identifier)
     # Newspaper "id" is the publication ISSN; pair it with file_name for issue identity.
-    file_name = item.get("file_name")
+    file_name = item.get("file_name") or item.get("file")
     if file_name is not None and str(file_name).strip():
         return f"{item.get('id', source_key)}/{file_name}"
     for key in ("id", "publication_id"):

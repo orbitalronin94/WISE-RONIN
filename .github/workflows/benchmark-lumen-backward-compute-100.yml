@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: lumen-backward-compute-100steps-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   tournament:

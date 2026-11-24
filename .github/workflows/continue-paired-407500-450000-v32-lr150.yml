@@ -3,11 +3,6 @@ name: LUMEN vs Transformer — v3.2.005 continuation 407500 to 450000 (LR x1.5)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/continue-paired-407500-450000-v32-lr150.yml
-      - .github/workflows/train-paired-block-v32.yml
 
 permissions:
   contents: read

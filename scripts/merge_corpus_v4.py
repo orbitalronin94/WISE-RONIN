@@ -397,6 +397,7 @@ def main():
     if dedup_path.exists():
         dedup_path.unlink()
     shutil.copy2(args.denylist, args.output_dir / "attractor_denylist.json")
+    shutil.copy2(args.tokenizer, args.output_dir / "tokenizer.json")
     if args.source_plan.is_file():
         shutil.copy2(args.source_plan, args.output_dir / "source_plan.json")
 
@@ -409,6 +410,7 @@ def main():
         "training_authorized": False,
         "base_jsonl_sha256": sha256_file(args.base_jsonl),
         "tokenizer_sha256": sha256_file(args.tokenizer),
+        "tokenizer_file": "tokenizer.json",
         "denylist_sha256": sha256_file(args.denylist),
         "source_plan_sha256": sha256_file(args.source_plan) if args.source_plan.is_file() else None,
         "denylist_terms": denylist["terms"],

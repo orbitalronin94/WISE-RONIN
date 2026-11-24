@@ -128,3 +128,26 @@ def test_m_personas_turns_share_parent_persona_rejection_key(tmp_path):
     blocked = find_blocked_base_documents(path, patterns)
     assert "BSC-LT/m-personas::persona-42" in blocked
     assert "BSC-LT/m-personas::persona-43" not in blocked
+
+
+
+def test_collection_doi_does_not_group_unrelated_documents(tmp_path):
+    import json
+    from pathlib import Path
+    from scripts.merge_corpus_v4 import find_blocked_base_documents
+    from scripts.build_corpus_v4_openculture import load_denylist
+
+    path = tmp_path / "base.jsonl"
+    rows = [
+        {"source": "csic_es", "source_doi": "10.5281/zenodo.7313126",
+         "source_id": "doc-a", "prompt": "", "completion": "Texto neutral."},
+        {"source": "csic_es", "source_doi": "10.5281/zenodo.7313126",
+         "source_id": "doc-a", "prompt": "", "completion": "Texto con música."},
+        {"source": "csic_es", "source_doi": "10.5281/zenodo.7313126",
+         "source_id": "doc-b", "prompt": "", "completion": "Texto neutral de astronomía."},
+    ]
+    path.write_text("".join(json.dumps(row, ensure_ascii=False) + chr(10) for row in rows), encoding="utf-8")
+    _, patterns = load_denylist(Path("data/corpus_v4_attractor_denylist.json"))
+    blocked = find_blocked_base_documents(path, patterns)
+    assert "csic_es::doc-a" in blocked
+    assert "csic_es::doc-b" not in blocked

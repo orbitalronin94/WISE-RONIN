@@ -160,17 +160,18 @@ def main():
         if pair in seen_pairs:
             quarantine["base_duplicate_pair"] += 1
             continue
-        if prompt in prompt_answers and prompt_answers[prompt] != norm(row["completion"]):
-            quarantine["base_conflicting_prompt"] += 1
-            continue
+        # Repeated prompts are legitimate in the pretraining/chunk corpus.
+        # Only exact prompt+completion duplicates are excluded at this stage.
         seen_pairs.add(pair)
-        prompt_answers[prompt] = norm(row["completion"])
         accepted_base.append(row)
         accepted_tokens.append(ids)
 
     if not accepted_base:
         raise ValueError("Conservative filters removed the entire base corpus")
 
+    # Conflict checks apply only among the newly admitted QA rows, not to the
+    # base corpus where repeated prompts are expected (e.g. text chunks).
+    new_prompt_answers = {}
     api, tok = HfApi(), Tokenizer.from_file(str(tokenizer_path))
     eos_id = tok.token_to_id("[EOS]")
     if eos_id is None:
@@ -215,7 +216,7 @@ def main():
             if pair in seen_pairs:
                 rejected["duplicate_pair"] += 1
                 continue
-            if prompt in prompt_answers and prompt_answers[prompt] != norm(answer):
+            if prompt in new_prompt_answers and new_prompt_answers[prompt] != norm(answer):
                 rejected["conflicting_prompt"] += 1
                 continue
             ids = encode_new_row(tok, question, answer, args.max_len, eos_id)
@@ -236,7 +237,7 @@ def main():
             additions.append(record)
             new_encoded.append(ids)
             seen_pairs.add(pair)
-            prompt_answers[prompt] = norm(answer)
+            new_prompt_answers[prompt] = norm(answer)
             added += 1
             if len(review_candidates) < args.review_per_source:
                 review_candidates.append(record)

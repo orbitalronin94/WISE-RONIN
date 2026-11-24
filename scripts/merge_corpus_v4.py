@@ -80,16 +80,23 @@ def find_blocked_base_documents(path: Path, patterns):
     blocked = {}
     for index, raw in enumerate(iter_jsonl_file(path)):
         row = normalize_base(raw, index)
-        document_id = row.get("source_document_id")
+        document_id = (
+            row.get("source_document_id")
+            or row.get("document_id")
+            or row.get("source_id")
+            or row.get("source_doi")
+            or row.get("id")
+        )
         if document_id is None or not str(document_id).strip():
-            continue
+            document_id = f"row:{index}"
+        document_key = f"{row.get('source', 'unknown')}::{document_id}"
         prompt = str(row.get("prompt") or "")
         completion = str(row.get("completion") or "")
         hits = find_attractors(
             prompt + "\n" + completion + "\n" + metadata_text(row), patterns
         )
         if hits:
-            blocked[str(document_id)] = sorted(set(blocked.get(str(document_id), [])) | set(hits))
+            blocked[document_key] = sorted(set(blocked.get(document_key, [])) | set(hits))
     return blocked
 
 
@@ -262,10 +269,19 @@ def main():
         for index, row in enumerate(iter_jsonl_file(args.base_jsonl)):
             base_rows_seen += 1
             normalized_row = normalize_base(row, index)
-            document_id = normalized_row.get("source_document_id")
-            if document_id is not None and str(document_id) in blocked_documents:
+            document_id = (
+                normalized_row.get("source_document_id")
+                or normalized_row.get("document_id")
+                or normalized_row.get("source_id")
+                or normalized_row.get("source_doi")
+                or normalized_row.get("id")
+            )
+            if document_id is None or not str(document_id).strip():
+                document_id = f"row:{index}"
+            document_key = f"{normalized_row.get('source', 'unknown')}::{document_id}"
+            if document_key in blocked_documents:
                 reject(normalized_row, "source_document_contains_lumen_attractor",
-                       blocked_documents[str(document_id)])
+                       blocked_documents[document_key])
             else:
                 admit(normalized_row, "v3.2.005_base")
             if base_rows_seen % 25_000 == 0:

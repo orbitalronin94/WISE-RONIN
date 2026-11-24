@@ -19,8 +19,21 @@ def language_label(text):
     if en >= 3 and en > es: return "non_es_heuristic"
     return "unresolved"
 
+def extract_chunks(row, fields, messages_field):
+    chunks = [(field, norm(row[field])) for field in fields
+              if isinstance(row.get(field), str) and norm(row[field])]
+    if messages_field and isinstance(row.get(messages_field), list):
+        for message in row[messages_field]:
+            if isinstance(message, dict) and isinstance(message.get("content"), str):
+                role = str(message.get("role", "unknown")).lower()
+                value = norm(message["content"])
+                if value:
+                    chunks.append((f"{messages_field}[{role}]", value))
+    return chunks
+
 def classify_task(row):
     keys = {str(k).lower() for k in row}
+    if isinstance(row.get("messages"), list): return "chat_messages"
     if {"question","answer"} <= keys: return "question_answer"
     if "instruction" in keys and ({"response","output","answer"} & keys): return "instruction_response"
     if "document" in keys or "passage" in keys: return "document_or_retrieval"
@@ -34,6 +47,7 @@ def main():
     p.add_argument("--split",default="train")
     p.add_argument("--text-fields",required=True,help="Explicit comma-separated prose field allowlist")
     p.add_argument("--base-jsonl",help="Optional frozen v3.1 JSONL for exact duplicate references")
+    p.add_argument("--messages-field",help="Optional list-of-{role,content} chat field, e.g. messages")
     a=p.parse_args()
     fields=tuple(x.strip() for x in a.text_fields.split(",") if x.strip())
     if not fields: raise SystemExit("at least one text field must be allowlisted")
@@ -43,7 +57,7 @@ def main():
             for line in f:
                 try: row=json.loads(line)
                 except Exception: continue
-                chunks=[norm(row[k]) for k in fields if isinstance(row,dict) and isinstance(row.get(k),str) and norm(row[k])]
+                chunks=[value for _,value in extract_chunks(row, fields, a.messages_field) if value] if isinstance(row,dict) else []
                 if chunks: base.add(hashlib.sha256("\n".join(chunks).encode()).hexdigest())
     out=Path(a.output); out.parent.mkdir(parents=True,exist_ok=True)
     stats={"rows_seen":0,"rows_with_text":0,"empty_text":0,"exact_duplicate_v3_1":0,
@@ -56,7 +70,7 @@ def main():
             try: row=json.loads(line)
             except Exception: continue
             if not isinstance(row,dict): continue
-            chunks=[(field,norm(row[field])) for field in fields if isinstance(row.get(field),str) and norm(row[field])]
+            chunks=extract_chunks(row, fields, a.messages_field)
             if not chunks: stats["empty_text"]+=1; continue
             stats["rows_with_text"]+=1
             content="\n".join(value for _,value in chunks)

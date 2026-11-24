@@ -15,7 +15,8 @@ import unicodedata
 from collections import Counter
 from pathlib import Path
 
-from datasets import Features, Value, load_dataset
+from datasets import load_dataset
+from huggingface_hub import HfApi, hf_hub_url
 from tokenizers import Tokenizer
 import langid
 
@@ -28,13 +29,6 @@ SOURCES = [
         "license": "public_domain",
         "license_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Books",
         "share": 0.60,
-        "features": Features({
-            "identifier": Value("string"), "creator": Value("string"),
-            "title": Value("string"), "publication_date": Value("int32"),
-            "language": Value("string"), "language_code": Value("string"),
-            "text": Value("string"), "word_count": Value("int32"),
-            "character_count": Value("int32"),
-        }),
     },
     {
         "key": "spanish_pd_newspapers",
@@ -43,12 +37,6 @@ SOURCES = [
         "license": "public_domain",
         "license_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Newspapers",
         "share": 0.40,
-        "features": Features({
-            "id": Value("string"), "file_name": Value("string"),
-            "start_date": Value("string"), "end_date": Value("string"),
-            "edition": Value("string"), "word_count": Value("int64"),
-            "text": Value("string"),
-        }),
     },
 ]
 
@@ -152,6 +140,27 @@ class ShardWriter:
             item["sha256"] = sha256_file(self.root / item["file"])
 
 
+def stream_parquet_source(source, seed: int):
+    # Bypass stale dataset-card feature schemas: stream the actual immutable Parquet files.
+    api = HfApi()
+    files = api.list_repo_files(
+        repo_id=source["repo"], repo_type="dataset", revision=source["revision"]
+    )
+    parquet_files = sorted(name for name in files if name.lower().endswith(".parquet"))
+    if not parquet_files:
+        raise RuntimeError(f"No Parquet files found for {source['repo']}@{source['revision']}")
+    urls = [
+        hf_hub_url(
+            repo_id=source["repo"], filename=name, repo_type="dataset",
+            revision=source["revision"]
+        )
+        for name in parquet_files
+    ]
+    return load_dataset(
+        "parquet", data_files={"train": urls}, split="train", streaming=True
+    ).shuffle(seed=seed, buffer_size=10_000)
+
+
 def get_text(item):
     for key in ("text", "content", "document"):
         value = item.get(key)
@@ -231,10 +240,7 @@ def main():
             source_docs = 0
             accepted_source_docs = 0
             print(f"START {source['key']} quota={quota}", flush=True)
-            dataset = load_dataset(
-                source["repo"], split="train", streaming=True,
-                revision=source["revision"], features=source["features"]
-            ).shuffle(seed=args.seed, buffer_size=10_000)
+            dataset = stream_parquet_source(source, args.seed)
             for index, item in enumerate(dataset):
                 if source_rows >= quota or total_rows >= args.target_rows:
                     break

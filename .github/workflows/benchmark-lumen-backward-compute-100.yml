@@ -10,12 +10,12 @@ permissions:
   actions: read
 
 concurrency:
-  group: lumen-backward-compute-100steps-${ github.ref }
+  group: lumen-backward-compute-100steps-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   tournament:
-    name: "${ matrix.candidate } — paired 100-step run"
+    name: "${{ matrix.candidate }} — paired 100-step run"
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
@@ -53,17 +53,17 @@ jobs:
         with:
           name: paired-inputs-45273897576
           path: inputs
-          repository: ${ github.repository }
+          repository: ${{ github.repository }}
           run-id: 45273897576
-          github-token: ${ secrets.GITHUB_TOKEN }
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download exact LUMEN step-389700 parent
         uses: actions/download-artifact@v4
         with:
           name: lumen-step-389700-45273897576
           path: parent
-          repository: ${ github.repository }
+          repository: ${{ github.repository }}
           run-id: 45273897576
-          github-token: ${ secrets.GITHUB_TOKEN }
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Resolve and verify immutable inputs
         run: |
           set -euo pipefail
@@ -95,7 +95,7 @@ jobs:
           PY
       - name: Run matched control and candidate (100 steps each)
         env:
-          CANDIDATE: ${ matrix.candidate }
+          CANDIDATE: ${{ matrix.candidate }}
         run: |
           set -euo pipefail
           CHECKPOINT="$(cat checkpoint-path.txt)"
@@ -112,9 +112,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lumen-backward-${ matrix.candidate }-${ github.run_id }
+          name: lumen-backward-${{ matrix.candidate }}-${{ github.run_id }}
           path: |
             results/
-            results-${ matrix.candidate }.log
+            results-${{ matrix.candidate }}.log
           if-no-files-found: warn
           retention-days: 30

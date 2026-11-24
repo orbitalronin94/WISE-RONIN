@@ -109,6 +109,7 @@ def main():
     candidate_rows_seen = Counter()
     raw_text_rows = 0
     personality_rows = 0
+    total_tokens = 0
 
     def reject(row, reason, hits=None):
         reject_counts[reason] += 1
@@ -133,7 +134,7 @@ def main():
         rejected_handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
     def admit(row, origin):
-        nonlocal raw_text_rows, personality_rows
+        nonlocal raw_text_rows, personality_rows, total_tokens
         prompt = str(row.get("prompt") or "")
         completion = str(row.get("completion") or "")
         if not completion.strip():
@@ -189,9 +190,11 @@ def main():
                 final_row["chunk_index"] = chunk_index
 
             full_text = (final_row["prompt"] + "\n" + piece).strip()
-            if row_token_count(tokenizer, final_row["prompt"], piece) > args.chunk_tokens:
+            token_count = row_token_count(tokenizer, final_row["prompt"], piece)
+            if token_count > args.chunk_tokens:
                 reject(final_row, "token_limit_violation")
                 continue
+            final_row["token_count"] = token_count
             digest = hashlib.sha256(normalize(full_text).encode("utf-8")).hexdigest()
             try:
                 db.execute("INSERT INTO rows(sha256) VALUES (?)", (digest,))
@@ -200,6 +203,7 @@ def main():
                 continue
 
             writer.write(final_row)
+            total_tokens += token_count
             counts["accepted_rows"] += 1
             task_counts[task] += 1
             source_counts[source] += 1
@@ -270,6 +274,8 @@ def main():
         "candidate_rows_seen": dict(candidate_rows_seen),
         "candidate_manifest_sha256": candidate_manifest_sha,
         "total_rows": shard_rows,
+        "token_count_without_special_tokens": total_tokens,
+        "estimated_tokens_with_one_eos_per_row": total_tokens + shard_rows,
         "raw_text_pretraining_rows": raw_text_rows,
         "personality_dialogue_rows": personality_rows,
         "task_counts": dict(task_counts.most_common()),

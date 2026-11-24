@@ -71,7 +71,7 @@
       "notes": "Filter language=Spanish and include only public-domain or explicitly approved permissive licenses. Never ingest the multilingual aggregate wholesale."
     },
     {
-      "dataset": "Wikipedia/Wikidata Spanish releases",
+      "dataset": "wikimedia/wikipedia (20231101.es)",
       "domain": [
         "encyclopedia",
         "geography",
@@ -79,9 +79,11 @@
         "history",
         "factual_knowledge"
       ],
-      "candidate_license": "CC-BY-SA_or_CC0_by_source",
+      "candidate_license": "CC-BY-SA-3.0+GFDL",
       "admission": "candidate",
-      "notes": "Retain attribution and ShareAlike obligations where applicable; deduplicate against existing corpus."
+      "notes": "Spanish Wikipedia dump, 3.49 GB in 13 Parquet shards. Keep article URL/title, contributor attribution and ShareAlike/GFDL obligations. Wikidata CC0 is a separate future source and must not be conflated with this license.",
+      "revision": "cf584d1dc131caa92a5cb910f41a8b7591b12732",
+      "license_evidence_url": "https://huggingface.co/datasets/wikimedia/wikipedia/tree/cf584d1dc131caa92a5cb910f41a8b7591b12732/20231101.es"
     },
     {
       "dataset": "Stack Exchange Spanish content",

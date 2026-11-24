@@ -11,10 +11,16 @@ from pathlib import Path
 
 from tokenizers import Tokenizer
 
-from build_corpus_v4_openculture import (
-    ShardWriter, encode_chunks, find_attractors, load_denylist,
-    normalize, sha256_file,
-)
+try:
+    from .build_corpus_v4_openculture import (
+        ShardWriter, encode_chunks, find_attractors, load_denylist,
+        normalize, sha256_file,
+    )
+except ImportError:
+    from build_corpus_v4_openculture import (
+        ShardWriter, encode_chunks, find_attractors, load_denylist,
+        normalize, sha256_file,
+    )
 
 CHUNKABLE_TASKS = {
     "raw_text_pretraining", "lm_text", "persona_profile",

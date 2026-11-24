@@ -22,7 +22,7 @@ permissions:
 
 concurrency:
   group: wise-ronin-corpus-v4-personality
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:

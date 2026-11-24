@@ -133,3 +133,52 @@ Ninguna optimización se activa en main por una mejora de throughput aislada. De
 5. documentar cualquier cambio deliberado de comportamiento.
 
 **Principio:** bajar la loss es una señal de aprendizaje; identificar qué capacidad mejora exige medir esa capacidad. La arquitectura debe reforzar fortalezas observadas, no perseguir un escalar a ciegas.
+
+
+## Segunda pasada: separación entre cómputo funcional y contabilidad
+
+La inspección de los módulos y de las pruebas existentes permite afinar las prioridades. Esta sección distingue lo ya implementado de lo que aún debe medirse.
+
+### Atajos exactos que ya existen y están seleccionados
+
+El perfil versionado `config/lumen_cpu_profile.json` activa cuatro rutas de Delta:
+
+- `delta_reuse_write_update=true`: reutiliza la actualización de escritura que ya se calculó, evitando repetir el mismo `einsum`.
+- `delta_always_apply_eligibility=true`: evita una decisión Python basada en `.item()`; la suma por cero conserva la misma salida cuando no hay modulación.
+- `delta_trace_norm_diagnostics_on_demand=true`: no calcula la norma de diagnóstico cuando no se solicita.
+- `delta_share_causal_masks=true`: reutiliza máscaras causales inmutables entre órganos con la misma forma/dispositivo/tipo.
+
+Las pruebas de `tests/test_hotspot_fastpaths.py` comparan outputs, estado recurrente, trazas de elegibilidad y gradientes para estas rutas. Son simplificaciones de implementación, no eliminación de órganos. El mismo perfil mantiene `homeostasis_fused_scatter=false`: no se activa una ruta que no ganó en el cribado previo.
+
+### Candidato prioritario: una sola normalización para CE y repetición
+
+En `train/loss.py`, la cross-entropy calcula internamente una normalización log-softmax; después `repetition_loss_shared_normalization(logits)` vuelve a calcular `log_softmax(logits)`. La segunda normalización ya es necesaria para la pérdida de triples, así que hay una oportunidad concreta de compartir el tensor:
+
+1. Calcular `log_probs = log_softmax(logits)` una sola vez cuando la pérdida de repetición está activa.
+2. Obtener token CE con `nll_loss(log_probs[:, :-1], targets[:, 1:])`, conservando `ignore_index=pad_id` y la reducción media.
+3. Alimentar el mismo `log_probs` a la pérdida de triples.
+
+La identidad matemática es la misma que CE = NLL(log-softmax(logits)), pero no se presume que sea más rápida: la implementación fused de `cross_entropy` puede tener ventajas de kernel. Antes de activar la ruta se exige comparar valor de cada término, loss total, gradientes de logits y throughput en formas reales (batch 8, secuencia 128, vocabulario configurado), con warmup y varias repeticiones. También se medirá memoria pico.
+
+### Contabilidad que no debe confundirse con homeostasis efectiva
+
+En `model/homeostasis.py`, `effective_m` es la EMA que gobierna el ajuste de `bias` y por tanto forma parte del bucle funcional. La EMA `m` mide actividad positiva de entrada antes del umbral; el código la etiqueta como diagnóstico y el control efectivo no la consume. Las pruebas actuales verifican migración/restauración de `m`, pero no que sea una señal de control. Candidato de bajo riesgo para un experimento separado: mantener el buffer por compatibilidad de checkpoints y omitir el cálculo/actualización de `m` durante entrenamiento, comparando outputs, gradientes, `effective_m`, `bias` y reanudación. No tocar `effective_m` ni el Top-K.
+
+En `model/embedding.py`, el histograma `uso` se actualiza con `bincount` en cada forward; las propuestas de poda se consultan cada 1.000 pasos y explícitamente no remapean el tokenizer ni se aplican a pesos. Es telemetría/candidato de poda, no una operación necesaria para la predicción actual. No se debe apagar sin una prueba de uso completa: se puede comparar coste y decidir si el recuento debe ser opt-in o por ventanas, conservando el modo exacto para auditorías de vocabulario.
+
+### No son grasa demostrada
+
+- `effective_m`, Top-K, el sesgo homeostático, las escrituras Delta y el estado de elegibilidad sí alteran el camino funcional: no reducir su frecuencia como simple limpieza.
+- El bucle de memoria elástica escribe una media por muestra y selecciona slots vacíos o el menos usado. Colapsarlo a una única escritura por batch cambiaría cuántos recuerdos se crean y la política de reemplazo; cualquier vectorización debe reproducir el orden y las asignaciones de slots.
+- Los refinamientos Delta actualizan el decaimiento y la predicción recurrente en cada iteración. El coste B×T×T es real, pero saltarse refinamientos no es una simplificación algebraica exacta.
+- KAN y MLP producen ramas distintas antes del router. No omitir una rama solo porque su peso instantáneo sea pequeño: cambiaría gradientes y capacidad.
+- El gate por sorpresa cambia el número de actualizaciones del optimizador; no es una optimización semánticamente neutra y requiere holdout/capacidad, no solo pasos por segundo.
+
+### Orden de trabajo propuesto
+
+1. Benchmark aislado de normalización compartida CE + repetición, con paridad de gradientes.
+2. Ablación contable de `Homeostasis.m`, conservando buffer/checkpoint y demostrando invariancia funcional.
+3. Medición del coste de `bincount` de `VivoEmbedding` y decisión explícita sobre telemetría opt-in.
+4. Microperfil por órgano para chunking, memoria elástica y refinamientos Delta; solo después plantear cambios que alteren su frecuencia.
+
+Ninguno de estos candidatos se activa en `main` ni autoriza un entrenamiento largo por el mero hecho de estar documentado.

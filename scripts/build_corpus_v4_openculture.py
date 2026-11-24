@@ -375,6 +375,9 @@ def main():
     finally:
         writer.close()
         db.close()
+    dedup_path = args.output_dir / "dedup.sqlite"
+    if dedup_path.exists():
+        dedup_path.unlink()
 
     shard_rows = sum(item["rows"] for item in writer.shards)
     manifest = {

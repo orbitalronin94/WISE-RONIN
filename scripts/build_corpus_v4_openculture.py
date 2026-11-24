@@ -148,7 +148,14 @@ def get_text(item):
 
 
 def get_document_id(item, source_key: str, index: int) -> str:
-    for key in ("identifier", "id", "file_name", "publication_id"):
+    identifier = item.get("identifier")
+    if identifier is not None and str(identifier).strip():
+        return str(identifier)
+    # Newspaper "id" is the publication ISSN; pair it with file_name for issue identity.
+    file_name = item.get("file_name")
+    if file_name is not None and str(file_name).strip():
+        return f"{item.get('id', source_key)}/{file_name}"
+    for key in ("id", "publication_id"):
         value = item.get(key)
         if value is not None and str(value).strip():
             return str(value)
@@ -253,6 +260,9 @@ def main():
                         rejects["duplicate_chunk"] += 1
                         continue
                     row = {
+                        "id": hashlib.sha256(
+                            f"{source['key']}|{source['revision']}|{doc_id}|{chunk_index}".encode("utf-8")
+                        ).hexdigest()[:24],
                         "prompt": "",
                         "completion": chunk,
                         "task": "raw_text_pretraining",

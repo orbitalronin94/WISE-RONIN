@@ -30,7 +30,7 @@ jobs:
     env:
       PYTHONUNBUFFERED: "1"
       HF_HUB_DISABLE_XET: "1"
-      TARGET_ROWS: \${{ inputs.target_rows || '1800000' }}
+      TARGET_ROWS: ${{ inputs.target_rows || '1800000' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,9 +51,9 @@ jobs:
         with:
           name: paired-v32-inputs-45405758303
           path: prepared
-          repository: \${{ github.repository }}
+          repository: ${{ github.repository }}
           run-id: 45405758303
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify tokenizer lineage
         shell: bash
@@ -109,7 +109,7 @@ jobs:
       - name: Upload immutable candidate shards and manifest
         uses: actions/upload-artifact@v4
         with:
-          name: wise-ronin-corpus-v4-openculture-\${{ github.run_id }}
+          name: wise-ronin-corpus-v4-openculture-${{ github.run_id }}
           path: artifacts/corpus-v4-openculture/
           if-no-files-found: error
           retention-days: 90

@@ -198,6 +198,18 @@ La PR #71 se fusionó mediante squash en `main` (commit `4e42507f146106937b4b2c6
 
 La intención sigue siendo incorporar progresivamente todos los mecanismos que demuestren utilidad. Los pendientes no se descartan: podrán corregirse y volver a competir contra una referencia actualizada. El alcance, protocolo y registro de hipótesis están en [Integración progresiva de neuroplasticidad](docs/INTEGRACION_PROGRESSIVA_NEUROPLASTICIDAD_ES.md) y en la [PR #71](https://github.com/orbitalronin94/WISE-RONIN/pull/71).
 
+## Próximo torneo: eficiencia neural y computacional
+
+La siguiente campaña no busca acelerar LUMEN a costa de su arquitectura. Busca **hacer menos trabajo redundante y concentrar la plasticidad donde aporta aprendizaje**. El protocolo ampliado reúne 20 hipótesis independientes: cinco líneas de eficiencia neural, seis de forward/backward y matemáticas, y cuatro de Python/runtime, además de cinco líneas adicionales de eficiencia temporal, conectividad selectiva y feedback modulador dentro del bloque neural.
+
+La primera ronda está diseñada como **21 brazos simultáneos**: main actual con 1.000 pasos y cada hipótesis con 1.000 pasos, todos desde el mismo checkpoint y con corpus, tokenizer, token cache, seed, batches, contexto y scheduler idénticos. Después del cribado, los ganadores se combinarán en una sola configuración LUMEN y competirán contra main durante otros 1.000 pasos, desde el mismo padre y con el mismo holdout.
+
+La agenda previa de *Cerebro a Código* no se descarta: elegibilidad/R-STDP, tagging & capture, one-shot, homeostasis, umbral intrínseco, diversidad, sueño/replay, downscaling, poda reversible y LTD protegida quedan mapeados a hipótesis concretas. ELM se mantiene como probe offline porque no es una política de entrenamiento autoregresivo comparable a un brazo de 1.000 pasos. Las propuestas se mantienen separadas de los mecanismos activos.
+
+**No se ha lanzado el torneo.** Antes hay que implementar cada variante con flags opt-in, probar paridad o invariantes, verificar fallbacks y completar un smoke test. Ningún brazo será un no-op ni se promoverá automáticamente. Un ahorro de tiempo solo cuenta si conserva calidad, estabilidad y capacidad en el holdout.
+
+Protocolo y matriz: [Torneo de eficiencia neural y computacional](docs/TORNEO_EFICIENCIA_NEURAL_COMPUTACIONAL.md).
+
 ## Cómo se investiga
 
 El proyecto no acepta una mejora solo porque baje la loss o porque un workflow se llame `fast`.
@@ -218,7 +230,8 @@ Los microbenchmarks de 100 o 500 pasos sirven para filtrar hipótesis de entrena
 - [Arquitectura actual](docs/ARQUITECTURA_ACTUAL_ES.md) — anatomía del modelo y configuración realmente activa.
 - [Crónica experimental](docs/CRONICA_EXPERIMENTAL_ES.md) — linaje desde cero, cada continuación y sus holdouts.
 - [Neurociencia y decisiones de arquitectura](docs/NEUROCIENCIA_Y_ARQUITECTURA_ES.md) — referencias, analogías y límites.
-- [Cerebro a Código: hipótesis falsables](docs/CEREBRO_A_CODIGO_HIPOTESIS_ES.md) — seis líneas de investigación traducidas a experimentos, con referencias DOI verificadas, límites y criterios de rechazo.
+- [Cerebro a Código: hipótesis falsables](docs/CEREBRO_A_CODIGO_HIPOTESIS_ES.md)
+- [Torneo de eficiencia neural y computacional](docs/TORNEO_EFICIENCIA_NEURAL_COMPUTACIONAL.md) — 20 hipótesis aisladas, control de 1.000 pasos y segunda ronda de ganadores combinados. — seis líneas de investigación traducidas a experimentos, con referencias DOI verificadas, límites y criterios de rechazo.
 - [Glucosa, dolor y placer](docs/PAIN_PLEASURE_ORGANS_ES.md) — evolución de los reguladores afectivos.
 - [Experimento de neuroplasticidad](docs/EXPERIMENTO_NEUROPLASTICIDAD_ES.md) — rama aislada, chunking adaptativo, trazas de elegibilidad y protocolo Lumen vs Transformer desde cero.
 - [Documento maestro V1](DOCUMENTO_MAESTRO_RONIN_LUMEN_V1.md) — especificación de diseño.

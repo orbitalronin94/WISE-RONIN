@@ -1,5 +1,5 @@
 name: Build corpus v4 personality and dialogue — 160K rows
-# Shared scripts package import enabled in the current revision.
+# Conversation quality gate now uses a lower threshold than documentary OCR filtering.
 
 on:
   push:

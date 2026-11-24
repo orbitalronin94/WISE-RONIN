@@ -72,4 +72,15 @@ with tempfile.TemporaryDirectory() as td:
     auto_chain = json.loads((auto_out2 / "lumen-corpus-v3-2-version-chain.json").read_text())
     assert auto_chain["versions_created"] == 1
     assert auto_chain["versions"][0]["delta_rows"] == 1
-    print("PASS: cumulative chain, block ceiling, dedup, rights gates and opt-in batch policy")
+    # Append a new version into an existing chain and preserve all prior manifests.
+    subprocess.run([sys.executable, str(BUILDER), "--input", str(auto_source),
+        "--base-jsonl", str(base), "--output-dir", str(out),
+        "--parent-version", "v3.2.003", "--start-version", "4",
+        "--dedup-db", str(out / "v3-2-chain-dedup.sqlite"),
+        "--allow-auto-approved"], check=True)
+    extended = json.loads((out / "lumen-corpus-v3-2-version-chain.json").read_text())
+    assert extended["versions_created"] == 4
+    assert [x["version"] for x in extended["versions"]] == [
+        "v3.2.001", "v3.2.002", "v3.2.003", "v3.2.004"]
+    assert extended["versions"][-1]["parent_version"] == "v3.2.003"
+    print("PASS: cumulative chain, incremental append, block ceiling, dedup and opt-in batch policy")

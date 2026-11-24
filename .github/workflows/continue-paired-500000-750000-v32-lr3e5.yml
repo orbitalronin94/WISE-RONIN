@@ -1,4 +1,5 @@
 name: LUMEN vs Transformer — v3.2.005 continuation 500000 to 750000 (10k blocks, LR 3e-5)
+# Re-trigger after fixing reusable workflow input interpolation.
 
 on:
   workflow_dispatch:

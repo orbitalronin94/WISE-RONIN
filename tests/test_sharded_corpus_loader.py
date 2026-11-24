@@ -6,7 +6,7 @@ from train.dataset import IndexedJsonlCorpus, load_jsonl
 
 def _write_shard(root, name, rows):
     path = root / name
-    payload = "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows).encode("utf-8")
+    payload = "".join(json.dumps(row, ensure_ascii=False) + chr(10) for row in rows).encode("utf-8")
     path.write_bytes(payload)
     return {
         "file": name,

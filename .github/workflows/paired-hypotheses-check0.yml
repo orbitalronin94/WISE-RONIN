@@ -1,0 +1,222 @@
+name: Check 0 — 20 paired LUMEN hypotheses + Transformer speed reference
+
+on:
+  push:
+    branches:
+      - benchmark/paired-hypotheses-check0-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-paired-hypotheses-check0
+  cancel-in-progress: false
+
+env:
+  SOURCE_RUN_ID: "45391619940"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the already-validated frozen corpus, tokenizer and token cache
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-check0-shared-inputs-45391619940
+          path: .
+          repository: ${ github.repository }}
+          run-id: ${ env.SOURCE_RUN_ID }}
+          github-token: ${ secrets.GITHUB_TOKEN }}
+      - name: Verify shared inputs and hashes
+        run: |
+          set -euo pipefail
+          test -s artifacts/spanish-v1/train.jsonl
+          test -s artifacts/spanish-v1/validation.jsonl
+          test -s artifacts/spanish-v1/holdout_multiple_choice.jsonl
+          test -s data/spanish/tokenizer/tokenizer.json
+          test -s data/spanish/train_tokens_128.pt
+          test -s config/lumen_cpu_profile.json
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          from tokenizers import Tokenizer
+          m=json.loads(Path("artifacts/spanish-v1/manifest.json").read_text())
+          t=Tokenizer.from_file("data/spanish/tokenizer/tokenizer.json")
+          assert t.get_vocab_size()==4096
+          assert t.token_to_id("[PAD]")==0
+          assert t.token_to_id("[EOS]") is not None
+          print("manifest:", json.dumps(m, sort_keys=True))
+          for p in ["artifacts/spanish-v1/train.jsonl","data/spanish/tokenizer/tokenizer.json","data/spanish/train_tokens_128.pt"]:
+              h=hashlib.sha256(Path(p).read_bytes()).hexdigest()
+              print(p, h)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paired-check0-shared-inputs-${ github.run_id }}
+          path: |
+            artifacts/spanish-v1/
+            data/spanish/
+            config/lumen_cpu_profile.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  paired-hypothesis:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        hypothesis:
+          - H01
+          - H02
+          - H03
+          - H04
+          - H05
+          - H06
+          - H07
+          - H08
+          - H09
+          - H10
+          - H11
+          - H12
+          - H13
+          - H14
+          - H15
+          - H16
+          - H17
+          - H18
+          - H19
+          - H20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - uses: actions/download-artifact@v4
+        with:
+          name: paired-check0-shared-inputs-${ github.run_id }}
+          path: .
+      - name: Run paired main + ${ matrix.hypothesis }} on this runner (fresh check 0, 1000 steps each)
+        run: |
+          set -euo pipefail
+          python scripts/run_paired_hypothesis.py \
+            --hypothesis "${ matrix.hypothesis }}" \
+            --steps 1000 --batch 8 --max-len 128 --seed 42 \
+            --lr 3e-5 --warmup 100 \
+            --output "paired-result-${ matrix.hypothesis }}.json"
+      - name: Upload paired result and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: paired-${ matrix.hypothesis }}-${ github.run_id }}
+          path: |
+            paired-result-${ matrix.hypothesis }}.json
+            paired-results/${ matrix.hypothesis }}/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+
+  transformer-reference:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - uses: actions/download-artifact@v4
+        with:
+          name: paired-check0-shared-inputs-${ github.run_id }}
+          path: .
+      - name: Train Transformer from fresh check 0 — speed reference only
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/transformer logs
+          START=$(date +%s)
+          python -m train.transformer_baseline --steps 1000 \
+            --data artifacts/spanish-v1/train.jsonl \
+            --tokenizer data/spanish/tokenizer/tokenizer.json \
+            --token-cache data/spanish/train_tokens_128.pt \
+            --batch 8 --max-len 128 --seed 42 --threads 4 \
+            --lr 7.5e-5 --warmup 100 --total-steps 1000 \
+            --parameter-check-every 100 \
+            --ckpt-dir checkpoints/transformer 2>&1 | tee logs/transformer.log
+          END=$(date +%s)
+          python - <<PY
+          import json
+          from pathlib import Path
+          Path("transformer-reference.json").write_text(json.dumps({
+              "steps": 1000, "wall_seconds": $((END-START)),
+              "steps_per_second": round(1000/max(1,$((END-START))),5),
+              "role": "speed reference only; not a quality comparator"
+          }, indent=2)+"\n")
+          PY
+      - name: Upload Transformer reference
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: paired-transformer-${ github.run_id }}
+          path: |
+            transformer-reference.json
+            checkpoints/transformer/
+            logs/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 0
+
+  summary:
+    needs: [paired-hypothesis, transformer-reference]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all paired results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: paired-* -${ github.run_id }}
+          path: collected
+          merge-multiple: true
+      - name: Publish comparison table
+        env:
+          MATRIX_RESULT: ${ needs.paired-hypothesis.result }}
+          TRANSFORMER_RESULT: ${ needs.transformer-reference.result }}
+        run: |
+          python - <<'PY'
+          import glob, json, os
+          files=sorted(glob.glob("collected/paired-result-H*.json"))
+          print("## Check 0 — paired LUMEN matrix")
+          print("| Hypothesis | Main s/s | Candidate s/s | Speedup | Main loss | Candidate loss |")
+          print("|---|---:|---:|---:|---:|---:|")
+          for f in files:
+              d=json.load(open(f))
+              c=d["control"]; h=d["candidate"]
+              print(f'| {d["hypothesis"]} — {d["label"]} | {c["steps_per_second"]} | {h["steps_per_second"]} | {d["candidate_speedup_vs_main"]}× | {c["last_logged_loss"]} | {h["last_logged_loss"]} |')
+          t="collected/transformer-reference.json"
+          if os.path.exists(t):
+              d=json.load(open(t))
+              print(f'\nTransformer speed reference: {d["steps_per_second"]} steps/s ({d["wall_seconds"]} s for {d["steps"]} steps).')
+          print(f'\nCompleted paired jobs: {len(files)}/20')
+          print(f'Matrix result: {os.environ["MATRIX_RESULT"]}; Transformer: {os.environ["TRANSFORMER_RESULT"]}')
+          PY

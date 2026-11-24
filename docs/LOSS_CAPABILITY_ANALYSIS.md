@@ -92,6 +92,37 @@ No mezclar el holdout de 2.431 preguntas con probes de generación libre ni con 
 - Verificar si máscaras, proyecciones y normalizaciones se pueden compartir entre órganos/capas.
 - Separar tiempo de preparación de corpus/tokenización del tiempo real de entrenamiento.
 
+
+## Primer mapa de coste (medido + hipótesis de código)
+
+En logs de entrenamiento LUMEN, una ventana de 100 pasos en el entorno CPU registró:
+- forward: 4,467 s (18,8 %);
+- backward: 15,792 s (66,5 %);
+- overhead Python/otros: 3,483 s (14,7 %);
+- total: 23,742 s.
+
+El backward sigue siendo el bloque dominante. No obstante, casi 3,5 segundos por cada 100 pasos fuera de forward/backward justifican una auditoría seria de Python, logging, conversiones escalares y escrituras de estado.
+
+Candidatos para perfilar en aislamiento, todavía no optimizaciones aprobadas:
+
+1. **Memoria elástica:** escritura por bucle sobre muestras del batch; `registrar_nueva` usa `nonzero`, `.item()` y escrituras escalares. La actualización de decaimiento también consulta `tokens_since_decay.item()` en el camino de entrenamiento. Vectorizar y agrupar escrituras puede reducir overhead, pero debe preservar política de reemplazo y estado.
+2. **Chunking adaptativo:** cada uno de los cuatro Delta órganos obtiene un tamaño mediante `surprise.mean().item()` y luego ejecuta pooling, interpolación, similitud y normalización. Es una ruta con coste real y una extracción escalar por órgano. Medir su contribución frente a una ruta identidad y perfiles de chunking fijo.
+3. **Contadores sin consumidor frecuente:** `VivoEmbedding.forward` hace `bincount` en cada batch, aunque las propuestas de poda se consultan cada 1.000 pasos y no se aplican al tokenizer. `Homeostasis.m` también se actualiza cada batch pese a estar descrito como diagnóstico, mientras el control efectivo usa `effective_m`. Confirmar todos los consumidores y tests antes de reducir frecuencia o retirar trabajo.
+4. **Sincronizaciones y diagnósticos:** Delta materializa normas con `.item()` aun cuando la colección de diagnósticos puede estar desactivada; la comprobación de modulación usa una rama Python basada en un escalar tensorial; `SignalContext.from_surprise` ejecuta una comprobación de finitud completa por forward. En CPU son conversiones/operaciones Python; en aceleradores podrían forzar sincronización host-device.
+5. **Delta recurrente:** cada órgano calcula Gram de claves y consulta-clave con matrices B×T×T, y actualiza pesos recurrentes en cada refinamiento porque el decaimiento sí cambia entre refinamientos. No se debe declarar redundante ese bucle sin demostrar equivalencia; sí medir el coste por refinamiento (perfil actual de entrenamiento: dos).
+6. **Loss:** cross-entropy y la pérdida de repetición calculan normalizaciones logarítmicas sobre logits. Existe un test de equivalencia de la pérdida de repetición, pero falta un benchmark que demuestre que compartir normalización con token CE mejora CPU sin aumentar memoria ni ralentizar kernels.
+7. **Cabezas:** KAN y MLP se calculan siempre antes de mezclarse con el router. Aunque el router favorezca una rama, saltarse la otra cambia gradientes y puede cambiar comportamiento; medir primero utilización del router y coste por rama.
+
+### Interpretación del gate actual
+
+El gate `--surprise-gate-loss 1.8` decide con la loss total de un minibatch aislado. En los logs hay minibatches con loss 1,13 mientras la ventana de 100 pasos está cerca de 2,9. Así que el gate puede confundir un batch fácil con estabilidad del aprendizaje. Antes de reactivarlo en un bloque largo, comparar:
+- gate por loss total instantánea;
+- gate por media móvil de loss total;
+- gate por token loss media;
+- umbral con histéresis y mínimo de actualizaciones completas.
+
+La comparación debe registrar cuántos backward/updates se evitan, qué categorías pierden capacidad y qué ocurre en holdout. No cambiar el comportamiento hasta medirlo.
+
 ## Criterio de aceptación
 
 Ninguna optimización se activa en main por una mejora de throughput aislada. Debe:

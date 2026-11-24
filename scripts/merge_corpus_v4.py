@@ -140,7 +140,11 @@ def main():
             reject(row, "empty_completion")
             return
 
-        hits = find_attractors(prompt + "\n" + completion, patterns)
+        metadata_probe = " ".join(
+            str(row.get(key) or "")
+            for key in ("title", "creator", "source_document_id", "source_url", "persona_theme")
+        )
+        hits = find_attractors(prompt + "\n" + completion + "\n" + metadata_probe, patterns)
         if hits:
             reject(row, "lumen_attractor_denylist", hits)
             return

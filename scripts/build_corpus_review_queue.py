@@ -79,7 +79,7 @@ def main():
             try: row=json.loads(line)
             except Exception: continue
             if not isinstance(row,dict): continue
-            chunks=extract_chunks(row, fields, a.messages_field)
+            chunks=extract_chunks(row, fields, a.messages_field, a.tokens_field)
             if not chunks: stats["empty_text"]+=1; continue
             stats["rows_with_text"]+=1
             content="\n".join(value for _,value in chunks)
@@ -112,7 +112,7 @@ def main():
                             record["tag_alignment"] = "aligned" if len(tokens) == len(tags) else "length_mismatch"
                             record["tag_label_counts"] = {str(tag): tags.count(tag) for tag in sorted(set(tags), key=str)}
                             if len(tokens) != len(tags):
-                                record["privacy_flags"].append("annotation_length_mismatch")}
+                                record["privacy_flags"].append("annotation_length_mismatch")
             dst.write(json.dumps(record,ensure_ascii=False,sort_keys=True)+"\n")
     print(json.dumps({"stats":stats,"output":str(out),"raw_text_exported":False},sort_keys=True))
 

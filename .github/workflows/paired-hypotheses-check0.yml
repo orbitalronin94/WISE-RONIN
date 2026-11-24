@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: ronin-paired-hypotheses-check0
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   SOURCE_RUN_ID: "45391619940"

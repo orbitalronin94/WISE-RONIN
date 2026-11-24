@@ -37,7 +37,7 @@ jobs:
           path: inputs/v31
           repository: orbitalronin94/WISE-RONIN
           run-id: 45155150980
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify candidate inputs
         run: |
           set -euo pipefail
@@ -66,7 +66,7 @@ jobs:
       - name: Upload audit report
         uses: actions/upload-artifact@v6
         with:
-          name: v31-candidate-attractor-audit-\${{ github.run_id }}
+          name: v31-candidate-attractor-audit-${{ github.run_id }}
           path: audit-output/v31-candidate-attractor-audit.json
           if-no-files-found: error
           retention-days: 90

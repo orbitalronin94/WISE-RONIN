@@ -36,21 +36,21 @@ jobs:
       - name: Download frozen v3.2.005 inputs
         uses: actions/download-artifact@v7
         with:
-          name: paired-v32-inputs-500000-${ github.run_id }}
+          name: paired-v32-inputs-500000-${{ github.run_id }}
           path: inputs
       - name: Download preceding checkpoint block
         uses: actions/download-artifact@v7
         with:
-          name: ${ inputs.parent_artifact }}
+          name: ${{ inputs.parent_artifact }}
           path: previous
       - name: Verify parent and run recoverable block
         shell: bash
         env:
-          MODEL: ${ inputs.model }}
-          PARENT_STEP: ${ inputs.parent_step }}
-          TARGET_STEP: ${ inputs.target_step }}
-          STEPS: ${ inputs.steps }}
-          RESTART_TRANSITION: ${ inputs.restart_scheduler_transition }}
+          MODEL: ${{ inputs.model }}
+          PARENT_STEP: ${{ inputs.parent_step }}
+          TARGET_STEP: ${{ inputs.target_step }}
+          STEPS: ${{ inputs.steps }}
+          RESTART_TRANSITION: ${{ inputs.restart_scheduler_transition }}
         run: |
           set -euo pipefail
           test "$((PARENT_STEP + STEPS))" -eq "$TARGET_STEP"
@@ -133,10 +133,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ${ inputs.model }}-step-${ inputs.target_step }}-v32-750k-${ github.run_id }}
+          name: ${{ inputs.model }}-step-${{ inputs.target_step }}-v32-750k-${{ github.run_id }}
           path: |
-            checkpoint/step_${ inputs.target_step }}.pt
-            ${ inputs.model }}-wall.json
+            checkpoint/step_${{ inputs.target_step }}.pt
+            ${{ inputs.model }}-wall.json
             logs/
           if-no-files-found: warn
           retention-days: 90

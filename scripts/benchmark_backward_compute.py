@@ -235,7 +235,12 @@ def main():
 
     loss_better = candidate_result["mean_loss"] < control_result["mean_loss"] and candidate_result["last_20_loss"] <= control_result["last_20_loss"]
     time_better = candidate_result["elapsed_seconds"] < control_result["elapsed_seconds"]
-    exercised = not (args.candidate == "08_sleep_replay20" and not candidate_result["replay"].get("executed", False))
+    if args.candidate == "08_sleep_replay20":
+        exercised = bool(candidate_result["replay"].get("executed", False))
+    elif args.candidate in {"01_surprise_gate", "06_lazy_backward"}:
+        exercised = candidate_result["skipped_backward_steps"] > 0
+    else:
+        exercised = True
     approved = bool(loss_better and time_better and exercised)
     report = {
         "candidate": args.candidate,

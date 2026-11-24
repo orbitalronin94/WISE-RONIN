@@ -1,4 +1,65 @@
 # Arquitectura actual de Lumen-Ronin
+
+> **Actualización:** 24 de noviembre de 2026 · arquitectura activa en la campaña 400.000→407.500 · run [45398272055](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45398272055).
+>
+> Esta actualización supersede las descripciones históricas de los bloques 61k→66k que aparecen más abajo. El documento conserva la evolución previa, pero el perfil y los datos actuales se describen aquí.
+
+## Estado de arquitectura y mecanismos en la campaña actual
+
+Identificador serializado: `ronin_lumen_v3_2_parallel_delta`. LUMEN no es un Transformer modificado: es una arquitectura recurrente con cuatro estados asociativos Delta de bajo rango y órganos de regulación internos. El control es un decoder Transformer de cuatro capas. Ambos se entrenan con el mismo corpus, tokenizer, seed, batch, contexto y pasos; difieren en arquitectura y en la ruta de entrenamiento.
+
+| Mecanismo | LUMEN 407.500 | Transformer control |
+|---|---|---|
+| Embedding 4.096 × 256 y pesos de salida atados | Sí | Embeddings atados; dimensión propia del baseline |
+| Cuatro estados Delta recurrentes, rango 64, escritura guiada por sorpresa | Sí | No; autoatención causal |
+| Cuatro órganos homeostáticos y Top-K | Sí | No |
+| Presupuesto energético entre Delta, memoria y salida | Sí | No |
+| Glucosa como reserva energética interna | Sí | No |
+| Dolor y placer como moduladores separados de energía | Sí | No |
+| Memoria elástica + banco lento de 128 slots | Sí | No |
+| Cabeza de salida con router KAN/MLP | Sí | MLP/feed-forward convencional |
+| JEPA + diversidad + router + repetición además de CE | Sí | Objetivo baseline de siguiente token |
+| Plasticidad personalizada: threshold_scale=0.85, eligibility_retention=0.98 | Sí, perfil activo | No |
+| Sueño/replay cada 50 pasos | Invocado en logs; efecto causal aún no aislado | No |
+| Lazy-backward + surprise-gate loss 1.8 | Sí | No |
+
+### Perfil actual de órganos y plasticidad
+
+- Dolor: `response=0.20`; `pain_budget_gain=0.15`.
+- Placer: `response=0.50`; `pleasure_budget_gain=0.15`.
+- Plasticidad: `mode=custom`, `threshold_scale=0.85`, `eligibility_retention=0.98`.
+- Sueño: `sleep_downscale=0.99`, intervalo de 50 pasos.
+- Fast paths Delta: dos refinamientos paralelos, reutilización de write/update, elegibilidad siempre aplicada, máscaras causales compartidas y diagnósticos de norma bajo demanda.
+- CPU: cuatro hilos intra-op, dos inter-op, MKLDNN desactivado, foreach desactivado y afinidad fijada.
+
+El perfil combina siete hipótesis seleccionadas por el usuario tras un cribado independiente de 1.000 pasos. Esa selección no valida automáticamente sus interacciones: el perfil compuesto es provisional y debe juzgarse en el holdout y en campañas repetidas.
+
+### Corpus y estado experimental actual
+
+- Corpus v3.2.005: 279.613 filas de entrenamiento.
+- Tokenizer: 4.096 IDs, hash `d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe`.
+- Holdout congelado: 2.431 preguntas.
+- Padres: checkpoints 400.000 de ambos modelos; optimizador y RNG preservados.
+- Destino: step 407.500.
+
+### Lectura de loss del train 400k→407,5k
+
+En los logs muestreados cada 100 pasos, LUMEN pasa de 4,20105 a 3,67957 (−12,41 % entre extremos) y Transformer de 4,07970 a 3,39814 (−16,71 %). Las curvas tienen oscilaciones relevantes; estos extremos no representan promedios de evaluación fija. La loss del sueño se registra en una escala/cálculo distinto de la loss ordinaria y no debe mezclarse con ella.
+
+El holdout step 407.500 se ejecuta después de ambos entrenamientos. No se debe inferir superioridad de generalización a partir de training loss.
+
+### Distinción de conceptos
+
+- **Implementado** significa que existe código.
+- **Configurado/activo** significa que el workflow pasa la opción y el trainer lo aplica.
+- **Ejecutado** requiere evidencia en el log/checkpoint.
+- **Eficaz** requiere una comparación controlada que aísle el mecanismo y una mejora reproducible.
+
+El sueño ya está ejecutándose en esta campaña (logs `sleep_called` y `sleep step` cada 50 pasos), pero eso no demuestra por sí solo que cause la reducción de la loss. La rutina informa una métrica propia; para medir el efecto causal se necesitará un brazo sin sueño desde el mismo checkpoint y evaluaciones fijas antes/después.
+
+---
+
+
 >
 > **Corte:** 22 de noviembre de 2026 · código en `main`, commit `8701fac4`.
 >

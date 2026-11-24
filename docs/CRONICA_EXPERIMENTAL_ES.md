@@ -1,8 +1,46 @@
 # Crónica experimental de Lumen-Ronin
+
+> Del primer encendido al tramo 400.000→407.500 y su evaluación pendiente.
 >
-> Del primer encendido al linaje evaluado en 155.700 pasos.
->
-> **Corte documental:** 23 de noviembre de 2026. El último checkpoint emparejado evaluado es 155.700, sobre el corpus español v2 + personalidad factual.
+> **Actualización documental:** 24 de noviembre de 2026. Esta cabecera y la sección de campaña más reciente superseden los cortes antiguos que aún aparecen en la cronología histórica. No se borran derrotas, runs fallidos ni resultados contradictorios.
+
+## La derrota que obligó a seguir construyendo
+
+El holdout del run [45379135782](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45379135782) fue una derrota de LUMEN frente al Transformer:
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| LUMEN | 801/2.431 | 32,95 % | 5,5620 |
+| Transformer | 821/2.431 | 33,77 % | Consultar el artefacto original; no reproducir una cifra no verificada |
+
+La lectura no es que la arquitectura quedara refutada ni que el resultado deba maquillarse. En ese holdout, el baseline acertó 20 preguntas más (0,82 puntos porcentuales). Fue una señal de que la ventaja observada en algunos checkpoints no era estable. El proyecto respondió con un ciclo de cribado, selección explícita de mecanismos y una nueva campaña emparejada. La derrota queda como antecedente y no se sustituye por una narrativa de victoria retrospectiva.
+
+## Campaña actual: 400.000→407.500 sobre corpus v3.2.005
+
+[Run de entrenamiento 45398272055](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45398272055).
+
+Ambos modelos reanudaron desde checkpoints 400.000 conservando estado del optimizador y RNG. El cambio de corpus fue explícito y autorizado: el SHA anterior quedó registrado en la transición y el nuevo corpus v3.2.005 se verificó con 279.613 filas. Se mantuvo el tokenizer de 4.096 IDs, seed 42, batch 8, contexto 128 y el holdout congelado de 2.431 preguntas.
+
+### Training loss observada
+
+Logs registrados cada 100 pasos; se muestran extremos, no una curva suavizada:
+
+| Modelo | Primer registro | Último registro | Variación entre extremos |
+|---|---:|---:|---:|
+| LUMEN | 4,20105 (400.001) | 3,67957 (407.500) | −12,41 % |
+| Transformer | 4,07970 (400.001) | 3,39814 (407.500) | −16,71 % |
+
+Ambas pérdidas de entrenamiento descienden entre extremos pese a la ampliación del corpus. No lo hacen de forma monótona: las ventanas muestran oscilaciones y hay registros intermedios por encima del inicio. Tampoco es correcto comparar directamente magnitudes de loss como si los objetivos fueran idénticos: LUMEN suma componentes JEPA, diversidad, router y repetición a la CE, mientras el baseline Transformer conserva su objetivo propio.
+
+En LUMEN, el log confirma sueño cada 50 pasos (`sleep_called` y `sleep step`), con memoria lenta poblada. La métrica `sleep step loss` tiene una escala distinta de la loss ordinaria; no se mezcla con la curva de training ni se presenta como prueba de causalidad. Para atribuir una mejora al sueño hace falta un control sin sueño desde el mismo checkpoint y una evaluación fija antes/después.
+
+### Estado del holdout
+
+Al redactar esta actualización, el job `final-holdout` del run 45398272055 está en curso. Por tanto, **no hay todavía un resultado de generalización para step 407.500**. Se añadirá aquí accuracy, NLL y análisis emparejado cuando finalice; no se anticipa el ganador.
+
+### Qué mecanismos se están poniendo a prueba
+
+El perfil activo combina H02, H03, H04, H05, H06, H09 y H18: respuesta de dolor, respuesta de placer, ganancias de presupuesto de ambos órganos, escala de umbral de plasticidad, retención de elegibilidad y downscaling de sueño. Fueron seleccionados en un cribado independiente de 1.000 pasos, no como una combinación ya demostrada. H18 no llegó a actuar en el check 0 por falta de registros lentos consolidados; en el checkpoint reanudado de 400k sí aparece ejecutándose en los logs. El resultado conjunto aún requiere holdout y ablaciones.
 
 ## Cómo leer esta cronología
 

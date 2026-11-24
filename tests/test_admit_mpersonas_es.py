@@ -44,5 +44,7 @@ class MPersonasBatchPolicyTests(unittest.TestCase):
         row["messages"][1]["content"] = "Adiós."
         self.assertEqual(module.normalize_row(row)[1], "conversation_too_short")
 
+    # Policy fixture: batch admission remains opt-in at the corpus builder.
+
 if __name__ == "__main__":
     unittest.main()

@@ -19,7 +19,7 @@ La coincidencia de palabras clave no certifica calidad semántica. Por eso **no 
 
 ### Resultado de la primera construcción conservadora validada
 
-La ejecución [45348291485](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45348291485) superó los pasos de construcción, copia del holdout y validación del token cache:
+La ejecución [45348639929](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45348639929) superó los pasos de construcción, copia del holdout y validación del token cache:
 
 - 196.992 filas base retenidas tras filtros; 53.008 en cuarentena.
 - 796 filas nuevas admitidas: 741 de LingComp_QA y 55 de lenguaje claro.

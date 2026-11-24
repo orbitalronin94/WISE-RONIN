@@ -173,7 +173,7 @@ def stream_parquet_source(source, seed: int):
         )
         shard = load_dataset(
             "parquet", data_files={"train": [url]}, split="train", streaming=True
-        ).shuffle(seed=seed + file_index, buffer_size=2_000)
+        ).shuffle(seed=seed + file_index, buffer_size=128)
         yield from shard
 
 def get_text(item):

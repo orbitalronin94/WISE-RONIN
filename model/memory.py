@@ -12,6 +12,8 @@ class MemoriaElastica(nn.Module):
         self.small_pe = float(small_pe)
         self.large_pe = float(large_pe)
         self.one_shot_enabled = False
+        self.vectorized_memory_writes = False
+        self.batched_decay_accounting = False
         self.one_shot_gate = OneShotGate(base=0.05, maximum=0.20, gain=1.0)
         self.mlp = nn.Sequential(
             nn.Linear(dim, hidden), nn.GELU(), nn.Linear(hidden, dim)
@@ -66,10 +68,36 @@ class MemoriaElastica(nn.Module):
         # must retrieve from the frozen learned bank without cross-prompt mutation.
         if self.training:
             with torch.no_grad():
-                for batch_index in range(x.shape[0]):
-                    selected = x[batch_index][large[batch_index]]
-                    if selected.numel():
-                        self.registrar_nueva(selected)
+                if self.vectorized_memory_writes:
+                    # Exact fast path when all valid batch writes fit empty slots.
+                    # Saturated-bank replacement retains the original sequential path.
+                    write_mask = large.to(x.dtype).unsqueeze(-1)
+                    counts = write_mask.sum(dim=1)
+                    vectors = (x.detach() * write_mask).sum(dim=1) / counts.clamp_min(1.0)
+                    norms = torch.linalg.vector_norm(vectors.to(torch.float64), dim=-1)
+                    valid_writes = large.any(dim=1) & torch.isfinite(vectors).all(dim=-1) & (norms > 1e-8)
+                    vectors = vectors[valid_writes]
+                    if vectors.shape[0]:
+                        vectors = vectors * (10.0 / norms[valid_writes].to(vectors.dtype)).clamp(max=1.0).unsqueeze(-1)
+                    empty = torch.nonzero(self.contador_lenta == 0, as_tuple=False).flatten()
+                    if vectors.shape[0] <= empty.numel():
+                        slots = empty[:vectors.shape[0]]
+                        self.lenta.index_copy_(0, slots, vectors)
+                        self.contador_lenta.index_fill_(0, slots, 1.0)
+                        self.uso_slot.index_add_(0, slots, torch.ones_like(slots, dtype=self.uso_slot.dtype))
+                        self.usage_ema.index_add_(0, slots, torch.ones_like(slots, dtype=self.usage_ema.dtype))
+                        if slots.numel():
+                            self.write_pointer.fill_((int(slots[-1].item()) + 1) % self.lenta.shape[0])
+                    else:
+                        for batch_index in range(x.shape[0]):
+                            selected = x[batch_index][large[batch_index]]
+                            if selected.numel():
+                                self.registrar_nueva(selected)
+                else:
+                    for batch_index in range(x.shape[0]):
+                        selected = x[batch_index][large[batch_index]]
+                        if selected.numel():
+                            self.registrar_nueva(selected)
 
         valid = self.contador_lenta > 0
         if not valid.any():
@@ -88,10 +116,18 @@ class MemoriaElastica(nn.Module):
                     usage[valid_indices] = weights.detach().mean((0, 1))
                     self.usage_ema.mul_(0.99).add_(usage, alpha=0.01)
                     self.tokens_since_decay.add_(x.shape[1])
-                    while self.tokens_since_decay.item() >= 512:
-                        unused = (self.contador_lenta > 0) & (self.usage_ema < 0.001)
-                        self.lenta[unused] = self.lenta[unused] * 0.99
-                        self.tokens_since_decay.sub_(512)
+                    if self.batched_decay_accounting:
+                        total_tokens = int(self.tokens_since_decay.item())
+                        decay_windows, remainder = divmod(total_tokens, 512)
+                        if decay_windows:
+                            unused = (self.contador_lenta > 0) & (self.usage_ema < 0.001)
+                            self.lenta[unused] = self.lenta[unused] * (0.99 ** decay_windows)
+                            self.tokens_since_decay.fill_(remainder)
+                    else:
+                        while self.tokens_since_decay.item() >= 512:
+                            unused = (self.contador_lenta > 0) & (self.usage_ema < 0.001)
+                            self.lenta[unused] = self.lenta[unused] * 0.99
+                            self.tokens_since_decay.sub_(512)
         return (0.7 * elastic + 0.3 * slow) * e_mem
 
     @torch.no_grad()

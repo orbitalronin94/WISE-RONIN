@@ -1,0 +1,178 @@
+name: Reusable — paired v3.2.005 training block
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        required: true
+        type: string
+      parent_step:
+        required: true
+        type: number
+      target_step:
+        required: true
+        type: number
+      steps:
+        required: true
+        type: number
+      parent_artifact:
+        required: true
+        type: string
+      restart_scheduler_transition:
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  train:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 720
+    env:
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      OMP_DYNAMIC: "FALSE"
+      MKL_DYNAMIC: "FALSE"
+      OMP_WAIT_POLICY: "PASSIVE"
+      PYTHONUNBUFFERED: "1"
+      TARGET_LR: "7.5e-5"
+      TOTAL_STEPS: "450000"
+      TRANSITION_START: "407500"
+      TRANSITION_END: "450000"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU training runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download frozen v3.2.005 inputs
+        uses: actions/download-artifact@v7
+        with:
+          name: paired-v32-inputs-${{ github.run_id }}
+          path: inputs
+      - name: Download exact preceding checkpoint block
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ inputs.parent_artifact }}
+          path: previous
+      - name: Verify parent and run one recoverable block
+        shell: bash
+        env:
+          MODEL: ${{ inputs.model }}
+          PARENT_STEP: ${{ inputs.parent_step }}
+          TARGET_STEP: ${{ inputs.target_step }}
+          STEPS: ${{ inputs.steps }}
+          RESTART_TRANSITION: ${{ inputs.restart_scheduler_transition }}
+        run: |
+          set -euo pipefail
+          test "$((PARENT_STEP + STEPS))" -eq "$TARGET_STEP"
+          test "$STEPS" -ge 1
+          test "$STEPS" -le 10000
+          CKPT="previous/checkpoint/step_${PARENT_STEP}.pt"
+          test -s "$CKPT"
+          test -s inputs/data/spanish-v3-2.005-train.jsonl
+          test -s inputs/data/spanish-v3-2.005-token-cache.pt
+          test -s inputs/artifacts/tokenizer.json
+          test -s inputs/config/lumen-runtime-profile.json
+          mkdir -p checkpoint logs
+          if [ -s "previous/${MODEL}-wall.json" ]; then
+            cp "previous/${MODEL}-wall.json" "${MODEL}-wall.json"
+          fi
+          python - "$CKPT" "$PARENT_STEP" "$MODEL" "$TARGET_LR" <<'PY'
+          import sys, torch
+          path, expected_step, model, lr = sys.argv[1], int(sys.argv[2]), sys.argv[3], float(sys.argv[4])
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          arch="ronin_lumen_v3_3_neuroplasticity" if model=="lumen" else "decoder_transformer_4l_d192_h4_ff576_tied_v1"
+          assert int(s["step"]) == expected_step, (s.get("step"), expected_step)
+          assert s["architecture_id"] == arch
+          assert s.get("optimizer") and s.get("rng") and s.get("scheduler_transition")
+          assert abs(float((s.get("training_config") or {}).get("lr", -1))-lr) < 1e-12
+          transition=s["scheduler_transition"]
+          assert int(transition["start_step"]) == 407500
+          assert int(transition["end_step"]) == 450000
+          assert int(transition["current_step"]) in (expected_step, expected_step+1)
+          if model=="lumen":
+            profile=s.get("runtime_profile",{})
+            assert profile.get("profile_id") == "check0_selected_H02_H03_H04_H05_H06_H09_H18"
+            assert s.get("compute_policy",{}).get("lazy_backward") is True
+          print(f"Verified {model} parent={expected_step}; lr={lr}; transition={transition}")
+          PY
+          RESTART=()
+          if [ "$RESTART_TRANSITION" = "true" ]; then
+            RESTART=(--restart-scheduler-transition)
+          fi
+          if [ "$MODEL" = "lumen" ]; then
+            OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.train \
+              --steps "$STEPS" --resume "$CKPT" \
+              --phase 1 --pilot-all-rows \
+              --data inputs/data/spanish-v3-2.005-train.jsonl \
+              --tokenizer inputs/artifacts/tokenizer.json \
+              --token-cache inputs/data/spanish-v3-2.005-token-cache.pt \
+              --batch 8 --max-len 128 --seed 42 \
+              --runtime-profile inputs/config/lumen-runtime-profile.json \
+              --lr "$TARGET_LR" --warmup 100 --total-steps "$TOTAL_STEPS" \
+              --scheduler-transition "${RESTART[@]}" \
+              --transition-start "$TRANSITION_START" --transition-end "$TRANSITION_END" \
+              --warmup-transition 100 --transition-plateau-steps 0 \
+              --transition-min-lr-ratio 0.5 \
+              --log-every 100 --checkpoint-every 1000 \
+              --recovery-checkpoint-every 100 --parameter-check-every 100 \
+              --threads 4 --interop-threads 2 \
+              --lazy-backward --surprise-gate-loss 1.8 \
+              --ckpt-dir checkpoints/lumen --wall-clock-file lumen-wall.json \
+              2>&1 | tee "logs/lumen-${PARENT_STEP}-${TARGET_STEP}.log"
+            FINAL="checkpoints/lumen/step_${TARGET_STEP}.pt"
+          elif [ "$MODEL" = "transformer" ]; then
+            OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.transformer_baseline \
+              --steps "$STEPS" --resume "$CKPT" \
+              --data inputs/data/spanish-v3-2.005-train.jsonl \
+              --tokenizer inputs/artifacts/tokenizer.json \
+              --token-cache inputs/data/spanish-v3-2.005-token-cache.pt \
+              --batch 8 --max-len 128 --seed 42 --threads 4 \
+              --lr "$TARGET_LR" --warmup 100 --total-steps "$TOTAL_STEPS" \
+              --scheduler-transition "${RESTART[@]}" \
+              --transition-start "$TRANSITION_START" --transition-end "$TRANSITION_END" \
+              --warmup-transition 100 --transition-plateau-steps 0 \
+              --transition-min-lr-ratio 0.5 \
+              --parameter-check-every 100 \
+              --ckpt-dir checkpoints/transformer --wall-clock-file transformer-wall.json \
+              2>&1 | tee "logs/transformer-${PARENT_STEP}-${TARGET_STEP}.log"
+            FINAL="checkpoints/transformer/step_${TARGET_STEP}.pt"
+          else
+            echo "Unsupported model: $MODEL" >&2
+            exit 2
+          fi
+          test -s "$FINAL"
+          python - "$FINAL" "$TARGET_STEP" "$MODEL" "$TARGET_LR" <<'PY'
+          import sys, torch
+          path, expected_step, model, lr = sys.argv[1], int(sys.argv[2]), sys.argv[3], float(sys.argv[4])
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          arch="ronin_lumen_v3_3_neuroplasticity" if model=="lumen" else "decoder_transformer_4l_d192_h4_ff576_tied_v1"
+          assert int(s["step"]) == expected_step
+          assert s["architecture_id"] == arch
+          assert s.get("optimizer") and s.get("rng") and s.get("scheduler_transition")
+          assert abs(float(s["training_config"]["lr"])-lr) < 1e-12
+          assert int(s["scheduler_transition"]["end_step"]) == 450000
+          assert int(s["scheduler_transition"]["current_step"]) in (expected_step,expected_step+1)
+          print(f"Verified output {model} step={expected_step}, lr={lr}")
+          PY
+          cp "$FINAL" "checkpoint/step_${TARGET_STEP}.pt"
+      - name: Publish independently recoverable block artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.model }}-step-${{ inputs.target_step }}-v32-${{ github.run_id }}
+          path: |
+            checkpoint/step_${{ inputs.target_step }}.pt
+            ${{ inputs.model }}-wall.json
+            logs/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 1

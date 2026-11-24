@@ -146,7 +146,9 @@
       ],
       "candidate_license": "Apache-2.0",
       "admission": "candidate_for_turn_level_expansion",
-      "notes": "Spanish split only; source_text seed field excluded. Preserve synthetic status and parent persona ID. The dataset card notes synthetic personas and potential gender/occupation bias."
+      "notes": "Spanish split only; source_text seed field excluded. Preserve synthetic status and parent persona ID. The dataset card notes synthetic personas and potential gender/occupation bias.",
+      "target_rows": 100000,
+      "share": 0.625
     },
     {
       "dataset": "OysterCoreAI/SFT-General-Spanish-50K",
@@ -162,7 +164,9 @@
       ],
       "candidate_license": "CC-BY-4.0",
       "admission": "candidate_for_dialogue_style_expansion",
-      "notes": "Train split only (48.4k rows). Original synthetic editorial conversations; retain source attribution and task-family metadata. Validation/test splits excluded."
+      "notes": "Train split only (48.4k rows). Original synthetic editorial conversations; retain source attribution and task-family metadata. Validation/test splits excluded.",
+      "target_rows": 60000,
+      "share": 0.375
     },
     {
       "dataset": "PlanTL-GOB-ES/SQAC",

@@ -1,78 +1,75 @@
-# Corpus español v3.1 — auditoría y admisión
+# Corpus español v3.1 — admisión conservadora
 
-**Estado: candidato en construcción. No autorizado para entrenamiento.**
+**Estado: candidato depurado; todavía no autorizado para entrenamiento.**
 
-La v3.1 se prepara en una rama aislada para el siguiente ciclo posterior a 400k. No modifica el corpus v2 ni los artefactos usados por la campaña emparejada en curso. LUMEN y Transformer recibirán exactamente el mismo fichero, tokenizer y token cache cuando el gate de admisión se cierre.
+La v3.1 se construye en una rama aislada para el ciclo posterior a 400k. No modifica los datos de la campaña emparejada en curso. LUMEN y Transformer deberán recibir exactamente el mismo JSONL, tokenizer, cache y evaluación protegida.
 
-## 1. Auditoría del conjunto de personalidad ya usado
+## 1. Auditoría del corpus original
 
-El punto de partida es el artefacto congelado ronin-v2-plus-personality-250k-45149684913, cuyo JSONL de entrenamiento contiene 250.000 filas. La auditoría lee ese fichero original, no una reconstrucción aproximada.
+Se auditó directamente el artefacto congelado `ronin-v2-plus-personality-250k-45149684913`:
 
-El workflow genera:
+- 250.000 filas leídas.
+- 0 filas vacías.
+- 250.000 textos normalizados únicos; 0 duplicados exactos excedentes.
+- 50.121 filas localizadas por metadatos de personalidad/identidad/conducta: 50.000 del conjunto `verifiable_personality` y 121 de otras tareas.
+- 26 filas con patrón de email y 9.121 con secuencias numéricas parecidas a teléfonos. Son indicadores conservadores, no una confirmación de PII; puede haber falsos positivos.
+- La auditoría produjo muestra estratificada y extracción de revisión. Los metadatos de las exportaciones se redactan recursivamente.
 
-- recuentos por fuente, tarea y esquema de campos;
-- filas con metadatos que sugieren pertenencia a identidad/personality/conducta, como ayuda de localización, no como clasificación semántica;
-- duplicados exactos normalizados, textos vacíos y distribución de longitudes;
-- indicadores de posibles emails, teléfonos y DNI;
-- muestra determinista estratificada por fuente y una extracción de candidatos para revisión humana.
+La coincidencia de palabras clave no certifica calidad semántica. Por eso **no se incorporan automáticamente las 50.121 filas de personalidad/identidad**. Quedan fuera del entrenamiento v3.1 y en cuarentena lógica para revisión posterior. También se excluyen del candidato las filas con marcadores de posible dato personal. El artefacto original permanece intacto y recuperable.
 
-Los ficheros de revisión redactan patrones evidentes de email, URL, teléfono y DNI. La redacción es una salvaguarda auxiliar y no sustituye una auditoría de privacidad. Ningún ejemplo se elimina ni se reescribe automáticamente en el corpus original.
+## 2. Fuentes nuevas admitidas técnicamente
 
-**La revisión manual debe clasificar cada ejemplo de personalidad** en: conservar, corregir, retirar o mover a evaluación. Debe comprobar identidad del asistente, límites y capacidades, incertidumbre, corrección de errores, resistencia a premisas falsas, estabilidad entre turnos, diversidad de formulaciones y ausencia de biografía ficticia. Las respuestas factuales requieren verificación contra fuentes, no solo fluidez.
+Se admiten solo fuentes en castellano con licencia Apache-2.0 declarada y estructura generativa directa:
 
-## 2. Fuentes nuevas integradas en formato nativo
+| Fuente | Contenido | Admisión |
+|---|---|---|
+| [SomosNLP LingComp_QA](https://huggingface.co/datasets/somosnlp/LingComp_QA) | QA educativa de lingüística computacional | Admitida al candidato tras validación de campos, licencia, duplicados y longitud |
+| [SomosNLP lenguaje-claro-dataset](https://huggingface.co/datasets/somosnlp/lenguaje-claro-dataset) | Reformulación de textos administrativos en castellano claro | Admitida al candidato tras validación de idioma, licencia, duplicados y longitud |
 
-El builder incorpora dos conjuntos pequeños, en castellano y con licencia Apache-2.0 declarada en sus tarjetas. Ambos se convierten al esquema del proyecto (prompt, completion, task, language, source, source_id, license, source_revision).
+Las revisiones exactas de Hugging Face se fijan en el manifiesto. El constructor no confía en el número publicado: registra filas leídas, añadidas y descartadas por fuente en cada ejecución.
 
-| Fuente | Tamaño publicado | Contenido | Admisión inicial |
-|---|---:|---|---|
-| [SomosNLP LingComp_QA](https://huggingface.co/datasets/somosnlp/LingComp_QA) | 803 filas train | Preguntas y respuestas educativas de lingüística computacional | Incluido en candidato; deduplicación y muestreo humano pendientes |
-| [SomosNLP lenguaje-claro-dataset](https://huggingface.co/datasets/somosnlp/lenguaje-claro-dataset) | 4.090 filas train | Reformulación de textos administrativos en castellano claro; es-ES | Incluido en candidato; control factual y muestreo humano pendientes |
+Criterios adicionales:
+- prompt y completion deben ser cadenas reales, no valores nulos convertidos a texto;
+- se descartan campos vacíos, demasiado cortos, pregunta y respuesta idénticas, marcadores de posible dato personal y conflictos de respuestas para el mismo prompt;
+- no se truncan silenciosamente ejemplos que excedan el contexto 128: se excluyen;
+- se deduplica contra el corpus retenido y entre las fuentes;
+- se conserva `source_id`, licencia y SHA de revisión por fila.
 
-Las revisiones exactas de Hugging Face se resuelven al iniciar la construcción, se fijan durante la descarga y se guardan en el manifiesto. El builder comprueba que la licencia declarada siga siendo Apache-2.0, valida los campos, filtra idioma cuando existe etiqueta, elimina duplicados exactos respecto al corpus base y entre fuentes, y conserva la procedencia por fila.
+La admisión técnica no equivale a certificar que cada respuesta sea factual. Se adjunta una muestra por fuente para spot-check humano.
 
-**No se afirma que todas las respuestas sean verdad por el mero hecho de pertenecer a un dataset publicado.** La incorporación inicial es una admisión técnica al candidato; la admisión definitiva requiere spot-check de respuestas y auditoría de near-duplicates.
+## 3. Fuentes excluidas o reservadas
 
-## 3. Fuentes examinadas y no incorporadas
-
-| Fuente | Motivo |
+| Fuente | Decisión |
 |---|---|
-| [IIC AQuAS](https://huggingface.co/datasets/IIC/AQuAS) y [RagQuAS](https://huggingface.co/datasets/IIC/RagQuAS) | CC BY-NC-SA 4.0: restricción no comercial incompatible con la política de admisión permisiva del proyecto |
-| [Projecte Aina MentorES](https://huggingface.co/datasets/projecte-aina/MentorES) | La tarjeta muestra CC BY-SA 4.0; requiere resolver la condición ShareAlike antes de mezclarlo |
-| [BSC-LT IFEval_es](https://huggingface.co/datasets/BSC-LT/IFEval_es) | Conjunto de evaluación; su tarjeta indica expresamente que no debe utilizarse para entrenar |
-| [BSC-LT SIQA_es](https://huggingface.co/datasets/BSC-LT/SIQA_es) | Holdout protegido del proyecto; nunca se reintroduce en entrenamiento |
-| [BSC-LT openbookqa-es](https://huggingface.co/datasets/BSC-LT/openbookqa-es) | Holdout protegido del proyecto; nunca se reintroduce en entrenamiento |
-| [MS MARCO ES 500k](https://huggingface.co/datasets/dariolopez/ms-marco-es-500k) | Dataset de ranking query/positive/negative, no pares generativos prompt/completion; no convertir negativos en respuestas ni degradar la tarea para aparentar compatibilidad |
-| [ESQAD](https://zenodo.org/records/16351733) | CC BY 4.0 y prometedor: EVAU manual y un piloto de 923 pares valorados por docentes/estudiantes. Se reserva para una segunda admisión tras inspeccionar estructura, puntuaciones y separación entre evaluación y entrenamiento; no se ingiere el ZIP completo a ciegas |
-
-La licencia de una tarjeta es una señal de admisión, no una auditoría legal de todos los textos subyacentes. La procedencia y las condiciones de cada fuente se preservan.
+| IIC AQuAS / RagQuAS | Excluidas: CC BY-NC-SA 4.0, restricción no comercial |
+| Projecte Aina MentorES | Cuarentena: condición ShareAlike y discrepancia de licencia por resolver |
+| BSC-LT IFEval_es | Solo evaluación; no entrenar |
+| BSC-LT SIQA_es y openbookqa-es | Evaluación/holdout protegido; nunca reintroducir en entrenamiento |
+| MS MARCO ES 500k | Excluido: ranking query/positive/negative, no SFT generativo directo |
+| ESQAD | Reservado: aunque declara CC BY 4.0, requiere inspección del piloto docente/estudiantil y separación de evaluación antes de admitirlo |
 
 ## 4. Construcción y contrato técnico
 
-El workflow descarga el artefacto base de 250k, conserva todas sus filas y sus tokens ya calculados, añade únicamente las filas nuevas y tokeniza solo esas adiciones con el tokenizer BPE congelado de 4.096 IDs.
+El builder:
+1. valida el hash del JSONL base, tokenizer y token cache original;
+2. retiene las filas base que superan los filtros conservadores y sus token IDs originales;
+3. deja fuera las filas en cuarentena sin alterar el artefacto fuente;
+4. añade únicamente nuevas filas admitidas de las dos fuentes Apache-2.0;
+5. tokeniza solo las nuevas filas con el tokenizer BPE congelado de 4.096 IDs;
+6. genera un cache `ronin_token_cache_v1` ligado a SHA-256 del JSONL, tokenizer, longitud máxima y número de filas;
+7. copia el tokenizer y el holdout congelado, y verifica que el holdout copiado sea idéntico.
 
-Produce:
+El manifiesto registra el número exacto de filas retenidas, añadidas y puestas en cuarentena, motivos de exclusión, revisiones de origen y hashes.
 
-- spanish-v3-1-candidate.jsonl;
-- spanish-v3-1-token-cache.pt en formato ronin_token_cache_v1;
-- copia exacta del tokenizer;
-- copia byte por byte del holdout y, si está presente, de validation;
-- manifiesto con revisiones, licencias, recuentos, descartes y SHA-256;
-- muestra de las filas nuevas para revisión humana;
-- informe del dataset de personalidad original.
+## 5. Gate de autorización
 
-El cache se acepta únicamente si sus hashes, longitud máxima, número de filas y tokenizer coinciden con el manifiesto. El builder no reentrena tokenizer, no cambia el contexto 128 y no altera los splits protegidos.
+`training_authorized=false` se mantiene hasta:
+- revisar semánticamente el conjunto de personalidad en cuarentena, fila por fila o mediante una política de muestreo con criterios explícitos;
+- inspeccionar la muestra estratificada de las dos fuentes nuevas y verificar respuestas;
+- revisar los falsos positivos de marcadores numéricos antes de cualquier re-admisión;
+- comprobar near-duplicates y conflictos de respuesta;
+- verificar byte a byte tokenizer, validation y holdout;
+- validar hashes y correspondencia JSONL/cache;
+- aprobar un único artefacto compartido por LUMEN y Transformer.
 
-## 5. Gate para autorizar entrenamiento
-
-El manifiesto del artefacto mantiene training_authorized=false. Solo se cambiará tras completar y documentar:
-
-1. revisión humana del subconjunto original de personalidad, con decisiones por fila;
-2. muestreo factual de las fuentes añadidas, especialmente lenguaje claro y QA técnico;
-3. near-duplicate detection entre fuentes y corpus base;
-4. revisión de privacidad y marcadores sensibles;
-5. verificación byte a byte de validation y holdout;
-6. verificación de hashes de corpus, tokenizer y token cache;
-7. aprobación de un único artefacto compartido por LUMEN y Transformer.
-
-La v3.1 no se mezcla en la campaña que termina en 400k. El candidato queda aislado hasta superar todos los controles.
+No se lanza entrenamiento con esta rama ni se mezcla v3.1 en la campaña que termina en 400k. El artefacto es un candidato conservador y reproducible, no una afirmación de calidad humana completa.

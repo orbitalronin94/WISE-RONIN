@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stream-audit eligible Hugging Face train splits; never authorizes training."""
+"""Stream-audit pinned Hugging Face train splits using source-specific text fields; never authorizes training."""
 import argparse, hashlib, json, re, sqlite3, time
 from collections import Counter
 from pathlib import Path

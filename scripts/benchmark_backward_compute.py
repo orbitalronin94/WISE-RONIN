@@ -24,7 +24,7 @@ from train.dataset import load_jsonl, load_token_cache, pack_token_cache, collat
 from train.loss import perdida_total
 from train.sleep import sueno
 from train.scheduler_transition import CosineTransitionScheduler
-from train.plasticity import PlasticityProfile
+from model.plasticity import PlasticityProfile
 from train.train import apply_organ_profile, enable_fake_int8
 
 CANDIDATES = {

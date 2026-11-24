@@ -204,7 +204,7 @@ def main():
         if not completion.strip():
             reject(row, "empty_completion")
             return
-        if row.get("split") == "holdout" or source == "holdout_500.jsonl":
+        if row.get("split") == "holdout" or str(row.get("source") or "") == "holdout_500.jsonl":
             reject(row, "holdout_contamination")
             return
         if str(row.get("language") or "") != "es":

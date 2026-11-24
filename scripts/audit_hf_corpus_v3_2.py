@@ -145,11 +145,12 @@ def main():
  base_count=index_base(db,a.base_jsonl)
  report={"training_authorized":False,"base_rows_indexed":base_count,"base_file":a.base_jsonl,"note":"All eligible train splits are streamed unless capped. Automated scan is not semantic/legal approval.","sources":{},"samples":[]}
  for repo,route in ELIGIBLE.items():
-  ent={"route":route,"revision":revision,"declared_license":card.get("license"),"configs":{}}
+  ent={"route":route,"configs":{}}
   try:
    info=api.dataset_info(repo)
    revision=info.sha
    card=info.card_data.to_dict() if info.card_data else {}
+   ent.update({"revision":revision,"declared_license":card.get("license")})
    configs=get_dataset_config_names(repo,revision=revision) or ["default"]
    for config in configs:
     try:splits=get_dataset_split_names(repo,config_name=None if config=="default" else config,revision=revision)

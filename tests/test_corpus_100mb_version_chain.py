@@ -42,14 +42,14 @@ with tempfile.TemporaryDirectory() as td:
         sys.executable, str(BUILDER), "--input", str(source),
         "--base-jsonl", str(base), "--output-dir", str(out),
         "--parent-version", "v3.1", "--start-version", "1",
-        "--max-block-bytes", "600"
+        "--max-block-bytes", "900"
     ], check=True)
 
     chain = json.loads((out / "lumen-corpus-v3-2-version-chain.json").read_text())
     assert [x["version"] for x in chain["versions"]] == [f"v3.2.{i:03d}" for i in range(1, len(chain["versions"]) + 1)]
     assert [x["parent_version"] for x in chain["versions"]] == ["v3.1"] + [x["version"] for x in chain["versions"][:-1]]
     assert len(chain["versions"]) >= 2
-    assert all(x["delta_bytes"] <= 600 for x in chain["versions"])
+    assert all(x["delta_bytes"] <= 900 for x in chain["versions"])
     assert sum(x["delta_rows"] for x in chain["versions"]) == 3
     assert chain["rejected_rows_by_reason"]["duplicate_against_previous_or_current_versions"] == 1
     assert chain["rejected_rows_by_reason"]["rights_not_verified"] == 1

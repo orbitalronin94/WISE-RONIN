@@ -225,9 +225,12 @@ jobs:
           PY
 
       - name: Authorize v4 for training after independent verification
+        env:
+          OPENCULTURE_RUN_ID: ${{ steps.runs.outputs.openculture_run_id }}
+          PERSONALITY_RUN_ID: ${{ steps.runs.outputs.personality_run_id }}
         run: |
           python - <<'PY'
-          import json
+          import json, os
           from pathlib import Path
           path=Path("artifacts/corpus-v4-frozen/manifest.json")
           manifest=json.loads(path.read_text(encoding="utf-8"))
@@ -238,6 +241,10 @@ jobs:
           manifest["status"]="FROZEN_TRAINABLE"
           manifest["training_authorized"]=True
           manifest["authorization_basis"]="All source, tokenizer, shard, deduplication, denylist, language, token-budget and loader tests passed in this freeze workflow."
+          manifest["candidate_workflow_runs"]={
+              "openculture":int(os.environ["OPENCULTURE_RUN_ID"]),
+              "personality":int(os.environ["PERSONALITY_RUN_ID"]),
+          }
           path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
           print("Corpus v4.0.0 is authorized for training.")
           PY

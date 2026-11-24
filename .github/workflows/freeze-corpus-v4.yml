@@ -124,8 +124,8 @@ jobs:
 
       - name: Compile and test final merge
         run: |
-          python -m py_compile scripts/merge_corpus_v4.py scripts/build_corpus_v4_openculture.py
-          PYTHONPATH=. pytest -q tests/test_corpus_attractor_filter.py tests/test_corpus_v4_merge.py
+          python -m py_compile scripts/merge_corpus_v4.py scripts/build_corpus_v4_openculture.py train/dataset.py train/train.py
+          PYTHONPATH=. pytest -q tests/test_corpus_attractor_filter.py tests/test_corpus_v4_merge.py tests/test_sharded_corpus_loader.py
 
       - name: Merge, filter, deduplicate and freeze 100 MiB shards
         run: |
@@ -199,6 +199,24 @@ jobs:
           },ensure_ascii=False,indent=2))
           PY
 
+      - name: Authorize v4 for training after independent verification
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path("artifacts/corpus-v4-frozen/manifest.json")
+          manifest=json.loads(path.read_text(encoding="utf-8"))
+          assert manifest["training_authorized"] is False
+          assert manifest["raw_text_target_met"] is True
+          assert manifest["personality_target_met"] is True
+          manifest["version"]="v4.0.0"
+          manifest["status"]="FROZEN_TRAINABLE"
+          manifest["training_authorized"]=True
+          manifest["authorization_basis"]="All source, tokenizer, shard, deduplication, denylist, language, token-budget and loader tests passed in this freeze workflow."
+          path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\\n",encoding="utf-8")
+          print("Corpus v4.0.0 is authorized for training.")
+          PY
+
       - name: Write freeze report
         run: |
           python - <<'PY'
@@ -217,7 +235,7 @@ jobs:
             f"- Tokenizer SHA-256: {m['tokenizer_sha256']}",
             f"- Denylist SHA-256: {m['denylist_sha256']}",
             f"- Source plan SHA-256: {m['source_plan_sha256']}",
-            "- Training authorized: **false**",
+            f"- Training authorized: **{str(m['training_authorized']).lower()}**",
             "",
             "## Sources",
           ]

@@ -15,8 +15,23 @@ ALLOWED = {"Apache-2.0", "MIT", "CC-BY-4.0", "public-domain"}
 
 
 def canonical_text(row):
-    value = row.get("text")
-    return " ".join(value.split()) if isinstance(value, str) else ""
+    values = []
+    def walk(value, depth=0):
+        if depth > 5 or len(values) > 200:
+            return
+        if isinstance(value, str) and len(value.strip()) >= 20:
+            values.append(" ".join(value.split()))
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                if str(key).lower() not in {"id", "uuid", "url", "link", "license", "language", "lang", "split", "label", "labels"}:
+                    walk(item, depth + 1)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                walk(item, depth + 1)
+    if isinstance(row.get("text"), str):
+        return " ".join(row["text"].split())
+    walk(row)
+    return "\\n".join(dict.fromkeys(values))
 
 
 def digest_bytes(path):
@@ -32,6 +47,7 @@ def main():
     p.add_argument("--input", required=True, help="Human-reviewed normalized JSONL")
     p.add_argument("--output-dir", required=True)
     p.add_argument("--parent-version", default="v3.1")
+    p.add_argument("--base-jsonl", required=True, help="Frozen v3.1 JSONL used to seed exact deduplication")
     p.add_argument("--start-version", type=int, default=1)
     p.add_argument("--max-block-bytes", type=int, default=LIMIT)
     p.add_argument("--dedup-db", default=None, help="Persistent SQLite DB shared across all versions")
@@ -46,7 +62,20 @@ def main():
     db_path = Path(a.dedup_db) if a.dedup_db else out / "v3-2-chain-dedup.sqlite"
     db = sqlite3.connect(db_path)
     db.execute("CREATE TABLE IF NOT EXISTS accepted (text_sha256 TEXT PRIMARY KEY, version TEXT, source TEXT)")
-    db.commit()
+    if db.execute("SELECT COUNT(*) FROM accepted").fetchone()[0] == 0:
+        with Path(a.base_jsonl).open(encoding="utf-8") as base:
+            for line in base:
+                if not line.strip():
+                    continue
+                try:
+                    base_row = json.loads(line)
+                except Exception:
+                    continue
+                base_text = canonical_text(base_row)
+                if base_text:
+                    base_hash = hashlib.sha256(base_text.encode("utf-8")).hexdigest()
+                    db.execute("INSERT OR IGNORE INTO accepted VALUES (?,?,?)", (base_hash, a.parent_version, "v3.1"))
+        db.commit()
 
     versions = []
     rejected = {}

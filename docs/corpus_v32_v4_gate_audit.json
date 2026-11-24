@@ -1,0 +1,62 @@
+{
+  "schema": "wise-ronin-corpus-v4-audit-v1",
+  "input": "spanish-v3-2.005-train.jsonl",
+  "input_sha256": "0f7db9d6c4264f68fd6a12a9fe5bfa708e4fc30c1df176de5a4f53081bfe79aa",
+  "rows": 279613,
+  "uncompressed_jsonl_bytes": 444769335,
+  "language_rows": {
+    "es": 279613
+  },
+  "approx_characters": 194284508,
+  "average_characters_per_row": 694.83,
+  "median_characters_per_row": 232,
+  "personality_rows": 72734,
+  "personality_share": 0.260124,
+  "personality_sources": {
+    "Kukedlc/Personas_Spanish-40k": 35997,
+    "BSC-LT/m-personas": 35487,
+    "StrataSynth/stratasynth-personas-spain": 1250
+  },
+  "raw_text_pretraining_rows": 178090,
+  "attractor_gate": {
+    "schema": "lumen-attractor-blocklist-v1",
+    "terms": [
+      "contexto documental",
+      "democracia",
+      "música",
+      "deformación",
+      "latinoamericana",
+      "estados miembros",
+      "unión europea"
+    ],
+    "rows_with_any_term": 16070,
+    "share": 0.057472,
+    "rows_without_terms": 263543,
+    "rows_without_terms_personality_rows": 67875,
+    "personality_share_after_simulated_gate": 0.257548,
+    "matched_rows_by_term": {
+      "contexto documental": 9092,
+      "música": 4530,
+      "unión europea": 2269,
+      "estados miembros": 1979,
+      "latinoamericana": 851,
+      "democracia": 541,
+      "deformación": 408
+    }
+  },
+  "growth_targets": {
+    "base_rows": 279613,
+    "minimum_10x_rows": 2796130,
+    "minimum_10x_additional_rows": 2516517,
+    "preferred_personality_share": 0.25,
+    "minimum_10x_additional_personality_rows": 626299,
+    "aspirational_100x_rows": 27961300,
+    "aspirational_100x_additional_rows": 27681687,
+    "aspirational_100x_additional_personality_rows": 6917591
+  },
+  "training_authorized": false,
+  "notes": [
+    "Historical rows are not deleted; the attractor gate is for new admissions.",
+    "The separate v3.1 candidate artifact of approximately 3.15 GB is not reconciled to this v3.2 lineage and must not be merged blindly."
+  ]
+}

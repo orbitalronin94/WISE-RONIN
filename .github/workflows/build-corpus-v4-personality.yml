@@ -1,5 +1,5 @@
 name: Build corpus v4 personality and dialogue — 160K rows
-# Rebalanced source quotas: 100K m-personas + 60K SFT-General Spanish.
+# Use quota_share allocation: 100K m-personas + 60K SFT-General Spanish.
 
 on:
   push:

@@ -1,0 +1,123 @@
+name: Informal free-form holdout v2 — 100 preguntas abiertas, step 417500
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/informal-holdout-freeform-step417500-v2.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-informal-freeform-100-step417500-v2
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      SOURCE_RUN_ID: "45405758303"
+      PYTHONUNBUFFERED: "1"
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU inference runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download frozen tokenizer and paired step-417500 checkpoints
+        uses: actions/download-artifact@v7
+        with:
+          name: paired-v32-inputs-45405758303
+          path: inputs
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact LUMEN step-417500 checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-step-417500-v32-45405758303
+          path: lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact Transformer step-417500 checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: transformer-step-417500-v32-45405758303
+          path: transformer
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify downloaded inputs and the 100 open questions
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "Workspace: $PWD"
+          find inputs lumen transformer -maxdepth 5 -type f -printf '%p %s bytes\n' | sort
+          for file in inputs/artifacts/tokenizer.json lumen/checkpoint/step_417500.pt transformer/checkpoint/step_417500.pt data/freeform_identity_general_100.jsonl; do
+            if [ ! -s "$file" ]; then echo "MISSING OR EMPTY: $file" >&2; exit 1; fi
+            echo "OK: $file"
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          rows=[json.loads(x) for x in Path("data/freeform_identity_general_100.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(rows)==100, f"Expected 100 prompts, got {len(rows)}"
+          assert len({r.get("id") for r in rows})==100
+          assert all(isinstance(r.get("prompt"),str) and r["prompt"].strip() for r in rows)
+          assert all("choices" not in r and "answer" not in r for r in rows)
+          assert rows[0]["prompt"]=="¿Quién eres?"
+          print("Validated 100 unique free-form questions; no choices or gold answers.", flush=True)
+          PY
+      - name: Generate the same 100 free-form answers from both models
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euxo pipefail
+          mkdir -p results/freeform-step417500
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/freeform_identity_general_holdout.py \
+            --holdout data/freeform_identity_general_100.jsonl \
+            --tokenizer inputs/artifacts/tokenizer.json \
+            --lumen lumen/checkpoint/step_417500.pt \
+            --transformer transformer/checkpoint/step_417500.pt \
+            --expected-step 417500 \
+            --sample-size 100 --seed 417500 --max-new-tokens 96 \
+            --out-dir results/freeform-step417500 --threads 4 --max-len 128
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path("results/freeform-step417500")
+          data=json.loads((root/"step417500_freeform_100.json").read_text(encoding="utf-8"))
+          assert data["step"]==417500 and data["sample_size"]==100
+          assert len(data["results"])==100
+          assert all(isinstance(item[m]["text"],str) for item in data["results"] for m in ("lumen","transformer"))
+          assert all(item["prompt"] for item in data["results"])
+          assert data["results"][0]["prompt"]=="¿Quién eres?"
+          assert (root/"step417500_freeform_100.md").is_file()
+          print("Generated and validated 100 paired open-ended answers.", flush=True)
+          print("Identity prompt:",data["results"][0]["prompt"])
+          PY
+      - name: Upload paired open-ended prompts and answers
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ronin-informal-freeform-100-step417500-v2-${{ github.run_id }}
+          path: results/freeform-step417500/
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Report free-form evaluation
+        if: always()
+        run: |
+          echo "Informal paired free-form holdout at step 417500: ${{ github.run_id }}"
+          test -s results/freeform-step417500/step417500_freeform_100.json
+          test -s results/freeform-step417500/step417500_freeform_100.md

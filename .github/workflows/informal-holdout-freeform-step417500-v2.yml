@@ -19,6 +19,7 @@ jobs:
   evaluate:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
+    # Corrected paired free-form evaluator; checkpoint paths mirror artifact ZIP layout.
     env:
       SOURCE_RUN_ID: "45405758303"
       PYTHONUNBUFFERED: "1"

@@ -70,7 +70,7 @@ def simhash(s):
   for i in range(64):a[i]+=1 if (h>>i)&1 else -1
  return sum((1<<i) for i,x in enumerate(a) if x>=0)
 def audit_split(db,repo,revision,config,split,limit,sample_n):
- stats=Counter(); samples=[]; started=time.time()
+ stats=Counter(); samples=[]; duplicates=[]; started=time.time()
  stream=load_dataset(repo,name=None if config=="default" else config,split=split,streaming=True,revision=revision)
  for i,row in enumerate(stream):
   if limit and i>=limit:break
@@ -92,27 +92,29 @@ def audit_split(db,repo,revision,config,split,limit,sample_n):
   if len(s) and sum(c.isalpha() for c in s)/len(s)<.45:flags.append("low_text_density")
   for f in flags:stats["flag_"+f]+=1
   digest=hashlib.sha256(n.encode()).hexdigest()
-  old=db.execute("SELECT source FROM exact WHERE digest=?",(digest,)).fetchone()
+  old=db.execute("SELECT source,source_row FROM exact WHERE digest=?",(digest,)).fetchone()
   if old:
    stats["exact_duplicate"]+=1
    if old[0]!=repo:stats["cross_source_exact_duplicate"]+=1
-  else:db.execute("INSERT INTO exact VALUES (?,?)",(digest,repo))
+   if len(duplicates)<1000:duplicates.append({"kind":"exact","row_index":i,"matches":[{"source":old[0],"row_index":old[1]}],"text_sha256":digest})
+  else:db.execute("INSERT INTO exact VALUES (?,?,?)",(digest,repo,str(i)))
   fp=simhash(n); near=set()
   for band in range(4):
    val=(fp>>(band*16))&65535
-   for oldfp,src in db.execute("SELECT fingerprint,source FROM sim WHERE band=? AND value=?",(band,val)):
-    if (fp^int(oldfp,16)).bit_count()<=3:near.add(src)
+   for oldfp,src,oldrow in db.execute("SELECT fingerprint,source,source_row FROM sim WHERE band=? AND value=?",(band,val)):
+    if (fp^int(oldfp,16)).bit_count()<=3:near.add((src,oldrow))
   if near:
    stats["near_duplicate_candidate"]+=1
-   if any(x!=repo for x in near):stats["cross_source_near_duplicate_candidate"]+=1
+   if any(x[0]!=repo for x in near):stats["cross_source_near_duplicate_candidate"]+=1
+   if len(duplicates)<1000:duplicates.append({"kind":"near_duplicate_candidate","row_index":i,"matches":[{"source":x[0],"row_index":x[1]} for x in sorted(near)[:10]],"text_sha256":digest})
   for band in range(4):
    val=(fp>>(band*16))&65535
-   db.execute("INSERT INTO sim VALUES (?,?,?,?)",(band,val,f"{fp:016x}",repo))
+   db.execute("INSERT INTO sim VALUES (?,?,?,?,?)",(band,val,f"{fp:016x}",repo,str(i)))
   if len(samples)<sample_n and (i<sample_n or (i+1)%(max(1,limit//sample_n) if limit else 1000)==0):
    samples.append({"source":repo,"config":config,"split":split,"row_index":i,"language":lang(row,s),"flags":flags,"excerpt":s[:700]})
   if i and i%10000==0:db.commit();print(f"{repo}/{config}/{split}: {i}",flush=True)
  db.commit();stats["elapsed_seconds"]=round(time.time()-started,2)
- return dict(stats),samples
+ return dict(stats),samples,duplicates
 def index_base(db,path):
  count=0
  with open(path,encoding="utf-8") as f:
@@ -122,11 +124,11 @@ def index_base(db,path):
    if not txt:continue
    n=norm(txt);digest=hashlib.sha256(n.encode()).hexdigest()
    if not db.execute("SELECT 1 FROM exact WHERE digest=?",(digest,)).fetchone():
-    db.execute("INSERT INTO exact VALUES (?,?)",(digest,"v3.1"))
+    db.execute("INSERT INTO exact VALUES (?,?,?)",(digest,"v3.1",str(count)))
    fp=simhash(n)
    for band in range(4):
     val=(fp>>(band*16))&65535
-    db.execute("INSERT INTO sim VALUES (?,?,?,?)",(band,val,f"{fp:016x}","v3.1"))
+    db.execute("INSERT INTO sim VALUES (?,?,?,?,?)",(band,val,f"{fp:016x}","v3.1",str(count)))
    count+=1
    if count%10000==0:db.commit();print(f"Indexed v3.1 rows: {count}",flush=True)
  db.commit()
@@ -142,8 +144,8 @@ def main():
  a=p.parse_args();registry=json.loads(Path(a.registry).read_text(encoding="utf-8"))
  registry_sources={x.get("id"):x for x in registry.get("sources",[])}
  db=sqlite3.connect(a.db);db.execute("PRAGMA journal_mode=WAL")
- db.execute("CREATE TABLE IF NOT EXISTS exact(digest TEXT PRIMARY KEY,source TEXT)")
- db.execute("CREATE TABLE IF NOT EXISTS sim(band INTEGER,value INTEGER,fingerprint TEXT,source TEXT)")
+ db.execute("CREATE TABLE IF NOT EXISTS exact(digest TEXT PRIMARY KEY,source TEXT,source_row TEXT)")
+ db.execute("CREATE TABLE IF NOT EXISTS sim(band INTEGER,value INTEGER,fingerprint TEXT,source TEXT,source_row TEXT)")
  db.execute("CREATE INDEX IF NOT EXISTS sim_idx ON sim(band,value)")
  base_count=index_base(db,a.base_jsonl)
  report={"training_authorized":False,"base_rows_indexed":base_count,"base_file":a.base_jsonl,"registry_version":registry.get("version"),"note":"All eligible train splits are streamed unless capped. Automated scan is not semantic/legal approval.","sources":{},"samples":[]}
@@ -161,8 +163,8 @@ def main():
     except Exception as e:ent["configs"][config]={"error":"split discovery: "+repr(e)};continue
     for split in [x for x in splits if x.lower()=="train"]:
      try:
-      st,sm=audit_split(db,repo,revision,config,split,a.max_rows_per_split,a.sample_per_split)
-      ent["configs"].setdefault(config,{})[split]=st;report["samples"].extend(sm)
+      st,sm,dups=audit_split(db,repo,revision,config,split,a.max_rows_per_split,a.sample_per_split)
+      ent["configs"].setdefault(config,{})[split]={"stats":st,"duplicate_examples":dups};report["samples"].extend(sm)
      except Exception as e:ent["configs"].setdefault(config,{})[split]={"error":repr(e)}
   except Exception as e:ent["error"]=repr(e)
   report["sources"][repo]=ent

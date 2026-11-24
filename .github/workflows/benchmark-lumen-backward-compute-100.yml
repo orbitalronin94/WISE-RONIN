@@ -93,9 +93,13 @@ jobs:
           ]:
               assert p.is_file() and p.stat().st_size > 0, p
           PY
+      - name: Compile benchmark harness
+        run: |
+          python -m py_compile scripts/benchmark_backward_compute.py
       - name: Run matched control and candidate (100 steps each)
         env:
           CANDIDATE: ${{ matrix.candidate }}
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           set -euo pipefail
           CHECKPOINT="$(cat checkpoint-path.txt)"

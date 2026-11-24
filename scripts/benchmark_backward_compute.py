@@ -13,6 +13,7 @@ import json
 import random
 import statistics
 import time
+from collections import deque
 from pathlib import Path
 
 import torch
@@ -23,6 +24,8 @@ from train.dataset import load_jsonl, load_token_cache, pack_token_cache, collat
 from train.loss import perdida_total
 from train.sleep import sueno
 from train.scheduler_transition import CosineTransitionScheduler
+from train.plasticity import PlasticityProfile
+from train.train import apply_organ_profile, enable_fake_int8
 
 CANDIDATES = {
     "01_surprise_gate": "Skip backward and optimizer update when scalar loss <= 1.8.",
@@ -132,15 +135,52 @@ def project_low_rank_gradients(model, rank=8):
         u, singular, vh = torch.linalg.svd(grad, full_matrices=False)
         parameter.grad.copy_((u[:, :rank] * singular[:rank]) @ vh[:rank, :])
 
+def apply_checkpoint_runtime_profile(model, state):
+    profile = state.get("runtime_profile", {})
+    plasticity = PlasticityProfile.from_config(profile.get("plasticity", {}))
+    for layer in model.delta_layers:
+        layer.plasticity_profile = plasticity
+        layer.tagging.decay = plasticity.eligibility_retention
+        layer.pre_normalize_sequence = bool(profile.get("delta_pre_normalize", False))
+        refinements = int(profile.get("delta_parallel_refinements", layer.parallel_refinements))
+        if not 1 <= refinements <= 6:
+            raise ValueError("delta_parallel_refinements must be between 1 and 6")
+        layer.parallel_refinements = refinements
+        layer.reuse_write_update = bool(profile.get("delta_reuse_write_update", False))
+        layer.always_apply_eligibility = bool(profile.get("delta_always_apply_eligibility", False))
+        layer.trace_norm_diagnostics_on_demand = bool(profile.get("delta_trace_norm_diagnostics_on_demand", False))
+        layer.share_causal_masks = bool(profile.get("delta_share_causal_masks", False))
+    for organ in model.homeo:
+        organ.fused_scatter_add = bool(profile.get("homeostasis_fused_scatter", False))
+    model.memoria.one_shot_enabled = plasticity.one_shot_enabled
+    apply_organ_profile(model, profile.get("organs", {}))
+    organs = profile.get("organs", {})
+    pain_budget_gain = float(organs.get("pain_budget_gain", 0.10))
+    pleasure_budget_gain = float(organs.get("pleasure_budget_gain", 0.05))
+    pain_value = float(model.pain.pain.item())
+    pleasure_value = float(model.pleasure.pleasure.item())
+    model.presupuesto.affect_scale = max(
+        0.85, min(1.05, 1.0 - pain_budget_gain * pain_value + pleasure_budget_gain * pleasure_value)
+    )
+    if int(state["step"]) >= 5000:
+        enable_fake_int8(model)
+
+
 def one_run(label: str, candidate: str | None, checkpoint_path: Path,
             packed, lengths, row_count: int, steps: int, seed: int):
     torch.manual_seed(seed)
     random.seed(seed)
     state, model, optimizer, scheduler, parent_lr = build_model_and_optimizer(checkpoint_path)
+    apply_checkpoint_runtime_profile(model, state)
+    # Match the trainer's exact checkpoint RNG restoration and sampler stream.
+    random.setstate(state["rng"]["python"])
+    torch.set_rng_state(state["rng"]["torch_cpu"])
+    sampler = random.Random()
+    sampler.setstate(state["rng"]["local_sampler"])
     hooks = attach_candidate(model, candidate) if candidate else []
-    sampler = random.Random(seed + int(state["step"]))
     cached_gradients = None
-    losses, windows = [], []
+    losses = []
+    glucose_loss_window = deque(maxlen=100)
     timings = {"forward": 0.0, "backward": 0.0, "optimizer": 0.0, "replay": 0.0}
     skipped_backward = 0
     replay_status = "not_requested"
@@ -148,11 +188,13 @@ def one_run(label: str, candidate: str | None, checkpoint_path: Path,
 
     try:
         for index in range(steps):
-            indices = [sampler.randrange(row_count) for _ in range(8)]
+            indices = sampler.choices(range(row_count), k=8)
             tokens = collate_cached_indices(packed, lengths, indices)
             model.reset_states()
+            global_step = int(state["step"]) + index + 1
+            collect_diagnostics = (global_step % 100 == 0 or index == 0)
             forward_started = time.perf_counter()
-            output = model(tokens, reset_state=True, collect_diagnostics=False)
+            output = model(tokens, reset_state=True, collect_diagnostics=collect_diagnostics)
             loss, _ = perdida_total(
                 output, tokens, model, use_jepa=True, use_rep=True,
                 use_free_energy=bool(state.get("v32_ze", False)),
@@ -162,6 +204,7 @@ def one_run(label: str, candidate: str | None, checkpoint_path: Path,
             if not torch.isfinite(loss):
                 raise FloatingPointError(f"non-finite loss at candidate step {index + 1}")
             losses.append(value)
+            glucose_loss_window.append(value)
 
             if candidate == "01_surprise_gate" and value <= 1.8:
                 optimizer.zero_grad(set_to_none=True)
@@ -192,6 +235,18 @@ def one_run(label: str, candidate: str | None, checkpoint_path: Path,
             optimizer.step()
             scheduler.step()
             timings["optimizer"] += time.perf_counter() - optimizer_started
+
+            if global_step % 100 == 0 and glucose_loss_window:
+                shared_signal = model.presupuesto.check_loss_signal(statistics.fmean(glucose_loss_window))
+                pain_state = model.pain.update_signal(shared_signal["regression"])
+                pleasure_state = model.pleasure.update_signal(shared_signal["improvement"])
+                model.set_learning_modulator(pleasure_state["pleasure"] - pain_state["pain"])
+                organs = state.get("runtime_profile", {}).get("organs", {})
+                pain_gain = float(organs.get("pain_budget_gain", 0.10))
+                pleasure_gain = float(organs.get("pleasure_budget_gain", 0.05))
+                model.presupuesto.affect_scale = max(
+                    0.85, min(1.05, 1.0 - pain_gain * pain_state["pain"] + pleasure_gain * pleasure_state["pleasure"])
+                )
 
             if candidate == "08_sleep_replay20" and index == steps - 1:
                 replay_started = time.perf_counter()

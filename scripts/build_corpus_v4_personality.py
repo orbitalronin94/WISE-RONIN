@@ -12,10 +12,16 @@ from pathlib import Path
 from datasets import load_dataset
 from tokenizers import Tokenizer
 
-from build_corpus_v4_openculture import (
-    ShardWriter, encode_chunks, find_attractors, load_denylist,
-    normalize, sha256_file, text_quality,
-)
+try:
+    from .build_corpus_v4_openculture import (
+        ShardWriter, encode_chunks, find_attractors, load_denylist,
+        normalize, sha256_file, text_quality,
+    )
+except ImportError:
+    from build_corpus_v4_openculture import (
+        ShardWriter, encode_chunks, find_attractors, load_denylist,
+        normalize, sha256_file, text_quality,
+    )
 
 
 SOURCES = [

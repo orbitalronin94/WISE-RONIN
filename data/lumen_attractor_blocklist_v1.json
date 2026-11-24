@@ -1,0 +1,19 @@
+{
+  "schema": "lumen-attractor-blocklist-v1",
+  "derived_from": "WISE-RONIN informal free-form holdout, step 417500, 100 prompts",
+  "policy": "Reject an incoming document if any exact listed word or phrase occurs in its model-facing text.",
+  "terms": [
+    "contexto documental",
+    "democracia",
+    "música",
+    "deformación",
+    "latinoamericana",
+    "estados miembros",
+    "unión europea"
+  ],
+  "notes": [
+    "Conservative LUMEN-specific list; not the Transformer attractor list.",
+    "Common words such as caso, personas, sido and enfoque are deliberately not blocked globally.",
+    "Historical v3.2 rows are audited, never silently deleted; the gate applies to new admissions."
+  ]
+}

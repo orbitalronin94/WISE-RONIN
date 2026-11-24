@@ -17,7 +17,7 @@ def language_label(text):
     en = len(words & {"the","of","and","to","in","is","for","with","that","this","from","are"})
     if es >= 3 and es > en: return "es_heuristic"
     if en >= 3 and en > es: return "non_es_heuristic"
-    return "language_unresolved"
+    return "unresolved"
 
 def classify_task(row):
     keys = {str(k).lower() for k in row}

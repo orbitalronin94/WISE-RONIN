@@ -17,6 +17,7 @@ from model.config import CONFIG
 from train.dataset import (BPETokenizer, collate_rows, collate_cached_indices,
                             load_jsonl, load_token_cache, pack_token_cache)
 from train.scheduler_transition import CosineTransitionScheduler
+from train.data_transition import resolve_data_transition
 
 LOG = logging.getLogger("lumen.baseline")
 ARCHITECTURE_ID = "decoder_transformer_4l_d192_h4_ff576_tied_v1"
@@ -100,6 +101,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args,
         "step": step,
         "seed": args.seed,
         "data_sha256": data_hash,
+        "data_lineage": list(getattr(args, "data_lineage", [])),
         "tokenizer_sha256": tokenizer_hash,
         "tokens_seen": tokens_seen,
         "params": params,
@@ -146,6 +148,10 @@ def main():
     p.add_argument("--grad-clip", type=float, default=1.0)
     p.add_argument("--parameter-check-every", type=int, default=25,
                    help="Full parameter and AdamW-state finite scan interval")
+    p.add_argument("--allow-data-change-on-resume", action="store_true",
+                   help="Allow an explicitly declared corpus expansion while preserving optimizer/model state")
+    p.add_argument("--parent-data-sha256", default=None)
+    p.add_argument("--data-change-label", default="explicit corpus transition")
     p.add_argument("--scheduler-transition", action="store_true")
     p.add_argument("--restart-scheduler-transition", action="store_true")
     p.add_argument("--transition-start", type=int, default=1000)
@@ -237,10 +243,20 @@ def main():
                     f"checkpoint_step={saved_step}, scheduler_step={scheduler_step}"
                 )
             expected_resume_config = parent_config
+        args.data_lineage = list(state.get("data_lineage", []))
+        transition = resolve_data_transition(
+            state.get("data_sha256"), data_hash,
+            allow_change=args.allow_data_change_on_resume,
+            expected_parent_hash=args.parent_data_sha256,
+            step=int(state.get("step", -1)),
+            label=args.data_change_label,
+        )
+        if transition:
+            args.data_lineage.append(transition)
+            LOG.warning("explicit_data_transition %s", json.dumps(transition, sort_keys=True))
         checks = {
             "architecture_id": (state.get("architecture_id"), ARCHITECTURE_ID),
             "seed": (state.get("seed"), args.seed),
-            "data_sha256": (state.get("data_sha256"), data_hash),
             "tokenizer_sha256": (state.get("tokenizer_sha256"), tokenizer_hash),
             "training_config": (state.get("training_config"), expected_resume_config),
             "params": (state.get("params"), params),

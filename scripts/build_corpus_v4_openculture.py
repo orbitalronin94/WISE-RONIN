@@ -29,7 +29,14 @@ SOURCES = [
         "license": "public_domain",
         "license_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Books",
         "share": 0.60,
-
+    },
+    {
+        "key": "spanish_pd_newspapers",
+        "repo": "PleIAs/Spanish-PD-Newspapers",
+        "revision": "17509f22d33a5f82def051e853899b8b65d7a9e2",
+        "license": "public_domain",
+        "license_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Newspapers",
+        "share": 0.40,
     },
 ]
 

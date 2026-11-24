@@ -40,9 +40,9 @@ Se inspeccionaron las 100 respuestas libres de LUMEN del holdout del paso 417.50
 Se incorpora una lista de admisión dura, insensible a mayúsculas y acentos. **Cualquier documento que contenga cualquiera de esos términos o frases se rechaza completo**, aunque el documento pueda ser correcto en otros aspectos. Es una decisión deliberadamente estricta solicitada para cortar la recurrencia de esos atractores; no implica que esos temas sean intrínsecamente malos.
 
 Aplicación de la lista a los 81.825 registros deltas v3.2:
-- 13.954 filas contienen al menos un término/frase bloqueado (17,1%).
+- 15.936 filas contienen al menos un término/frase bloqueado (19,5%).
 - «Contexto documental» aparece en las 9.091 filas del bloque de QA jurídico, por lo que ese bloque entero queda fuera con la regla actual.
-- «música» aparece en 3.882 filas.
+- «música» aparece en 3.885 filas.
 - Los recuentos por término se solapan y no deben sumarse.
 
 La regla se implementa en scripts/filter_corpus_attractors.py y la lista queda versionada en data/corpus_v4_attractor_denylist.json. El filtro conserva las filas rechazadas en un fichero separado con la causa; no las destruye.

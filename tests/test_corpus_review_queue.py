@@ -10,9 +10,10 @@ class ReviewQueueTests(unittest.TestCase):
     {"id":"555 123 456","question":"¿Cómo se tramita una solicitud de asilo?","answer":"La autoridad competente debe resolver conforme a la normativa aplicable."},
     {"question":"Contacte con ana@example.org para más información sobre el procedimiento."}]
    source.write_text("".join(json.dumps(x,ensure_ascii=False)+"\n" for x in rows),encoding="utf-8")
-   subprocess.run([sys.executable,str(SCRIPT),"--input",str(source),"--output",str(output),
+   proc=subprocess.run([sys.executable,str(SCRIPT),"--input",str(source),"--output",str(output),
     "--source","example/dataset","--revision","deadbeef","--text-fields","question,answer"],
-    check=True,capture_output=True,text=True)
+    capture_output=True,text=True)
+   self.assertEqual(proc.returncode,0,proc.stderr)
    records=[json.loads(x) for x in output.read_text(encoding="utf-8").splitlines()]
    self.assertEqual(len(records),3); self.assertNotIn("question",records[0]); self.assertNotIn("answer",records[0])
    self.assertFalse(records[0]["raw_text_exported"]); self.assertEqual(records[0]["privacy_flags"],[])

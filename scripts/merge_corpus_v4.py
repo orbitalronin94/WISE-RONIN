@@ -219,10 +219,15 @@ def main():
             for row in iter_candidate_rows(root):
                 candidate_rows_seen[label] += 1
                 admit(row, label)
-                if counts["accepted_rows"] % 25_000 == 0:
+                if counts["accepted_rows"] and counts["accepted_rows"] % 25_000 == 0:
                     db.commit()
                     print(f"{label} candidates={candidate_rows_seen[label]} accepted={counts['accepted_rows']}", flush=True)
-            counts[f"{label}_manifest_rows"] = int(source_manifest.get("actual_rows", 0))
+            manifest_rows = int(source_manifest.get("actual_rows", 0))
+            if candidate_rows_seen[label] != manifest_rows:
+                raise ValueError(
+                    f"{label} shard row count mismatch: {candidate_rows_seen[label]} != {manifest_rows}"
+                )
+            counts[f"{label}_manifest_rows"] = manifest_rows
 
         db.commit()
     finally:

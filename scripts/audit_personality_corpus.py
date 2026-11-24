@@ -33,6 +33,16 @@ def clean_for_review(value: str) -> str:
     return DNI_RE.sub("[ID_REDACTED]", value)
 
 
+def redact_value(value):
+    if isinstance(value, str):
+        return clean_for_review(value)
+    if isinstance(value, list):
+        return [redact_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: redact_value(item) for key, item in value.items()}
+    return value
+
+
 def stable_text(row: dict) -> str:
     parts = []
     for key in ("system", "prompt", "instruction", "input", "context", "completion", "output", "response", "answer", "messages"):
@@ -119,7 +129,7 @@ def main():
                 "prompt": clean_for_review(str(row.get("prompt", row.get("instruction", "")))),
                 "completion": clean_for_review(str(row.get("completion", row.get("response", row.get("answer", ""))))),
                 "text_preview": clean_for_review(body)[:1600],
-                "metadata": {k: row.get(k) for k in row if k not in {"prompt", "completion", "input", "context", "answer", "response", "output", "messages"}},
+                "metadata": redact_value({k: row.get(k) for k in row if k not in {"prompt", "completion", "input", "context", "answer", "response", "output", "messages"}}),
             })
 
     with (out / "personality_candidates_redacted.jsonl").open("w", encoding="utf-8") as f:

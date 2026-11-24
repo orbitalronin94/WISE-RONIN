@@ -194,12 +194,13 @@ def encode_chunks(text: str, tokenizer: Tokenizer, chunk_tokens: int):
         return
     for start in range(0, len(ids), chunk_tokens):
         end = min(start + chunk_tokens, len(ids))
-        if end - start < 32:
+        is_final_chunk = end == len(ids)
+        if end - start < 32 and not is_final_chunk:
             continue
         char_start = offsets[start][0]
         char_end = offsets[end - 1][1]
         chunk = text[char_start:char_end].strip()
-        if len(chunk) >= 80:
+        if len(chunk) >= 80 or (is_final_chunk and len(chunk) >= 20):
             yield start // chunk_tokens, chunk, ids[start:end]
 
 

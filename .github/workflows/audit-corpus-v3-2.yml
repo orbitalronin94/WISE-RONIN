@@ -36,9 +36,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: wise-ronin-spanish-corpus-v3-1-candidate-45348639929
-          repository: \${{ github.repository }}
+          repository: ${{ github.repository }}
           run-id: 45348639929
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: artifacts/v3-1
       - name: Verify base artifact and record provenance
         run: |
@@ -51,13 +51,13 @@ jobs:
             --base-jsonl "$(find artifacts/v3-1 -type f -name 'train.jsonl' -print -quit)" \
             --db artifacts/corpus-v3-2-audit.sqlite \
             --output artifacts/corpus-v3-2-audit-report.json \
-            --max-rows-per-split "\${{ inputs.max_rows_per_split }}" \
-            --sample-per-split "\${{ inputs.sample_per_split }}"
+            --max-rows-per-split "${{ inputs.max_rows_per_split }}" \
+            --sample-per-split "${{ inputs.sample_per_split }}"
       - name: Upload audit report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: corpus-v3-2-source-audit-\${{ github.run_id }}
+          name: corpus-v3-2-source-audit-${{ github.run_id }}
           path: |
             artifacts/corpus-v3-2-audit-report.json
             artifacts/corpus-v3-2-audit.sqlite

@@ -1,0 +1,31 @@
+name: Test cumulative 100 MiB corpus versions
+
+on:
+  push:
+    branches:
+      - corpus-v3-2-100mb-acceptance
+    paths:
+      - "scripts/build_corpus_100mb_blocks.py"
+      - "tests/test_corpus_100mb_version_chain.py"
+      - ".github/workflows/test-corpus-version-chain.yml"
+  pull_request:
+    paths:
+      - "scripts/build_corpus_100mb_blocks.py"
+      - "tests/test_corpus_100mb_version_chain.py"
+      - ".github/workflows/test-corpus-version-chain.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  version-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile builder
+        run: python -m py_compile scripts/build_corpus_100mb_blocks.py
+      - name: Test cumulative version chain
+        run: python tests/test_corpus_100mb_version_chain.py

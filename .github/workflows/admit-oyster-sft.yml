@@ -1,0 +1,93 @@
+name: Batch-admit audited Spanish SFT chat corpus
+
+on:
+  push:
+    branches:
+      - corpus-v3-2-100mb-acceptance
+    paths:
+      - "scripts/admit_oyster_sft.py"
+      - "scripts/build_corpus_100mb_blocks.py"
+      - "tests/test_admit_oyster_sft.py"
+      - ".github/workflows/admit-oyster-sft.yml"
+  workflow_dispatch:
+    inputs:
+      max_rows:
+        description: "0 = process the full pinned train split"
+        required: true
+        default: "0"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  batch-admission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install source reader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "datasets>=3.0,<5" "huggingface_hub>=0.26" pyarrow
+      - name: Test SFT policy and incremental builder
+        run: |
+          python -m py_compile scripts/admit_oyster_sft.py scripts/build_corpus_100mb_blocks.py
+          python tests/test_admit_oyster_sft.py
+          python tests/test_corpus_100mb_version_chain.py
+      - name: Download previous cumulative corpus
+        uses: actions/download-artifact@v4
+        with:
+          name: lumen-corpus-v3-2-through-stratasynth-45370714342
+          repository: \${{ github.repository }}
+          run-id: 45370714342
+          github-token: \${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/previous
+      - name: Download pinned source-audit database
+        uses: actions/download-artifact@v4
+        with:
+          name: corpus-v3-2-source-audit-45359758217
+          repository: \${{ github.repository }}
+          run-id: 45359758217
+          github-token: \${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/source-audit
+      - name: Prepare chain and verify audit inputs
+        run: |
+          mkdir -p artifacts/corpus-v3-2-chain
+          cp -a artifacts/previous/corpus-v3-2-chain/. artifacts/corpus-v3-2-chain/
+          test -f artifacts/corpus-v3-2-chain/v3-2-chain-dedup.sqlite
+          AUDIT_DB="$(find artifacts/source-audit -type f -name 'corpus-v3-2-audit.sqlite' -print -quit)"
+          test -n "$AUDIT_DB"
+          echo "AUDIT_DB=$AUDIT_DB" >> "$GITHUB_ENV"
+          : > artifacts/empty-base-already-indexed.jsonl
+      - name: Batch-normalize audited SFT chat rows
+        run: |
+          python scripts/admit_oyster_sft.py \
+            --audit-db "$AUDIT_DB" \
+            --output artifacts/oyster-sft-auto-approved.jsonl \
+            --report artifacts/oyster-sft-admission-report.json \
+            --max-rows "\${{ inputs.max_rows || '0' }}"
+      - name: Append new immutable corpus versions
+        run: |
+          python scripts/build_corpus_100mb_blocks.py \
+            --input artifacts/oyster-sft-auto-approved.jsonl \
+            --base-jsonl artifacts/empty-base-already-indexed.jsonl \
+            --output-dir artifacts/corpus-v3-2-chain \
+            --parent-version v3.2.005 \
+            --start-version 6 \
+            --dedup-db artifacts/corpus-v3-2-chain/v3-2-chain-dedup.sqlite \
+            --allow-auto-approved
+      - name: Upload cumulative corpus and admission report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-corpus-v3-2-through-oyster-sft-\${{ github.run_id }}
+          path: |
+            artifacts/oyster-sft-admission-report.json
+            artifacts/corpus-v3-2-chain/*
+          if-no-files-found: warn
+          retention-days: 90

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stream-audit eligible Hugging Face train splits; never authorizes training."""
+"""Stream-audit pinned Hugging Face train splits using source-specific text fields; never authorizes training."""
 import argparse, hashlib, json, re, sqlite3, time
 from collections import Counter
 from pathlib import Path
@@ -15,6 +15,26 @@ ELIGIBLE = {
  "dariolopez/ms-marco-es-500k":"retrieval_pairwise",
  "PlanTL-GOB-ES/pharmaconer":"supervised_extraction",
  "bigbio/distemist":"supervised_extraction"
+}
+CONFIG_OVERRIDES = {
+ "BSC-LT/m-personas":["default"]
+}
+SPLIT_OVERRIDES = {
+ "BSC-LT/m-personas":{"default":["es"]}
+}
+REVISION_OVERRIDES = {
+ "BSC-LT/m-personas":"6fab205a86a9244c90a2782e28055027f45ddd03"
+}
+CONTENT_FIELDS = {
+ "OysterCoreAI/SFT-General-Spanish-50K":("messages",),
+ "BSC-LT/m-personas":("persona","prompt","messages"),
+ "Kukedlc/Personas_Spanish-40k":("Persona_Descripcion","descripcion","text"),
+ "StrataSynth/stratasynth-personas-spain":("persona","daily_routine","speaking_style"),
+ "somosnlp/instruct-legal-refugiados-es":("question","context","answer"),
+ "dariolopez/ms-marco-es-500k":("query","passage"),
+ "PlanTL-GOB-ES/pharmaconer":("tokens",),
+ "bigbio/distemist":("text","tokens","document"),
+ "v3.1":("completion","prompt")
 }
 EXCLUDED = {
  "ola-owo/big-five-personality-traits":"psychometric_labels_excluded",
@@ -47,12 +67,23 @@ def collect(v,out,depth=0):
    if str(k).lower() not in {"id","uuid","url","link","license","language","lang","split","label","labels"}:collect(x,out,depth+1)
  elif isinstance(v,(list,tuple)):
   for x in v:collect(x,out,depth+1)
-def rowtext(row):
- a=[];collect(row,a);seen=set();b=[]
- for x in a:
-  x=" ".join(x.split())
-  if x and x not in seen:seen.add(x);b.append(x)
- return "\n".join(b)
+def rowtext(row,repo):
+ fields=CONTENT_FIELDS.get(repo,("text",))
+ values=[]
+ for field in fields:
+  value=row.get(field) if isinstance(row,dict) else None
+  if isinstance(value,str) and len(value.strip())>=1:
+   values.append(" ".join(value.split()))
+  elif field=="messages" and isinstance(value,list):
+   for message in value:
+    if isinstance(message,dict) and isinstance(message.get("content"),str):
+     values.append(" ".join(message["content"].split()))
+  elif field=="tokens" and isinstance(value,(list,tuple)):
+   values.append(" ".join(str(token) for token in value))
+ seen=set(); unique=[]
+ for value in values:
+  if value and value not in seen: seen.add(value); unique.append(value)
+ return "\n".join(unique)
 def lang(row,s):
  if isinstance(row,dict):
   x=str(row.get("language",row.get("lang",""))).lower()
@@ -74,7 +105,7 @@ def audit_split(db,repo,revision,config,split,limit,sample_n):
  stream=load_dataset(repo,name=None if config=="default" else config,split=split,streaming=True,revision=revision)
  for i,row in enumerate(stream):
   if limit and i>=limit:break
-  stats["rows_seen"]+=1;s=rowtext(row)
+  stats["rows_seen"]+=1;s=rowtext(row,repo)
   if not s:stats["empty_or_nontext"]+=1;continue
   language=lang(row,s);stats["language_"+language]+=1
   if language.startswith("non_es"):
@@ -111,7 +142,7 @@ def audit_split(db,repo,revision,config,split,limit,sample_n):
    val=(fp>>(band*16))&65535
    db.execute("INSERT INTO sim VALUES (?,?,?,?,?)",(band,val,f"{fp:016x}",repo,str(i)))
   if len(samples)<sample_n and (i<sample_n or (i+1)%(max(1,limit//sample_n) if limit else 1000)==0):
-   samples.append({"source":repo,"config":config,"split":split,"row_index":i,"language":lang(row,s),"flags":flags,"excerpt":s[:700]})
+   samples.append({"source":repo,"revision":revision,"config":config,"split":split,"row_index":i,"language":language,"flags":flags,"text_sha256":digest,"text_chars":len(s),"whitespace_tokens":len(n.split()),"raw_text_exported":False})
   if i and i%10000==0:db.commit();print(f"{repo}/{config}/{split}: {i}",flush=True)
  db.commit();stats["elapsed_seconds"]=round(time.time()-started,2)
  return dict(stats),samples,duplicates
@@ -120,7 +151,7 @@ def index_base(db,path):
  with open(path,encoding="utf-8") as f:
   for line in f:
    if not line.strip():continue
-   row=json.loads(line);txt=rowtext(row)
+   row=json.loads(line);txt=rowtext(row,"v3.1")
    if not txt:continue
    n=norm(txt);digest=hashlib.sha256(n.encode()).hexdigest()
    if not db.execute("SELECT 1 FROM exact WHERE digest=?",(digest,)).fetchone():
@@ -141,6 +172,7 @@ def main():
  p.add_argument("--registry",required=True);p.add_argument("--db",required=True);p.add_argument("--output",required=True)
  p.add_argument("--base-jsonl",required=True)
  p.add_argument("--max-rows-per-split",type=int,default=0);p.add_argument("--sample-per-split",type=int,default=100)
+ p.add_argument("--only-sources",default="",help="Comma-separated source IDs to scan exclusively")
  a=p.parse_args();registry=json.loads(Path(a.registry).read_text(encoding="utf-8"))
  registry_sources={x.get("id"):x for x in registry.get("sources",[])}
  db=sqlite3.connect(a.db);db.execute("PRAGMA journal_mode=WAL")
@@ -149,19 +181,22 @@ def main():
  db.execute("CREATE INDEX IF NOT EXISTS sim_idx ON sim(band,value)")
  base_count=index_base(db,a.base_jsonl)
  report={"training_authorized":False,"base_rows_indexed":base_count,"base_file":a.base_jsonl,"registry_version":registry.get("version"),"note":"All eligible train splits are streamed unless capped. Automated scan is not semantic/legal approval.","sources":{},"samples":[]}
+ selected=set(x.strip() for x in a.only_sources.split(",") if x.strip())
  for repo,route in ELIGIBLE.items():
+  if selected and repo not in selected: continue
   ent={"route":route,"configs":{}}
   try:
-   info=api.dataset_info(repo)
-   revision=info.sha
+   revision=REVISION_OVERRIDES.get(repo)
+   info=api.dataset_info(repo,revision=revision) if revision else api.dataset_info(repo)
+   revision=revision or info.sha
    card=info.card_data.to_dict() if info.card_data else {}
    record=registry_sources.get(repo,{})
    ent.update({"revision":revision,"declared_license_card":card.get("license"),"declared_license_registry":record.get("license"),"registry_entry_found":bool(record)})
-   configs=get_dataset_config_names(repo,revision=revision) or ["default"]
+   configs=CONFIG_OVERRIDES.get(repo) or get_dataset_config_names(repo,revision=revision) or ["default"]
    for config in configs:
     try:splits=get_dataset_split_names(repo,config_name=None if config=="default" else config,revision=revision)
     except Exception as e:ent["configs"][config]={"error":"split discovery: "+repr(e)};continue
-    for split in [x for x in splits if x.lower()=="train"]:
+    for split in SPLIT_OVERRIDES.get(repo,{}).get(config,[x for x in splits if x.lower()=="train"]):
      try:
       st,sm,dups=audit_split(db,repo,revision,config,split,a.max_rows_per_split,a.sample_per_split)
       ent["configs"].setdefault(config,{})[split]={"stats":st,"duplicate_examples":dups};report["samples"].extend(sm)

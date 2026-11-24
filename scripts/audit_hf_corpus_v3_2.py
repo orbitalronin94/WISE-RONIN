@@ -19,6 +19,9 @@ ELIGIBLE = {
 CONFIG_OVERRIDES = {
  "BSC-LT/m-personas":["es"]
 }
+REVISION_OVERRIDES = {
+ "BSC-LT/m-personas":"6fab205a86a9244c90a2782e28055027f45ddd03"
+}
 CONTENT_FIELDS = {
  "OysterCoreAI/SFT-General-Spanish-50K":("messages",),
  "BSC-LT/m-personas":("persona","prompt","messages"),
@@ -165,6 +168,7 @@ def main():
  p.add_argument("--registry",required=True);p.add_argument("--db",required=True);p.add_argument("--output",required=True)
  p.add_argument("--base-jsonl",required=True)
  p.add_argument("--max-rows-per-split",type=int,default=0);p.add_argument("--sample-per-split",type=int,default=100)
+ p.add_argument("--only-sources",default="",help="Comma-separated source IDs to scan exclusively")
  a=p.parse_args();registry=json.loads(Path(a.registry).read_text(encoding="utf-8"))
  registry_sources={x.get("id"):x for x in registry.get("sources",[])}
  db=sqlite3.connect(a.db);db.execute("PRAGMA journal_mode=WAL")
@@ -173,11 +177,14 @@ def main():
  db.execute("CREATE INDEX IF NOT EXISTS sim_idx ON sim(band,value)")
  base_count=index_base(db,a.base_jsonl)
  report={"training_authorized":False,"base_rows_indexed":base_count,"base_file":a.base_jsonl,"registry_version":registry.get("version"),"note":"All eligible train splits are streamed unless capped. Automated scan is not semantic/legal approval.","sources":{},"samples":[]}
+ selected=set(x.strip() for x in a.only_sources.split(",") if x.strip())
  for repo,route in ELIGIBLE.items():
+  if selected and repo not in selected: continue
   ent={"route":route,"configs":{}}
   try:
-   info=api.dataset_info(repo)
-   revision=info.sha
+   revision=REVISION_OVERRIDES.get(repo)
+   info=api.dataset_info(repo,revision=revision) if revision else api.dataset_info(repo)
+   revision=revision or info.sha
    card=info.card_data.to_dict() if info.card_data else {}
    record=registry_sources.get(repo,{})
    ent.update({"revision":revision,"declared_license_card":card.get("license"),"declared_license_registry":record.get("license"),"registry_entry_found":bool(record)})

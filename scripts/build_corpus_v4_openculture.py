@@ -166,7 +166,9 @@ def stream_parquet_source(source, seed: int):
         raise RuntimeError(f"No Parquet files found for {source['repo']}@{source['revision']}")
     import random
     random.Random(seed).shuffle(parquet_files)
+    print(f"FILES {source['key']} parquet_files={len(parquet_files)}", flush=True)
     for file_index, name in enumerate(parquet_files):
+        print(f"FILE_START {source['key']} {file_index + 1}/{len(parquet_files)} {name}", flush=True)
         url = hf_hub_url(
             repo_id=source["repo"], filename=name, repo_type="dataset",
             revision=source["revision"]
@@ -175,6 +177,28 @@ def stream_parquet_source(source, seed: int):
             "parquet", data_files={"train": [url]}, split="train", streaming=True
         ).shuffle(seed=seed + file_index, buffer_size=128)
         yield from shard
+
+def metadata_text(item: dict) -> str:
+    """Flatten all document metadata; exclude the full body to avoid duplicate scans."""
+    excluded = {"text", "content", "document"}
+    values = []
+
+    def visit(value, key=""):
+        if key.lower() in excluded:
+            return
+        if isinstance(value, str):
+            if value.strip():
+                values.append(value)
+        elif isinstance(value, dict):
+            for child_key, child_value in value.items():
+                visit(child_value, str(child_key))
+        elif isinstance(value, (list, tuple)):
+            for child_value in value:
+                visit(child_value, key)
+
+    visit(item)
+    return "\n".join(values)
+
 
 def get_text(item):
     for key in ("text", "content", "document"):
@@ -267,6 +291,13 @@ def main():
                     break
                 source_docs += 1
                 total_docs += 1
+                if total_docs % 2_500 == 0:
+                    print(
+                        f"DOC_PROGRESS source={source['key']} "
+                        f"source_docs={source_docs} total_docs={total_docs} "
+                        f"source_rows={source_rows} total_rows={total_rows}",
+                        flush=True,
+                    )
                 text = get_text(item)
                 if not text:
                     rejects["missing_text"] += 1
@@ -274,10 +305,7 @@ def main():
                 text = unicodedata.normalize("NFC", text).replace("\x00", " ")
                 text = re.sub(r"[ \t]+", " ", text)
                 text = re.sub(r"\n{3,}", "\n\n", text).strip()
-                metadata_probe = " ".join(
-                    str(item.get(key) or "") for key in ("title", "creator", "identifier", "file")
-                )
-                hits = find_attractors(text + "\n" + metadata_probe, patterns)
+                hits = find_attractors(text + "\n" + metadata_text(item), patterns)
                 if hits:
                     rejects["attractor:" + "|".join(hits)] += 1
                     continue

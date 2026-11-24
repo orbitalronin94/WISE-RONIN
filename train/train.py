@@ -694,6 +694,9 @@ def main():
             use_free_energy=args.v32_ze,
             beta=0.01,
             pad_id=0,
+            shared_loss_normalization=bool(
+                args.runtime_profile_settings.get("shared_loss_normalization", False)
+            ),
         )
         glucose_loss_window.append(float(loss.detach().item()))
         if not torch.isfinite(loss.detach()).all():

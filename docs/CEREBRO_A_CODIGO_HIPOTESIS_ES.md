@@ -245,6 +245,71 @@ LTD agrupa mecanismos diversos de debilitamiento sináptico dependientes del con
 
 **Criterio de rechazo:** si el olvido activo borra capacidades anteriores o no mejora adquisición de información nueva frente al control, se elimina.
 
+## Tercera tanda: eficiencia neural, estabilidad temporal, conectividad y feedback (hipótesis 13–17)
+
+**Estado:** agenda de investigación añadida al torneo de eficiencia. Los estudios humanos citados son asociaciones o resultados dependientes de tarea; no constituyen una receta directa para una red de lenguaje.
+
+### 13. Eficiencia neural y activación focal
+
+**Referencias:**
+- Haier et al. (1988), *Cortical glucose metabolic rate correlates of abstract reasoning and attention studied with positron emission tomography*, *Intelligence* 12:199–217.
+- Neubauer & Fink (2009), [Intelligence and neural efficiency](https://doi.org/10.1016/j.neubiorev.2009.04.001), *Neuroscience & Biobehavioral Reviews* 33(7):1004–1023.
+- Para una crítica conceptual: [Is “efficiency” a useful concept in cognitive neuroscience?](https://pmc.ncbi.nlm.nih.gov/articles/PMC6989750/).
+
+La hipótesis de eficiencia neural ha recibido apoyo en algunos paradigmas, pero la revisión de Neubauer y Fink señala moderadores importantes: dificultad, práctica, sexo y región cerebral; en tareas complejas puede observarse más activación asociada a mayor capacidad. Por tanto, no es correcto resumir la literatura como «las personas más inteligentes siempre activan menos cerebro».
+
+**Traducción a LUMEN:** medir activación efectiva y trabajo computacional por tarea; comparar Top-K estructurado, gating por sorpresa y rutas selectivas. El objetivo no es minimizar actividad sin más, sino reducir actividad irrelevante manteniendo diversidad, exactitud y NLL.
+
+**Hipótesis falsable:** para calidad equivalente en el holdout, una selección más focal reduce forward/backward real o coste de CPU sin aumentar unidades muertas persistentes ni concentrar toda la carga en pocos canales.
+
+### 14. Resistencia temporal de unidades y estabilidad bajo uso repetido
+
+**Referencia:** Goriounova et al. (2018), [Large and fast human pyramidal neurons associate with intelligence](https://doi.org/10.7554/eLife.41714), *eLife* 7:e41714.
+
+El estudio asocia puntuaciones de IQ con propiedades morfológicas y fisiológicas de neuronas piramidales humanas temporales; también reporta que ciertas propiedades de los potenciales de acción se mantienen mejor durante disparos repetidos. No demuestra que una EMA de actividad, una ventana de elegibilidad o una dimensión mayor reproduzcan esa fisiología.
+
+**Traducción a LUMEN:** probar estabilidad temporal de las activaciones, gradientes y actualizaciones bajo secuencias largas; medir saturación, unidades persistentemente muertas, deriva de normas y recuperación tras cambios de distribución. La ventana de elegibilidad 0.98 y la homeostasis actual son condiciones de referencia, no parámetros biológicamente óptimos.
+
+**Hipótesis falsable:** un controlador de umbral/escala lento y acotado mantiene throughput y señal de gradiente más estables a lo largo de 1.000 pasos, sin empeorar holdout ni reducir diversidad.
+
+### 15. Reutilización de configuración y menor reconfiguración de red
+
+**Referencia:** Schultz & Cole (2016), [Higher Intelligence Is Associated with Less Task-Related Brain Network Reconfiguration](https://doi.org/10.1523/JNEUROSCI.0358-16.2016), *Journal of Neuroscience* 36(33):8551–8561.
+
+El trabajo relaciona diferencias individuales en inteligencia con patrones de reconfiguración funcional entre reposo y tareas. No prueba que reutilizar gradientes obsoletos sea siempre mejor: una red funcional puede conservar gran parte de su conectividad y aun así requerir ajustes específicos para la tarea.
+
+**Traducción a LUMEN:** reutilizar trazas de elegibilidad y resultados invariantes cuando la procedencia y el contexto siguen siendo válidos; invalidarlos cuando cambien los datos, el estado recurrente o el régimen de sorpresa. Lazy backward se evalúa como aproximación de ingeniería, no como equivalente de conectividad cerebral estable.
+
+**Hipótesis falsable:** reutilización controlada reduce backward/tiempo frente a recomputación y mantiene la dirección útil de actualización, la estabilidad y el holdout.
+
+### 16. Conectividad selectiva entre módulos
+
+**Referencia:** Jung & Haier (2007), [The Parieto-Frontal Integration Theory (P-FIT) of intelligence: converging neuroimaging evidence](https://doi.org/10.1017/S0140525X07001185), *Behavioral and Brain Sciences* 30:135–187.
+
+P-FIT propone una red distribuida en la que participan regiones parietales y frontales, entre otras. No justifica asignar literalmente una capa de LUMEN a una región cerebral ni demuestra que menos conexiones sean siempre mejores.
+
+**Traducción a LUMEN:** estudiar conectividad inter-capa selectiva, rutas residuales y gates que preserven la información necesaria. Medir qué capas aportan señal útil a las siguientes, gradiente por frontera y coste de comunicación. No aumentar capas ni cortar conexiones por analogía anatómica.
+
+**Hipótesis falsable:** una ruta selectiva y estable mantiene o mejora el flujo de información y reduce operaciones redundantes frente a la conectividad densa de referencia.
+
+### 17. Aprendizaje sensible al feedback positivo inesperado
+
+**Referencia:** van den Bos, Crone & Güroğlu (2012), [Brain function during probabilistic learning in relation to IQ and level of education](https://doi.org/10.1016/j.dcn.2011.09.007), *Developmental Cognitive Neuroscience* 2(Suppl 1):S78–S89.
+
+En una muestra de 45 adolescentes y una tarea probabilística, el estudio encontró diferencias de estrategia adaptativa tras feedback positivo y asociaciones de activación en DLPFC/dACC. No demuestra que «placer deba ser más fuerte que dolor» de forma universal, ni que una ganancia concreta mejore un modelo autoregresivo.
+
+**Traducción a LUMEN:** comparar ganancias acotadas de placer y dolor sobre la señal compartida de evolución de loss, manteniendo glucosa independiente y evitando que el feedback modifique directamente el learning rate global. Evaluar si una mejora confirmada refuerza trazas útiles sin hacer que el sistema ignore regresiones.
+
+**Hipótesis falsable:** una asimetría moderada y validada por ventanas mejora recuperación tras feedback positivo y retención, sin volver al modelo insensible a regresiones ni disparar plasticidad inestable.
+
+### Correspondencia con el torneo
+
+- Hipótesis 13 → H01/H02 (activación focal y predicción selectiva).
+- Hipótesis 14 → H06 (estabilidad temporal y homeostasis).
+- Hipótesis 15 → H07 (elegibilidad y reutilización controlada).
+- Hipótesis 16 → H08 (conectividad selectiva entre capas).
+- Hipótesis 17 → H09 (feedback positivo/negativo acotado).
+
 ## Síntesis: sistema candidato, no explicación cerrada
 
 Las doce entradas pueden organizarse como un circuito de hipótesis:

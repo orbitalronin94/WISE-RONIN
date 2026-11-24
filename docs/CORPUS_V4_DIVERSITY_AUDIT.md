@@ -68,10 +68,11 @@ La regla se implementa en scripts/filter_corpus_attractors.py y la lista queda v
 
 La propuesta inicial queda en data/corpus_v4_source_plan.json. Priorizar:
 1. Libros y prensa españoles de dominio público (PleIAs Spanish-PD-Books / Spanish-PD-Newspapers), troceados y filtrados por OCR/calidad.
-2. Common Corpus, solo subconjuntos españoles y documentos con licencia individual verificable compatible (dominio público o licencias libres seleccionadas).
-3. Ciencia y divulgación de repositorios open access, con licencia comprobada por documento.
-4. Wikidata/Wikipedia y Stack Exchange, respetando sus licencias y atribución/ShareAlike donde corresponda.
-5. Documentación técnica, código y manuales con licencias permisivas verificadas.
-6. Personalidad: ampliar perfiles y diálogos variados con datos sintéticos claramente etiquetados o fuentes con permiso/licencia explícita; excluir datos personales reales y campos biográficos identificables.
+2. Wikipedia española (dump 20231101.es, 13 shards, 3,49 GB), con CC BY-SA 3.0 + GFDL; se conserva URL de artículo, atribución y obligaciones ShareAlike.
+3. Common Corpus, solo subconjuntos españoles y documentos con licencia individual verificable compatible (dominio público o licencias libres seleccionadas).
+4. Ciencia y divulgación de repositorios open access, con licencia comprobada por documento.
+5. Wikidata CC0 y Stack Exchange CC BY-SA, como fuentes separadas y con sus respectivas condiciones.
+6. Documentación técnica, código y manuales con licencias permisivas verificadas.
+7. Personalidad: ampliar perfiles y diálogos variados con datos sintéticos claramente etiquetados o fuentes con permiso/licencia explícita; excluir datos personales reales y campos biográficos identificables.
 
 **No se congela ni se autoriza entrenamiento todavía.** Esta PR instala la auditoría inicial y el control de admisión; la ingestión completa, el recuento final y la congelación se harán después de ejecutar los lotes y revisar sus manifiestos.

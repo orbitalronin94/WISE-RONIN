@@ -54,4 +54,22 @@ with tempfile.TemporaryDirectory() as td:
     assert chain["rejected_rows_by_reason"]["duplicate_against_previous_or_current_versions"] == 1
     assert chain["rejected_rows_by_reason"]["rights_not_verified"] == 1
     assert chain["training_authorized"] is False
-    print("PASS: cumulative numbering, parent chain, block ceiling, v3.1 dedup and admission gates")
+    # Auto-approval is opt-in and requires the named policy method.
+    auto_source = root / "auto.jsonl"
+    auto_out = root / "auto-out"
+    auto_row = row("A policy approved batch record " + "echo " * 35,
+                   review_status="auto_accept", review_method="batch_policy_v1")
+    auto_source.write_text(json.dumps(auto_row) + "\\n", encoding="utf-8")
+    denied = subprocess.run([sys.executable, str(BUILDER), "--input", str(auto_source),
+        "--base-jsonl", str(base), "--output-dir", str(auto_out)], capture_output=True, text=True)
+    assert denied.returncode == 0
+    denied_chain = json.loads((auto_out / "lumen-corpus-v3-2-version-chain.json").read_text())
+    assert denied_chain["versions_created"] == 0
+    auto_out2 = root / "auto-out-enabled"
+    subprocess.run([sys.executable, str(BUILDER), "--input", str(auto_source),
+        "--base-jsonl", str(base), "--output-dir", str(auto_out2),
+        "--allow-auto-approved"], check=True)
+    auto_chain = json.loads((auto_out2 / "lumen-corpus-v3-2-version-chain.json").read_text())
+    assert auto_chain["versions_created"] == 1
+    assert auto_chain["versions"][0]["delta_rows"] == 1
+    print("PASS: cumulative chain, block ceiling, dedup, rights gates and opt-in batch policy")

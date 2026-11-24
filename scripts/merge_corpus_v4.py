@@ -83,6 +83,8 @@ def main():
     parser.add_argument("--max-shard-bytes", type=int, default=100 * 1024 * 1024)
     parser.add_argument("--minimum-raw-text-rows", type=int, default=1_800_000)
     parser.add_argument("--minimum-personality-dialogue-rows", type=int, default=160_000)
+    parser.add_argument("--minimum-personality-share", type=float, default=0.10)
+    parser.add_argument("--maximum-personality-share", type=float, default=0.15)
     args = parser.parse_args()
     if not 32 <= args.chunk_tokens <= 126:
         parser.error("chunk-tokens must be 32..126")
@@ -272,6 +274,7 @@ def main():
         shutil.copy2(args.source_plan, args.output_dir / "source_plan.json")
 
     shard_rows = sum(item["rows"] for item in writer.shards)
+    personality_share = personality_rows / max(1, shard_rows)
     manifest = {
         "schema": "wise-ronin-corpus-v4-frozen-manifest-v1",
         "version": "v4.0.0-candidate",
@@ -290,6 +293,7 @@ def main():
         "estimated_tokens_with_one_eos_per_row": total_tokens + shard_rows,
         "raw_text_pretraining_rows": raw_text_rows,
         "personality_dialogue_rows": personality_rows,
+        "personality_dialogue_share": personality_share,
         "task_counts": dict(task_counts.most_common()),
         "source_counts": dict(source_counts.most_common()),
         "license_counts": dict(license_counts.most_common()),
@@ -297,8 +301,14 @@ def main():
         "attractor_rejections_by_term": dict(attractor_counts.most_common()),
         "minimum_raw_text_rows": args.minimum_raw_text_rows,
         "minimum_personality_dialogue_rows": args.minimum_personality_dialogue_rows,
+        "minimum_personality_share": args.minimum_personality_share,
+        "maximum_personality_share": args.maximum_personality_share,
         "raw_text_target_met": raw_text_rows >= args.minimum_raw_text_rows,
-        "personality_target_met": personality_rows >= args.minimum_personality_dialogue_rows,
+        "personality_target_met": (
+            personality_rows >= args.minimum_personality_dialogue_rows
+            and personality_share >= args.minimum_personality_share
+            and personality_share <= args.maximum_personality_share
+        ),
         "max_sequence_length": 128,
         "chunk_tokens": args.chunk_tokens,
         "max_shard_bytes": args.max_shard_bytes,
@@ -326,7 +336,7 @@ def main():
         )
     if not manifest["personality_target_met"]:
         raise SystemExit(
-            f"Personality/dialogue target not met: {personality_rows} < {args.minimum_personality_dialogue_rows}"
+            f"Personality/dialogue target not met: rows={personality_rows}, share={personality_share:.4%}, required rows>={args.minimum_personality_dialogue_rows} and share in [{args.minimum_personality_share:.0%},{args.maximum_personality_share:.0%}]"
         )
 
 

@@ -151,3 +151,19 @@ def test_collection_doi_does_not_group_unrelated_documents(tmp_path):
     blocked = find_blocked_base_documents(path, patterns)
     assert "csic_es::doc-a" in blocked
     assert "csic_es::doc-b" not in blocked
+
+
+
+def test_candidate_provenance_requires_revision_document_license_and_attribution():
+    from scripts.merge_corpus_v4 import missing_candidate_provenance
+
+    row = {
+        "source_revision": "immutable-revision",
+        "source_document_id": "document-123",
+        "license": "CC-BY-4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "Dataset authors",
+    }
+    assert missing_candidate_provenance(row) == []
+    del row["attribution"]
+    assert missing_candidate_provenance(row) == ["attribution"]

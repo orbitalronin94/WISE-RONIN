@@ -31,7 +31,7 @@ def canonical_text(row):
     if isinstance(row.get("text"), str):
         return " ".join(row["text"].split())
     walk(row)
-    return "\\n".join(dict.fromkeys(values))
+    return "\n".join(dict.fromkeys(values))
 
 
 def digest_bytes(path):
@@ -201,7 +201,7 @@ def main():
         "block_limit_bytes": a.max_block_bytes,
         "cumulative_chain": True,
         "training_authorized": False,
-        "admission_mode": "mixed" if any(x.get("review_method") == "batch_policy_v1" for x in []) else ("automated_batch_policy_v1" if a.allow_auto_approved else "human_reviewed"),
+        "admission_mode": "automated_batch_policy_v1" if a.allow_auto_approved else "human_reviewed",
         "note": "Each version is its parent plus one immutable delta. Automated admission is limited to rows passing the source-specific policy; it does not authorize training."
     }
     summary_path = out / "lumen-corpus-v3-2-version-chain.json"

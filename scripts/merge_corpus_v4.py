@@ -142,7 +142,7 @@ def main():
 
         metadata_probe = " ".join(
             str(row.get(key) or "")
-            for key in ("title", "creator", "source_document_id", "source_url", "persona_theme")
+            for key in ("title", "creator", "source_document_id", "source_url", "persona_theme", "task_family", "domain", "type", "theme")
         )
         hits = find_attractors(prompt + "\n" + completion + "\n" + metadata_probe, patterns)
         if hits:

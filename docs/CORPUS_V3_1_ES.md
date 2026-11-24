@@ -17,6 +17,20 @@ Se auditó directamente el artefacto congelado `ronin-v2-plus-personality-250k-4
 
 La coincidencia de palabras clave no certifica calidad semántica. Por eso **no se incorporan automáticamente las 50.121 filas de personalidad/identidad**. Quedan fuera del entrenamiento v3.1 y en cuarentena lógica para revisión posterior. También se excluyen del candidato las filas con marcadores de posible dato personal. El artefacto original permanece intacto y recuperable.
 
+### Resultado de la primera construcción conservadora validada
+
+La ejecución [45348291485](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45348291485) superó los pasos de construcción, copia del holdout y validación del token cache:
+
+- 196.992 filas base retenidas tras filtros; 53.008 en cuarentena.
+- 796 filas nuevas admitidas: 741 de LingComp_QA y 55 de lenguaje claro.
+- 197.788 filas totales en el candidato.
+- Tokenizer congelado: SHA-256 `d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe`.
+- JSONL candidato: SHA-256 `93e8c997535ca2bdc5215937e3ada6bc21e39a89d3131daa71c93b605582cd13`.
+
+La cifra de cuarentena no es la suma simple de los contadores de motivos porque algunas filas presentan más de un marcador. Las repeticiones de prompt del corpus base se conservan: en los fragmentos de preentrenamiento es normal que un mismo prefijo tenga continuaciones distintas. La comprobación de respuestas conflictivas se aplica solo a las nuevas fuentes QA.
+
+El holdout congelado se copió y comparó byte a byte; el workflow también validó que el número de filas del cache coincide con el JSONL, que el hash de datos y tokenizer coincide con el manifiesto y que todas las secuencias cacheadas respetan el contexto 128.
+
 ## 2. Fuentes nuevas admitidas técnicamente
 
 Se admiten solo fuentes en castellano con licencia Apache-2.0 declarada y estructura generativa directa:

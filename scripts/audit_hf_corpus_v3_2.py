@@ -69,9 +69,9 @@ def simhash(s):
   h=int.from_bytes(hashlib.blake2b(g.encode(),digest_size=8).digest(),"big")
   for i in range(64):a[i]+=1 if (h>>i)&1 else -1
  return sum((1<<i) for i,x in enumerate(a) if x>=0)
-def audit_split(db,repo,config,split,limit,sample_n):
+def audit_split(db,repo,revision,config,split,limit,sample_n):
  stats=Counter(); samples=[]; started=time.time()
- stream=load_dataset(repo,name=None if config=="default" else config,split=split,streaming=True)
+ stream=load_dataset(repo,name=None if config=="default" else config,split=split,streaming=True,revision=revision)
  for i,row in enumerate(stream):
   if limit and i>=limit:break
   stats["rows_seen"]+=1;s=rowtext(row)
@@ -80,7 +80,7 @@ def audit_split(db,repo,config,split,limit,sample_n):
   if language.startswith("non_es"):
    stats["non_spanish_excluded"]+=1;continue
   if language=="language_unresolved":
-   stats["language_unresolved_quarantined"]+=1;continue
+   stats["language_unresolved_quarantined"]+=1
   stats["spanish_rows_scanned"]+=1
   n=norm(s);stats["whitespace_tokens"]+=len(n.split())
   flags=[]
@@ -132,6 +132,8 @@ def index_base(db,path):
  return count
 
 def main():
+ from huggingface_hub import HfApi
+ api=HfApi()
  p=argparse.ArgumentParser()
  p.add_argument("--registry",required=True);p.add_argument("--db",required=True);p.add_argument("--output",required=True)
  p.add_argument("--base-jsonl",required=True)
@@ -143,15 +145,18 @@ def main():
  base_count=index_base(db,a.base_jsonl)
  report={"training_authorized":False,"base_rows_indexed":base_count,"base_file":a.base_jsonl,"note":"All eligible train splits are streamed unless capped. Automated scan is not semantic/legal approval.","sources":{},"samples":[]}
  for repo,route in ELIGIBLE.items():
-  ent={"route":route,"configs":{}}
+  ent={"route":route,"revision":revision,"declared_license":card.get("license"),"configs":{}}
   try:
-   configs=get_dataset_config_names(repo) or ["default"]
+   info=api.dataset_info(repo)
+   revision=info.sha
+   card=info.card_data.to_dict() if info.card_data else {}
+   configs=get_dataset_config_names(repo,revision=revision) or ["default"]
    for config in configs:
-    try:splits=get_dataset_split_names(repo,config_name=None if config=="default" else config)
+    try:splits=get_dataset_split_names(repo,config_name=None if config=="default" else config,revision=revision)
     except Exception as e:ent["configs"][config]={"error":"split discovery: "+repr(e)};continue
     for split in [x for x in splits if x.lower()=="train"]:
      try:
-      st,sm=audit_split(db,repo,config,split,a.max_rows_per_split,a.sample_per_split)
+      st,sm=audit_split(db,repo,revision,config,split,a.max_rows_per_split,a.sample_per_split)
       ent["configs"].setdefault(config,{})[split]=st;report["samples"].extend(sm)
      except Exception as e:ent["configs"].setdefault(config,{})[split]={"error":repr(e)}
   except Exception as e:ent["error"]=repr(e)

@@ -62,3 +62,5 @@ def test_sharded_corpus_rejects_bad_shard_hash(tmp_path):
         assert "SHA-256 mismatch" in str(exc)
     else:
         raise AssertionError("Corrupt shard hash was accepted")
+
+# Regression coverage for the v4 lazy-shard loader.

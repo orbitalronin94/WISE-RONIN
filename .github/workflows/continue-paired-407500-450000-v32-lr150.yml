@@ -72,12 +72,12 @@ jobs:
           test -s source-inputs/artifacts/tokenizer.json
           test -s source-inputs/config/lumen-runtime-profile.json
           test -s source-inputs/eval/holdout_multiple_choice.jsonl
-          mkdir -p prepared/lumen/checkpoint prepared/transformer/checkpoint
+          mkdir -p prepared parents/lumen/checkpoint parents/transformer/checkpoint
           cp -a source-inputs/. prepared/
-          cp source-lumen/checkpoint/step_407500.pt prepared/lumen/checkpoint/step_407500.pt
-          cp source-transformer/checkpoint/step_407500.pt prepared/transformer/checkpoint/step_407500.pt
-          if [ -s source-lumen/lumen-wall.json ]; then cp source-lumen/lumen-wall.json prepared/lumen-wall.json; fi
-          if [ -s source-transformer/transformer-wall.json ]; then cp source-transformer/transformer-wall.json prepared/transformer-wall.json; fi
+          cp source-lumen/checkpoint/step_407500.pt parents/lumen/checkpoint/step_407500.pt
+          cp source-transformer/checkpoint/step_407500.pt parents/transformer/checkpoint/step_407500.pt
+          if [ -s source-lumen/lumen-wall.json ]; then cp source-lumen/lumen-wall.json parents/lumen/lumen-wall.json; fi
+          if [ -s source-transformer/transformer-wall.json ]; then cp source-transformer/transformer-wall.json parents/transformer/transformer-wall.json; fi
           python - <<'PY'
           import hashlib, json, torch
           from pathlib import Path
@@ -94,7 +94,7 @@ jobs:
             "transformer":"decoder_transformer_4l_d192_h4_ff576_tied_v1",
           }
           for model in ("lumen","transformer"):
-            p=root/model/"checkpoint/step_407500.pt"
+            p=Path("parents")/model/"checkpoint/step_407500.pt"
             s=torch.load(p,map_location="cpu",weights_only=False)
             assert int(s["step"]) == 407500
             assert s["architecture_id"] == expected_arch[model]
@@ -110,7 +110,7 @@ jobs:
             check=torch.load(p,map_location="cpu",weights_only=False)
             assert abs(check["training_config"]["lr"]-7.5e-5)<1e-12
             print(f"{model}: step=407500, old configured LR=5e-5, new configured LR=7.5e-5; optimizer/RNG preserved")
-          lumen=torch.load(root/"lumen/checkpoint/step_407500.pt",map_location="cpu",weights_only=False)
+          lumen=torch.load(Path("parents/lumen/checkpoint/step_407500.pt"),map_location="cpu",weights_only=False)
           assert lumen.get("runtime_profile",{}).get("profile_id") == "check0_selected_H02_H03_H04_H05_H06_H09_H18"
           assert lumen.get("compute_policy",{}).get("lazy_backward") is True
           print(json.dumps({"train_rows":manifest["total_train_rows"],"tokenizer_sha256":tok_sha,"holdout_rows":2431,"lr_multiplier":1.5},indent=2))
@@ -127,7 +127,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: lumen-step-407500-v32-${{ github.run_id }}
-          path: prepared/lumen/
+          path: parents/lumen/
           if-no-files-found: error
           retention-days: 90
           compression-level: 1
@@ -135,7 +135,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: transformer-step-407500-v32-${{ github.run_id }}
-          path: prepared/transformer/
+          path: parents/transformer/
           if-no-files-found: error
           retention-days: 90
           compression-level: 1

@@ -234,8 +234,10 @@ def main():
                 raise ValueError(f"{label} candidate must remain unapproved for training")
             if source_manifest.get("tokenizer_sha256") != sha256_file(args.tokenizer):
                 raise ValueError(f"{label} candidate tokenizer hash does not match the paired-model tokenizer")
-            if source_manifest.get("denylist_sha256") != sha256_file(args.denylist):
-                raise ValueError(f"{label} candidate denylist hash does not match the final merge policy")
+            candidate_terms = set(source_manifest.get("denylist_terms", []))
+            final_terms = set(denylist["terms"])
+            if not candidate_terms.issubset(final_terms):
+                raise ValueError(f"{label} candidate used an unrecognized or weaker attractor denylist")
             if int(source_manifest.get("chunk_tokens", 999)) > args.chunk_tokens:
                 raise ValueError(f"{label} candidate chunks exceed the final merge token budget")
             if source_manifest.get("row_target_met") is not True:

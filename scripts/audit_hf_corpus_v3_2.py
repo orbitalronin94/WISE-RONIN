@@ -17,7 +17,10 @@ ELIGIBLE = {
  "bigbio/distemist":"supervised_extraction"
 }
 CONFIG_OVERRIDES = {
- "BSC-LT/m-personas":["es"]
+ "BSC-LT/m-personas":["default"]
+}
+SPLIT_OVERRIDES = {
+ "BSC-LT/m-personas":{"default":["es"]}
 }
 REVISION_OVERRIDES = {
  "BSC-LT/m-personas":"6fab205a86a9244c90a2782e28055027f45ddd03"
@@ -30,7 +33,8 @@ CONTENT_FIELDS = {
  "somosnlp/instruct-legal-refugiados-es":("question","context","answer"),
  "dariolopez/ms-marco-es-500k":("query","passage"),
  "PlanTL-GOB-ES/pharmaconer":("tokens",),
- "bigbio/distemist":("text","tokens","document")
+ "bigbio/distemist":("text","tokens","document"),
+ "v3.1":("completion","prompt")
 }
 EXCLUDED = {
  "ola-owo/big-five-personality-traits":"psychometric_labels_excluded",
@@ -192,7 +196,7 @@ def main():
    for config in configs:
     try:splits=get_dataset_split_names(repo,config_name=None if config=="default" else config,revision=revision)
     except Exception as e:ent["configs"][config]={"error":"split discovery: "+repr(e)};continue
-    for split in [x for x in splits if x.lower()=="train"]:
+    for split in SPLIT_OVERRIDES.get(repo,{}).get(config,[x for x in splits if x.lower()=="train"]):
      try:
       st,sm,dups=audit_split(db,repo,revision,config,split,a.max_rows_per_split,a.sample_per_split)
       ent["configs"].setdefault(config,{})[split]={"stats":st,"duplicate_examples":dups};report["samples"].extend(sm)

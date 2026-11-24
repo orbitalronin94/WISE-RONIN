@@ -119,7 +119,7 @@ def main():
     parser.add_argument("--tokenizer", required=True, type=Path)
     parser.add_argument("--denylist", type=Path, default=Path("data/corpus_v4_attractor_denylist.json"))
     parser.add_argument("--output-dir", type=Path, default=Path("artifacts/corpus-v4-personality"))
-    parser.add_argument("--target-rows", type=int, default=160_000)
+    parser.add_argument("--target-rows", type=int, default=165_000)
     parser.add_argument("--chunk-tokens", type=int, default=126)
     parser.add_argument("--max-shard-bytes", type=int, default=100 * 1024 * 1024)
     parser.add_argument("--seed", type=int, default=42)

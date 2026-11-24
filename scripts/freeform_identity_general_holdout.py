@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 import json
 import random
-import re
 from pathlib import Path
 
 import torch
@@ -25,12 +24,9 @@ def load_rows(path: str):
 
 
 def freeform_prompt(raw: str) -> str:
-    # The source holdout is multiple-choice. Keep context/question only:
-    # discard every option and any pre-existing answer marker/content.
-    text = str(raw).strip()
-    text = re.split(r"\n\s*Opciones\s*:", text, maxsplit=1, flags=re.IGNORECASE)[0]
-    text = re.split(r"\n\s*Respuesta\s*:", text, maxsplit=1, flags=re.IGNORECASE)[0]
-    return text.rstrip() + "\nRespuesta:"
+    # Pass each authored open question verbatim: no choices, answer key,
+    # answer label or extra cue is appended.
+    return str(raw).strip()
 
 
 def generate(model, tokenizer, prompt: str, *, is_lumen: bool,
@@ -153,16 +149,17 @@ def main():
         "prompt_policy": "fixed 100-question Spanish identity/general capability set; prompts supplied directly without answer keys",
         "results": results,
     }
-    (out_dir / "step170700_identity_general_100.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    stem = f"step{args.expected_step}_freeform_100"
+    (out_dir / f"{stem}.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8"
     )
     lines = [
-        "# LUMEN vs Transformer — 100 respuestas libres (170.700)",
+        f"# LUMEN vs Transformer — 100 respuestas libres ({args.expected_step:,})",
         "",
-        f"- Muestra aleatoria reproducible: {len(results)} preguntas; semilla {args.seed}.",
-        "- Se han eliminado las opciones y la respuesta correcta antes de generar.",
-        "- Decodificación greedy, sin penalización de repetición; máximo 64 tokens por respuesta.",
-        "- Evaluación informal: no es una métrica de exactitud ni sustituye al holdout de elección múltiple.",
+        f"- Muestra reproducible: {len(results)} preguntas; semilla {args.seed}.",
+        "- Preguntas abiertas entregadas literalmente, sin opciones, respuestas de referencia ni pistas añadidas.",
+        f"- Decodificación greedy, sin penalización de repetición; máximo {args.max_new_tokens} tokens por respuesta.",
+        "- Evaluación informal: no es una métrica automática de exactitud ni sustituye al holdout oficial.",
         "",
     ]
     for item in results:
@@ -182,7 +179,7 @@ def main():
             "---",
             "",
         ])
-    (out_dir / "step170700_identity_general_100.md").write_text("\n".join(lines), encoding="utf-8")
+    (out_dir / f"{stem}.md").write_text("\\n".join(lines), encoding="utf-8")
     print(f"Wrote {len(results)} paired free-form generations to {out_dir}", flush=True)
 
 

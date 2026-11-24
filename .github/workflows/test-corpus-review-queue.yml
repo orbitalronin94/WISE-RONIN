@@ -25,7 +25,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Compile review index builder
-        run: python -m py_compile scripts/build_corpus_review_queue.py
+      - name: Compile review index and aggregate audit builders
+        run: |
+          python -m py_compile scripts/build_corpus_review_queue.py
+          python -m py_compile scripts/audit_hf_corpus_v3_2.py
       - name: Test privacy boundaries and field-aware flags
         run: python tests/test_corpus_review_queue.py

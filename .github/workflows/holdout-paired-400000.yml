@@ -1,0 +1,135 @@
+name: LUMEN vs Transformer — paired holdout at 400000
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/holdout-paired-400000.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-transformer-holdout-400000
+  cancel-in-progress: false
+
+env:
+  SOURCE_RUN_ID: "45273897576"
+  DATA_RUN_ID: "45149684913"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  paired-holdout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU evaluation runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+      - name: Download frozen corpus, tokenizer and untouched holdout
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-v2-plus-personality-250k-45149684913
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.DATA_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact LUMEN step-400000 checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-step-400000-45273897576
+          path: lumen-artifact
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact Transformer step-400000 checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: transformer-step-400000-45273897576
+          path: transformer-artifact
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify both exact checkpoints and frozen evaluation inputs
+        run: |
+          set -euo pipefail
+          test -s prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl
+          test -s prepared/artifacts/spanish-v2/tokenizer.json
+          python - <<'PY'
+          import hashlib, json, shutil, torch
+          from pathlib import Path
+
+          def one_checkpoint(root, label):
+              files=list(Path(root).rglob("*.pt"))
+              if len(files) != 1:
+                  raise SystemExit(f"Expected exactly one {label} checkpoint, found {[str(p) for p in files]}")
+              path=files[0]
+              ckpt=torch.load(path,map_location="cpu",weights_only=False)
+              if not isinstance(ckpt,dict) or int(ckpt.get("step",-1)) != 400000:
+                  raise SystemExit(f"{label} checkpoint is not exactly step 400000: {ckpt.get('step') if isinstance(ckpt,dict) else type(ckpt)}")
+              if not isinstance(ckpt.get("model"),dict) or not ckpt["model"]:
+                  raise SystemExit(f"{label} model state is missing")
+              if not ckpt.get("optimizer") or not ckpt.get("rng"):
+                  raise SystemExit(f"{label} optimizer or RNG state is missing")
+              if not ckpt.get("tokenizer_sha256") or not ckpt.get("data_sha256"):
+                  raise SystemExit(f"{label} checkpoint lacks data/tokenizer provenance")
+              return path,ckpt
+
+          lp,l=one_checkpoint("lumen-artifact","LUMEN")
+          tp,t=one_checkpoint("transformer-artifact","Transformer")
+          assert t.get("architecture_id") == "decoder_transformer_4l_d192_h4_ff576_tied_v1", t.get("architecture_id")
+          assert l.get("architecture_id"), "LUMEN architecture_id missing"
+          assert l["tokenizer_sha256"] == t["tokenizer_sha256"], "Tokenizer SHA mismatch"
+          assert l["data_sha256"] == t["data_sha256"], "Training data SHA mismatch"
+          tokenizer=Path("prepared/artifacts/spanish-v2/tokenizer.json")
+          tokenizer_sha=hashlib.sha256(tokenizer.read_bytes()).hexdigest()
+          assert l["tokenizer_sha256"] == tokenizer_sha, f"Frozen tokenizer SHA mismatch: checkpoint={l['tokenizer_sha256']} file={tokenizer_sha}"
+          holdout=Path("prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl")
+          rows=[json.loads(line) for line in holdout.read_text(encoding="utf-8").splitlines() if line.strip()]
+          assert len(rows)==2431, f"Expected 2431 untouched holdout rows, got {len(rows)}"
+          Path("resolved").mkdir(exist_ok=True)
+          shutil.copy2(lp,"resolved/lumen-400000.pt")
+          shutil.copy2(tp,"resolved/transformer-400000.pt")
+          print("LUMEN:",l["architecture_id"],"step",l["step"])
+          print("Transformer:",t["architecture_id"],"step",t["step"])
+          print("Shared tokenizer SHA:",tokenizer_sha)
+          print("Shared training data SHA:",l["data_sha256"])
+          print("Frozen untouched holdout rows:",len(rows))
+          PY
+      - name: Evaluate both models on the same untouched 2431-question holdout
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          python scripts/evaluate_multiple_choice_holdout.py \
+            --holdout prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --lumen resolved/lumen-400000.pt \
+            --transformer resolved/transformer-400000.pt \
+            --expected-lumen-step 400000 \
+            --expected-transformer-step 400000 \
+            --out results/step400000_lumen_vs_transformer_paired_holdout.json \
+            --threads 4 --max-len 128
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ronin-step400000-lumen-vs-transformer-paired-holdout-${{ github.run_id }}
+          path: results/step400000_lumen_vs_transformer_paired_holdout.json
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Report holdout provenance
+        if: always()
+        run: |
+          echo "Paired 400000 holdout run: ${{ github.run_id }}"
+          test -s results/step400000_lumen_vs_transformer_paired_holdout.json

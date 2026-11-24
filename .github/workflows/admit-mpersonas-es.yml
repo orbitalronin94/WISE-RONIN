@@ -1,0 +1,81 @@
+name: Batch-admit audited mPersonas Spanish corpus
+
+on:
+  push:
+    branches:
+      - corpus-v3-2-100mb-acceptance
+    paths:
+      - "scripts/admit_mpersonas_es.py"
+      - "scripts/build_corpus_100mb_blocks.py"
+      - "tests/test_admit_mpersonas_es.py"
+      - ".github/workflows/admit-mpersonas-es.yml"
+  workflow_dispatch:
+    inputs:
+      max_rows:
+        description: "0 = process the full pinned Spanish split"
+        required: true
+        default: "0"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  batch-admission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install source reader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "datasets>=3.0,<5" "huggingface_hub>=0.26" pyarrow
+      - name: Test batch admission policy
+        run: |
+          python -m py_compile scripts/admit_mpersonas_es.py scripts/build_corpus_100mb_blocks.py
+          python tests/test_admit_mpersonas_es.py
+          python tests/test_corpus_100mb_version_chain.py
+      - name: Download frozen v3.1 base
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-spanish-corpus-v3-1-candidate-45348639929
+          repository: \${{ github.repository }}
+          run-id: 45348639929
+          github-token: \${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/v3-1
+      - name: Verify frozen v3.1 JSONL
+        run: |
+          BASE="$(find artifacts/v3-1 -type f -name 'spanish-v3-1-candidate.jsonl' -print -quit)"
+          test -n "$BASE"
+          echo "BASE=$BASE" >> "$GITHUB_ENV"
+          echo "93e8c997535ca2bdc5215937e3ada6bc21e39a89d3131daa71c93b605582cd13  $BASE" | sha256sum --check
+      - name: Batch-normalize and admit eligible mPersonas rows
+        run: |
+          python scripts/admit_mpersonas_es.py \
+            --base-jsonl "$BASE" \
+            --output artifacts/mpersonas-es-auto-approved.jsonl \
+            --report artifacts/mpersonas-es-admission-report.json \
+            --max-rows "\${{ inputs.max_rows || '0' }}"
+      - name: Build cumulative 100 MiB version chain
+        run: |
+          python scripts/build_corpus_100mb_blocks.py \
+            --input artifacts/mpersonas-es-auto-approved.jsonl \
+            --base-jsonl "$BASE" \
+            --output-dir artifacts/corpus-v3-2-mpersonas \
+            --parent-version v3.1 \
+            --start-version 1 \
+            --allow-auto-approved
+      - name: Upload admitted corpus and audit manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-corpus-v3-2-mpersonas-\${{ github.run_id }}
+          path: |
+            artifacts/mpersonas-es-admission-report.json
+            artifacts/corpus-v3-2-mpersonas/*
+          if-no-files-found: warn
+          retention-days: 90

@@ -38,3 +38,25 @@ def test_normalize_base_preserves_existing_prompt_completion():
 def test_token_count_uses_prompt_and_completion():
     count = row_token_count(FakeTokenizer(), "Pregunta breve", "Respuesta clara")
     assert count == 4
+
+
+def test_metadata_text_checks_nested_and_list_metadata_but_not_training_body():
+    from scripts.merge_corpus_v4 import metadata_text
+
+    row = {
+        "prompt": "música in the prompt",
+        "completion": "democracia in the body",
+        "id": "música-id",
+        "title": "Título neutral",
+        "metadata": {
+            "domain": ["ciencia", "música"],
+            "attribution": "Fuente neutral",
+        },
+    }
+    flattened = metadata_text(row)
+    assert "Título neutral" in flattened
+    assert "ciencia" in flattened
+    assert "música" in flattened
+    assert "música in the prompt" not in flattened
+    assert "democracia in the body" not in flattened
+    assert "música-id" not in flattened

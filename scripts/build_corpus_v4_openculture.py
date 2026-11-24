@@ -44,7 +44,7 @@ SOURCES = [
         "revision": "cf584d1dc131caa92a5cb910f41a8b7591b12732",
         "path_prefix": "20231101.es/",
         "license": "CC-BY-SA-3.0+GFDL",
-        "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+        "license_url": "https://creativecommons.org/licenses/by-sa/3.0/;https://www.gnu.org/copyleft/fdl.html",
         "attribution": "Wikipedia contributors / Wikimedia Foundation; retain source article URL",
         "share": 0.25,
     },

@@ -15,7 +15,7 @@ from tokenizers import Tokenizer
 
 try:
     from .build_corpus_v4_openculture import (
-        ShardWriter, encode_chunks, find_attractors, load_denylist,
+        ShardWriter, encode_chunks, find_attractors, load_denylist, metadata_text,
         normalize, sha256_file,
     )
 except ImportError:
@@ -188,11 +188,7 @@ def main():
                 if not text.strip():
                     rejects["empty_conversation"] += 1
                     continue
-                metadata_probe = (
-                    f"{item.get('type') or ''} {item.get('theme') or ''}"
-                    if source["key"] == "m_personas_es"
-                    else f"{(item.get('metadata') or {}).get('task_family', '')} {(item.get('metadata') or {}).get('domain', '')}"
-                )
+                metadata_probe = metadata_text(item)
                 hits = find_attractors(text + "\n" + metadata_probe, patterns)
                 if hits:
                     rejects["attractor:" + "|".join(hits)] += 1

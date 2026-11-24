@@ -26,18 +26,18 @@ La selección se ha diseñado para ampliar de verdad la biblioteca y evitar que 
 | 6 | [LingComp_QA](https://huggingface.co/datasets/somosnlp/LingComp_QA) | Apache 2.0 | 803 | QA educativa; 741 ya entraron en v3.1 |
 | 7 | [Lenguaje claro](https://huggingface.co/datasets/somosnlp/lenguaje-claro-dataset) | Apache 2.0 | 4.094 | Reformulación administrativa; 55 ya entraron en v3.1 |
 | 8 | [Instruct Legal Refugiados](https://huggingface.co/datasets/somosnlp/instruct-legal-refugiados-es) | Apache 2.0 | 9.430 | QA contextual con jurisdicción y fecha |
-| 9 | [GovEasy](https://huggingface.co/datasets/...) | CC BY 4.0 | 438 trámites | Procedimientos administrativos |
+| 9 | [GovEasy](https://data.goveasy.eu/es) | CC BY 4.0 | 438 trámites | Procedimientos administrativos |
 | 10 | [ESQAD](https://zenodo.org/records/16351733) | CC BY 4.0 | ZIP 676,1 MB | QA educativa; separar evaluación y piloto calificado |
 | 11 | [TDX Thesis Spanish Corpus](https://zenodo.org/records/7313149) | CC BY 4.0 | 248,7 M tokens | Preentrenamiento académico |
 | 12 | [PleIAs BDH-Books](https://huggingface.co/datasets/PleIAs/BDH-Books) | Dominio público por obra | ~139.932 títulos | OCR, derechos por obra y deduplicación |
-| 13 | [Spanish-PD-Books](https://huggingface.co/datasets/ PleIAs/Spanish-PD-Books) | Dominio público por obra | ~302.640 textos | Literatura; alto riesgo de solapamiento con BDH |
+| 13 | [Spanish-PD-Books](https://huggingface.co/datasets/PleIAs/Spanish-PD-Books) | Dominio público por obra | ~302.640 textos | Literatura; alto riesgo de solapamiento con BDH |
 | 14 | [PleIAs Common Corpus](https://huggingface.co/datasets/PleIAs/common_corpus) | Filtrado por licencia documental | >10B tokens españoles reportados | Solo español y documentos con derechos allowlisted |
 | 15 | [MS MARCO ES 500k](https://huggingface.co/datasets/dariolopez/ms-marco-es-500k) | Apache 2.0 | 500.000 tríos | Recuperación/ranking; no aplanar a QA generativa |
 | 16 | [Enfermedades Wiki marzo 2024](https://huggingface.co/datasets/Alvaro8gb/enfermedades-wiki-marzo-2024) | MIT | ~1,42 M tokens en inventario SMC | Texto biomédico; atribución y procedencia por artículo |
 | 17 | [PharmaCoNER](https://huggingface.co/datasets/PlanTL-GOB-ES/pharmaconer) | CC BY 4.0 | 15.868 frases anotadas | Extracción de entidades; solo train |
 | 18 | [MEDDOCAN](https://huggingface.co/datasets/bigbio/meddocan) | CC BY 4.0 | 364.462 tokens en inventario SMC | Desidentificación; solo train y revisión de privacidad |
 | 19 | [DisTEMIST](https://huggingface.co/datasets/bigbio/distemist) | CC BY 4.0 | 550.203 tokens en inventario SMC | Menciones de enfermedades; solo train |
-| 20 | BARR2 | CC BY 4.0 | 1.732.432 tokens en inventario SMC | Texto biomédico de fondo; confirmar origen canónico |
+| 20 | [BARR2](https://huggingface.co/datasets/somosnlp/SMC) | CC BY 4.0 | 1.732.432 tokens en inventario SMC | Texto biomédico de fondo; confirmar origen canónico |
 
 > Las cifras de inventarios agregados no son recuentos de filas comparables. Se recalcularán sobre los archivos descargados y las revisiones fijadas.
 

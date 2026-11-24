@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sqlite3
 from collections import Counter
 from pathlib import Path
@@ -15,7 +16,7 @@ from tokenizers import Tokenizer
 try:
     from .build_corpus_v4_openculture import (
         ShardWriter, encode_chunks, find_attractors, load_denylist,
-        normalize, sha256_file, text_quality,
+        normalize, sha256_file,
     )
 except ImportError:
     from build_corpus_v4_openculture import (
@@ -46,6 +47,29 @@ SOURCES = [
         "task": "dialogue_and_assistant_style_lm",
     },
 ]
+
+
+EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
+DNI_RE = re.compile(r"\b(?:\d{8}[A-Z]|[XYZ]\d{7}[A-Z])\b", re.I)
+PHONE_RE = re.compile(r"(?<!\w)(?:\+34[\s.-]?)?(?:[6789]\d{2})[\s.-]?\d{3}[\s.-]?\d{3}(?!\w)")
+
+
+def conversation_quality(text: str) -> tuple[bool, str]:
+    text = text.strip()
+    words = re.findall(r"\b\w+\b", text, re.UNICODE)
+    if len(text) < 180:
+        return False, "conversation_too_short"
+    if len(words) < 25:
+        return False, "conversation_too_few_words"
+    alpha_ratio = sum(ch.isalpha() for ch in text) / max(1, len(text))
+    if alpha_ratio < 0.52:
+        return False, "conversation_low_alphabetic_density"
+    if EMAIL_RE.search(text) or DNI_RE.search(text) or PHONE_RE.search(text):
+        return False, "conversation_personal_identifier_pattern"
+    import langid
+    if langid.classify(text[:4000])[0] != "es":
+        return False, "conversation_not_spanish"
+    return True, "ok"
 
 
 def serialize_persona(item):
@@ -166,7 +190,7 @@ def main():
                 if hits:
                     rejects["attractor:" + "|".join(hits)] += 1
                     continue
-                ok, reason = text_quality(text)
+                ok, reason = conversation_quality(text)
                 if not ok:
                     rejects[reason] += 1
                     continue

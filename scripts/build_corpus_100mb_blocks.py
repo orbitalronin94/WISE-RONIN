@@ -51,6 +51,8 @@ def main():
     p.add_argument("--start-version", type=int, default=1)
     p.add_argument("--max-block-bytes", type=int, default=LIMIT)
     p.add_argument("--dedup-db", default=None, help="Persistent SQLite DB shared across all versions")
+    p.add_argument("--allow-auto-approved", action="store_true",
+                   help="Allow auto_accept rows only when review_method=batch_policy_v1")
     a = p.parse_args()
     if a.max_block_bytes < 1 or a.max_block_bytes > LIMIT:
         raise SystemExit("max-block-bytes must be between 1 and 104857600")
@@ -134,8 +136,11 @@ def main():
             if not text:
                 reject("empty_text")
                 continue
-            if row.get("review_status") != "accept":
-                reject("not_human_accepted")
+            status = row.get("review_status")
+            auto_ok = (a.allow_auto_approved and status == "auto_accept"
+                       and row.get("review_method") == "batch_policy_v1")
+            if status != "accept" and not auto_ok:
+                reject("not_approved_or_unrecognized_review_method")
                 continue
             if row.get("rights_status") != "verified":
                 reject("rights_not_verified")
@@ -196,7 +201,8 @@ def main():
         "block_limit_bytes": a.max_block_bytes,
         "cumulative_chain": True,
         "training_authorized": False,
-        "note": "Each version is its parent plus one immutable delta. Automated construction does not replace source/legal/semantic review or authorize training."
+        "admission_mode": "mixed" if any(x.get("review_method") == "batch_policy_v1" for x in []) else ("automated_batch_policy_v1" if a.allow_auto_approved else "human_reviewed"),
+        "note": "Each version is its parent plus one immutable delta. Automated admission is limited to rows passing the source-specific policy; it does not authorize training."
     }
     summary_path = out / "lumen-corpus-v3-2-version-chain.json"
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

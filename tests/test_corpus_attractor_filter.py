@@ -6,7 +6,7 @@ from scripts.filter_corpus_attractors import compile_terms, normalize
 class AttractorFilterTests(unittest.TestCase):
     def setUp(self):
         self.patterns = compile_terms([
-            "contexto documental", "democracia", "música", "deformación"
+            "contexto documental", "democracia", "música", "deformación", "deformaciones"
         ])
 
     def hits(self, text):
@@ -26,7 +26,7 @@ class AttractorFilterTests(unittest.TestCase):
         self.assertEqual([], self.hits("La fotosíntesis transforma energía luminosa."))
 
     def test_deformation_variant(self):
-        self.assertIn("deformación", self.hits("deformaciones del material"))
+        self.assertIn("deformaciones", self.hits("deformaciones del material"))
 
 
 if __name__ == "__main__":

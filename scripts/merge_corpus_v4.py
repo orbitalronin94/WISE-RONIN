@@ -97,7 +97,6 @@ def find_blocked_base_documents(path: Path, patterns):
         document_id = (
             row.get("source_document_id")
             or row.get("document_id")
-            or row.get("source_doi")
             or row.get("source_url")
             or row.get("document_url")
             or row.get("article_url")
@@ -303,7 +302,6 @@ def main():
             document_id = (
                 normalized_row.get("source_document_id")
                 or normalized_row.get("document_id")
-                or normalized_row.get("source_doi")
                 or normalized_row.get("source_url")
                 or normalized_row.get("document_url")
                 or normalized_row.get("article_url")

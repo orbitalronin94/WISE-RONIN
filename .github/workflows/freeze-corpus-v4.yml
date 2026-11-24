@@ -149,7 +149,7 @@ jobs:
           from pathlib import Path
           from tokenizers import Tokenizer
           from scripts.build_corpus_v4_openculture import load_denylist, find_attractors
-          from scripts.merge_corpus_v4 import metadata_text
+          from scripts.merge_corpus_v4 import metadata_text, has_personal_identifier
           root=Path("artifacts/corpus-v4-frozen")
           m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
           tokenizer=Tokenizer.from_file("inputs/artifacts/tokenizer.json")
@@ -174,6 +174,9 @@ jobs:
                       prompt=str(row.get("prompt") or "")
                       completion=str(row.get("completion") or "")
                       assert row.get("language")=="es"
+                      assert row.get("split")!="holdout"
+                      assert row.get("source")!="holdout_500.jsonl"
+                      assert not has_personal_identifier(prompt+" "+completion)
                       assert len(tokenizer.encode((prompt+"\n"+completion).strip(),add_special_tokens=False).ids)<=126
                       assert not find_attractors(
                           prompt+"\n"+completion+"\n"+metadata_text(row),patterns

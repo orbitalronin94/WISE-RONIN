@@ -89,13 +89,13 @@ jobs:
           set -euo pipefail
           CHECKPOINT="$(cat checkpoint-path.txt)"
           mkdir -p results
-          python scripts/benchmark_lazy_surprise_1000.py \\
-            --candidate combined_lazy_surprise \\
-            --inputs inputs \\
-            --checkpoint "$CHECKPOINT" \\
-            --steps 1000 \\
-            --seed 42 \\
-            --output results/lazy-surprise-1000.json \\
+          python scripts/benchmark_lazy_surprise_1000.py \
+            --candidate combined_lazy_surprise \
+            --inputs inputs \
+            --checkpoint "$CHECKPOINT" \
+            --steps 1000 \
+            --seed 42 \
+            --output results/lazy-surprise-1000.json \
             2>&1 | tee results-lazy-surprise-1000.log
       - name: Publish comparison and logs
         if: always()

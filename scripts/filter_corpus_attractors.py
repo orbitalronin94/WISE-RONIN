@@ -63,7 +63,9 @@ def main() -> int:
                 rejected += 1
                 continue
 
-            text = row.get(args.text_field, "")
+            text = row.get(args.text_field)
+            if not isinstance(text, str):
+                text = row.get("completion", row.get("text", ""))
             if not isinstance(text, str):
                 text = ""
             normalized_text = normalize(text)

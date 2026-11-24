@@ -78,7 +78,7 @@ jobs:
           python scripts/build_corpus_v4_personality.py \
             --tokenizer "$TOKENIZER_PATH" \
             --target-rows "$TARGET_ROWS" \
-            --chunk-tokens 126 \
+            --chunk-tokens 120 \
             --max-shard-bytes 104857600 \
             --output-dir artifacts/corpus-v4-personality
 

@@ -421,6 +421,15 @@ def main():
     else:
         rows, data_hash = load_jsonl(args.data)
         tokenizer = BPETokenizer(args.tokenizer)
+        data_path = Path(args.data)
+        manifest_path = data_path / "manifest.json" if data_path.is_dir() else (
+            data_path if data_path.name == "manifest.json" else None
+        )
+        if manifest_path is not None:
+            corpus_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            actual_tokenizer_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
+            if corpus_manifest.get("tokenizer_sha256") != actual_tokenizer_hash:
+                raise ValueError("Corpus manifest tokenizer SHA-256 does not match --tokenizer")
         if tokenizer.tokenizer.get_vocab_size() != CONFIG.vocab_size:
             raise ValueError("Tokenizer vocabulary size must match model config")
         if tokenizer.tokenizer.token_to_id("[PAD]") != 0:

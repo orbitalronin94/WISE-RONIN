@@ -274,7 +274,10 @@ def main():
                 text = unicodedata.normalize("NFC", text).replace("\x00", " ")
                 text = re.sub(r"[ \t]+", " ", text)
                 text = re.sub(r"\n{3,}", "\n\n", text).strip()
-                hits = find_attractors(text, patterns)
+                metadata_probe = " ".join(
+                    str(item.get(key) or "") for key in ("title", "creator", "identifier", "file")
+                )
+                hits = find_attractors(text + "\n" + metadata_probe, patterns)
                 if hits:
                     rejects["attractor:" + "|".join(hits)] += 1
                     continue

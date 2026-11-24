@@ -96,3 +96,13 @@ def test_base_document_is_blocked_if_any_sibling_row_contains_attractor(tmp_path
     blocked = find_blocked_base_documents(path, patterns)
     assert "fixture::doc-1" in blocked
     assert "fixture::doc-2" not in blocked
+
+
+
+def test_final_merge_rejects_personal_identifier_patterns():
+    from scripts.merge_corpus_v4 import has_personal_identifier
+
+    assert has_personal_identifier("Contacto: prueba@example.com")
+    assert has_personal_identifier("DNI 12345678Z")
+    assert has_personal_identifier("Teléfono 612 345 678")
+    assert not has_personal_identifier("Texto general sobre astronomía y física.")

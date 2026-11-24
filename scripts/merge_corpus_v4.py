@@ -75,6 +75,24 @@ def metadata_text(row: dict) -> str:
     return "\n".join(values)
 
 
+def find_blocked_base_documents(path: Path, patterns):
+    """Reject every base row from a source document if any sibling row hits the denylist."""
+    blocked = {}
+    for index, raw in enumerate(iter_jsonl_file(path)):
+        row = normalize_base(raw, index)
+        document_id = row.get("source_document_id")
+        if document_id is None or not str(document_id).strip():
+            continue
+        prompt = str(row.get("prompt") or "")
+        completion = str(row.get("completion") or "")
+        hits = find_attractors(
+            prompt + "\\n" + completion + "\\n" + metadata_text(row), patterns
+        )
+        if hits:
+            blocked[str(document_id)] = sorted(set(blocked.get(str(document_id), [])) | set(hits))
+    return blocked
+
+
 def normalize_base(row: dict, index: int):
     row = dict(row)
     if not isinstance(row.get("completion"), str):
@@ -239,9 +257,17 @@ def main():
 
     candidate_manifest_sha = {}
     try:
+        blocked_documents = find_blocked_base_documents(args.base_jsonl, patterns)
+        print(f"BASE_DOCUMENTS_BLOCKED {len(blocked_documents)}", flush=True)
         for index, row in enumerate(iter_jsonl_file(args.base_jsonl)):
             base_rows_seen += 1
-            admit(normalize_base(row, index), "v3.2.005_base")
+            normalized_row = normalize_base(row, index)
+            document_id = normalized_row.get("source_document_id")
+            if document_id is not None and str(document_id) in blocked_documents:
+                reject(normalized_row, "source_document_contains_lumen_attractor",
+                       blocked_documents[str(document_id)])
+            else:
+                admit(normalized_row, "v3.2.005_base")
             if base_rows_seen % 25_000 == 0:
                 db.commit()
                 print(f"BASE {base_rows_seen}", flush=True)

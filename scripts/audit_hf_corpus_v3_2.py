@@ -64,7 +64,7 @@ def collect(v,out,depth=0):
  elif isinstance(v,(list,tuple)):
   for x in v:collect(x,out,depth+1)
 def rowtext(row,repo):
- fields=CONTENT_FIELDS.get(repo,())
+ fields=CONTENT_FIELDS.get(repo,("text",))
  values=[]
  for field in fields:
   value=row.get(field) if isinstance(row,dict) else None
@@ -147,7 +147,7 @@ def index_base(db,path):
  with open(path,encoding="utf-8") as f:
   for line in f:
    if not line.strip():continue
-   row=json.loads(line);txt=rowtext(row)
+   row=json.loads(line);txt=rowtext(row,"v3.1")
    if not txt:continue
    n=norm(txt);digest=hashlib.sha256(n.encode()).hexdigest()
    if not db.execute("SELECT 1 FROM exact WHERE digest=?",(digest,)).fetchone():

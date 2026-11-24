@@ -9,7 +9,7 @@ class ReviewQueueTests(unittest.TestCase):
     {"id":"12345678Z","question":"¿Qué derechos tiene una persona refugiada en España?","answer":"Debe recibir información clara y asistencia jurídica."},
     {"id":"555 123 456","question":"¿Cómo se tramita una solicitud de asilo?","answer":"La autoridad competente debe resolver conforme a la normativa aplicable."},
     {"question":"Contacte con ana@example.org para más información sobre el procedimiento."}]
-   source.write_text("".join(json.dumps(x,ensure_ascii=False)+"\\n" for x in rows),encoding="utf-8")
+   source.write_text("".join(json.dumps(x,ensure_ascii=False)+"\n" for x in rows),encoding="utf-8")
    subprocess.run([sys.executable,str(SCRIPT),"--input",str(source),"--output",str(output),
     "--source","example/dataset","--revision","deadbeef","--text-fields","question,answer"],
     check=True,capture_output=True,text=True)

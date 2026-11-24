@@ -106,15 +106,36 @@ def audit_split(db,repo,config,split,limit,sample_n):
   if i and i%10000==0:db.commit();print(f"{repo}/{config}/{split}: {i}",flush=True)
  db.commit();stats["elapsed_seconds"]=round(time.time()-started,2)
  return dict(stats),samples
+def index_base(db,path):
+ count=0
+ with open(path,encoding="utf-8") as f:
+  for line in f:
+   if not line.strip():continue
+   row=json.loads(line);txt=rowtext(row)
+   if not txt:continue
+   n=norm(txt);digest=hashlib.sha256(n.encode()).hexdigest()
+   if not db.execute("SELECT 1 FROM exact WHERE digest=?",(digest,)).fetchone():
+    db.execute("INSERT INTO exact VALUES (?,?)",(digest,"v3.1"))
+   fp=simhash(n)
+   for band in range(4):
+    val=(fp>>(band*16))&65535
+    db.execute("INSERT INTO sim VALUES (?,?,?)",(band,val,f"{fp:016x}"))
+   count+=1
+   if count%10000==0:db.commit();print(f"Indexed v3.1 rows: {count}",flush=True)
+ db.commit()
+ return count
+
 def main():
  p=argparse.ArgumentParser()
  p.add_argument("--registry",required=True);p.add_argument("--db",required=True);p.add_argument("--output",required=True)
+ p.add_argument("--base-jsonl",required=True)
  p.add_argument("--max-rows-per-split",type=int,default=0);p.add_argument("--sample-per-split",type=int,default=100)
  a=p.parse_args();db=sqlite3.connect(a.db);db.execute("PRAGMA journal_mode=WAL")
  db.execute("CREATE TABLE IF NOT EXISTS exact(digest TEXT PRIMARY KEY,source TEXT)")
  db.execute("CREATE TABLE IF NOT EXISTS sim(band INTEGER,value INTEGER,fingerprint TEXT)")
  db.execute("CREATE INDEX IF NOT EXISTS sim_idx ON sim(band,value)")
- report={"training_authorized":False,"note":"All eligible train splits are streamed unless capped. Automated scan is not semantic/legal approval.","sources":{},"samples":[]}
+ base_count=index_base(db,a.base_jsonl)
+ report={"training_authorized":False,"base_rows_indexed":base_count,"base_file":a.base_jsonl,"note":"All eligible train splits are streamed unless capped. Automated scan is not semantic/legal approval.","sources":{},"samples":[]}
  for repo,route in ELIGIBLE.items():
   ent={"route":route,"configs":{}}
   try:

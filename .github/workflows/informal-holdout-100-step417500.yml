@@ -1,4 +1,4 @@
-name: Informal 100-question holdout — step 417500
+name: Informal free-form holdout — 100 preguntas abiertas, step 417500
 
 on:
   workflow_dispatch:
@@ -12,13 +12,13 @@ permissions:
   actions: read
 
 concurrency:
-  group: ronin-informal-holdout-100-step417500
+  group: ronin-informal-freeform-100-step417500
   cancel-in-progress: false
 
 jobs:
   evaluate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 360
     env:
       SOURCE_RUN_ID: "45405758303"
       PYTHONUNBUFFERED: "1"
@@ -29,12 +29,12 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14.10"
-      - name: Install CPU evaluation runtime
+      - name: Install CPU inference runtime
         run: |
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           python -m pip install tokenizers numpy tqdm
-      - name: Download frozen v3.2.005 inputs
+      - name: Download frozen tokenizer and paired step-417500 checkpoints
         uses: actions/download-artifact@v7
         with:
           name: paired-v32-inputs-45405758303
@@ -58,55 +58,95 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.SOURCE_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify frozen data and checkpoint lineage
+      - name: Verify the exact checkpoints, tokenizer and open-question set
         run: |
           set -euo pipefail
-          test -s inputs/eval/holdout_multiple_choice.jsonl
           test -s inputs/artifacts/tokenizer.json
           test -s lumen/checkpoints/lumen/step_417500.pt
           test -s transformer/checkpoints/transformer/step_417500.pt
+          test -s data/freeform_identity_general_100.jsonl
           python - <<'PY'
           import json
           from pathlib import Path
           import torch
-          holdout=[x for x in Path("inputs/eval/holdout_multiple_choice.jsonl").read_text().splitlines() if x.strip()]
-          assert len(holdout)==2431, len(holdout)
-          expected={"lumen":"ronin_lumen_v3_3_neuroplasticity","transformer":"decoder_transformer_4l_d192_h4_ff576_tied_v1"}
-          paths={"lumen":"lumen/checkpoints/lumen/step_417500.pt","transformer":"transformer/checkpoints/transformer/step_417500.pt"}
+          from tokenizers import Tokenizer
+
+          rows=[json.loads(x) for x in Path("data/freeform_identity_general_100.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(rows)==100, f"Expected 100 prompts, got {len(rows)}"
+          assert len({r["id"] for r in rows})==100
+          assert all(isinstance(r.get("prompt"),str) and r["prompt"].strip() for r in rows)
+          assert all("choices" not in r and "answer" not in r for r in rows)
+          assert rows[0]["prompt"]=="¿Quién eres?"
+          tok=Tokenizer.from_file("inputs/artifacts/tokenizer.json")
+          for special in ("[BOS]","[EOS]","[PAD]"):
+              assert tok.token_to_id(special) is not None, f"Missing tokenizer token {special}"
+
+          paths={
+              "lumen":"lumen/checkpoints/lumen/step_417500.pt",
+              "transformer":"transformer/checkpoints/transformer/step_417500.pt",
+          }
+          states={}
           for name,path in paths.items():
-              s=torch.load(path,map_location="cpu",weights_only=False)
-              assert int(s["step"])==417500
-              assert s["architecture_id"]==expected[name]
-              print(f"{name}: verified step={s['step']} architecture={s['architecture_id']}")
-          print("Frozen official holdout: 2431 rows; informal subset: first 100 rows.")
+              state=torch.load(path,map_location="cpu",weights_only=False)
+              assert int(state.get("step",-1))==417500, (name,state.get("step"))
+              assert isinstance(state.get("model"),dict) and state["model"], name
+              states[name]=state
+              print(f"{name}: verified step={state['step']} with model weights")
+          assert states["lumen"].get("tokenizer_sha256")==states["transformer"].get("tokenizer_sha256")
+          print("Verified 100 fixed open prompts: no choices, no gold answers.")
+          print("Categories:", sorted({r["source"] for r in rows}))
+          print("Tokenizer and paired checkpoint lineage verified.")
           PY
-      - name: Score both models on the same first 100 questions
+      - name: Generate the same 100 free-form answers from both models
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/evaluate_multiple_choice_holdout.py \
-            --holdout inputs/eval/holdout_multiple_choice.jsonl \
+          mkdir -p results/freeform-step417500
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/freeform_identity_general_holdout.py \
+            --holdout data/freeform_identity_general_100.jsonl \
             --tokenizer inputs/artifacts/tokenizer.json \
             --lumen lumen/checkpoints/lumen/step_417500.pt \
             --transformer transformer/checkpoints/transformer/step_417500.pt \
-            --expected-lumen-step 417500 --expected-transformer-step 417500 \
-            --limit 100 \
-            --out results/informal_step417500_first100.json \
-            --threads 4 --max-len 128
+            --expected-step 417500 \
+            --sample-size 100 --seed 417500 --max-new-tokens 96 \
+            --out-dir results/freeform-step417500 --threads 4 --max-len 128
           python - <<'PY'
           import json
-          p=json.load(open("results/informal_step417500_first100.json"))
-          assert p["holdout_rows"]==100, p["holdout_rows"]
-          for name,r in p["results"].items():
-              assert r["total"]==100, (name,r["total"])
-              print(f"{name}: {r['correct']}/100 ({100*r['accuracy']:.1f}%), mean_answer_nll={r['mean_answer_nll']:.6f}")
-          print("INFORMAL SUBSET ONLY — not the official 2431-question holdout.")
+          from pathlib import Path
+          root=Path("results/freeform-step417500")
+          old_json=root/"step170700_identity_general_100.json"
+          old_md=root/"step170700_identity_general_100.md"
+          data=json.loads(old_json.read_text(encoding="utf-8"))
+          assert data["step"]==417500 and data["sample_size"]==100
+          assert len(data["results"])==100
+          data["evaluation_note"]="Evaluación informal de generación libre. Las 100 preguntas se entregan sin opciones ni respuestas de referencia; no es una puntuación automática de exactitud."
+          data["prompt_policy"]="100 preguntas abiertas fijas en español; sin opciones ni respuestas de referencia; ambos modelos reciben exactamente los mismos prompts."
+          (root/"step417500_freeform_100.json").write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          md=old_md.read_text(encoding="utf-8")
+          md=md.replace("170.700","417.500").replace("(170700)","(417500)")
+          md=md.replace("- Se han eliminado las opciones y la respuesta correcta antes de generar.","- Las 100 preguntas son abiertas desde el origen: no contienen opciones ni respuestas de referencia.")
+          md=md.replace("máximo de 64 tokens","máximo de 96 tokens")
+          md += "\n\n> Sonda informal de generación libre. No equivale a una puntuación automática de exactitud ni sustituye al holdout oficial.\n"
+          (root/"step417500_freeform_100.md").write_text(md,encoding="utf-8")
+          old_json.unlink()
+          old_md.unlink()
+          for model in ("lumen","transformer"):
+              assert all(isinstance(item[model]["text"],str) for item in data["results"])
+          print("Generated and validated 100 paired open-ended answers.")
+          print("Identity prompt:",data["results"][0]["prompt"])
           PY
-      - uses: actions/upload-artifact@v7
+      - name: Upload paired open-ended prompts and answers
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
-          name: ronin-informal-first100-step417500-${{ github.run_id }}
-          path: results/informal_step417500_first100.json
-          if-no-files-found: error
+          name: ronin-informal-freeform-100-step417500-${{ github.run_id }}
+          path: results/freeform-step417500/
+          if-no-files-found: warn
           retention-days: 90
-          compression-level: 6
+      - name: Report free-form evaluation
+        if: always()
+        run: |
+          echo "Informal paired free-form holdout at step 417500: ${{ github.run_id }}"
+          test -s results/freeform-step417500/step417500_freeform_100.json
+          test -s results/freeform-step417500/step417500_freeform_100.md

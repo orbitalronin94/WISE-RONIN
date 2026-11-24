@@ -71,7 +71,7 @@ jobs:
           assert state.get("model") and state.get("optimizer")
           assert state.get("rng") and state.get("scheduler_transition")
           print(f"CHECKPOINT={checkpoint}")
-          Path("checkpoint-path.txt").write_text(str(checkpoint) + "\\n")
+          Path("checkpoint-path.txt").write_text(str(checkpoint) + "\n")
           for p in [
               Path("inputs/data/spanish-v2-plus-personality-250k.jsonl"),
               Path("inputs/data/spanish-v2-plus-personality-token-cache.pt"),

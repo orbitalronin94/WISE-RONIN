@@ -215,7 +215,7 @@ def main():
         if str(row.get("language") or "") != "es":
             reject(row, "non_spanish_or_unverified_language")
             return
-        if has_personal_identifier(prompt + "\\n" + completion):
+        if has_personal_identifier(prompt + "\n" + completion):
             reject(row, "personal_identifier_pattern")
             return
 

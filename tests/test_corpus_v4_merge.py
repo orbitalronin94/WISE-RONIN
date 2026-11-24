@@ -60,3 +60,20 @@ def test_metadata_text_checks_nested_and_list_metadata_but_not_training_body():
     assert "música in the prompt" not in flattened
     assert "democracia in the body" not in flattened
     assert "música-id" not in flattened
+
+
+def test_openculture_metadata_text_checks_nested_fields_and_skips_body():
+    from scripts.build_corpus_v4_openculture import metadata_text
+
+    item = {
+        "text": "El cuerpo no debe duplicarse en la sonda de metadatos",
+        "title": "Título documental",
+        "start_date": "1926-02-01",
+        "nested": {"collection": "hemeroteca", "tags": ["ciencia", "historia"]},
+    }
+    flattened = metadata_text(item)
+    assert "Título documental" in flattened
+    assert "1926-02-01" in flattened
+    assert "hemeroteca" in flattened
+    assert "ciencia" in flattened
+    assert "El cuerpo no debe duplicarse" not in flattened

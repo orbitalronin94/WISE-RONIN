@@ -2,12 +2,6 @@ name: RONIN paired continuation 41000 to 61000 + Spanish holdout
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/continue-41000-61000-paired.yml
-      - train/train.py
-      - train/transformer_baseline.py
 
 permissions:
   contents: read

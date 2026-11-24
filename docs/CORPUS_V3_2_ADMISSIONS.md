@@ -9,7 +9,8 @@ This ledger records the immutable source-specific batch admissions appended to f
 | v3.2.001 | v3.1 | BSC-LT/m-personas | 32,040 | 104,856,354 | 11,509,938 |
 | v3.2.002 | v3.2.001 | BSC-LT/m-personas | 3,447 | 12,598,425 | 1,425,279 |
 | v3.2.003 | v3.2.002 | Kukedlc/Personas_Spanish-40k | 35,997 | 29,022,331 | 851,920 |
-| **Total** | **v3.1** | **2 sources** | **71,484** | **146,477,110** | **13,787,137** |
+| v3.2.004 | v3.2.003 | somosnlp/instruct-legal-refugiados-es | 9,091 | 35,885,349 | 4,239,968 |
+| **Total** | **v3.1** | **3 sources** | **80,575** | **182,362,459** | **18,027,105** |
 
 All three deltas are immutable, individually hashed, and below the 100 MiB ceiling. The chain summary and each version manifest contain the parent link, source revision, row count, byte count, token estimate and SHA-256. A whitespace-token count is not a tokenizer-ID count.
 
@@ -61,6 +62,20 @@ Flagged, unresolved, malformed and duplicate rows are quarantined. No data sourc
 - Email, NIF and formatted/contextual phone checks are field-aware; bare legal references such as decree and law numbers are not automatically treated as telephone numbers.
 - Question, context and generated answer remain explicitly labelled. Source jurisdiction metadata is preserved.
 - Answers are machine-generated; legal validity is marked \`not_independently_verified\`. This material is not a current legal reference service.
+
+## Source 3 — somosnlp/instruct-legal-refugiados-es
+
+- Revision: `c5e0373049d50c382a75ee0677e3f6b1b4b63dc2`
+- Declared license at pinned revision: Apache-2.0
+- Split: `train`
+- Rows scanned: 9,430
+- Rows admitted: 9,091
+- Quarantined: 339 (244 near-duplicate candidates, 33 possible-email flags, 26 formatted/contextual phone flags, 19 short contexts, 17 low-text-density rows)
+- Admitted whitespace tokens: 4,239,968
+- Question, context and generated answer are preserved as labelled segments. Source country, period, domain, task and register are retained as metadata.
+- All 244 near-duplicate candidate row indices from the pinned audit were quarantined; this includes exact duplicates and cross-source near-duplicate candidates.
+- The phone detector is field-aware and requires phone-like grouping or explicit phone context, avoiding the broad numeric false positives from statutory citations.
+- Answers were machine-generated from legal source contexts. `legal_validity=not_independently_verified`; this is training material, not current legal advice.
 
 ## Training gate
 

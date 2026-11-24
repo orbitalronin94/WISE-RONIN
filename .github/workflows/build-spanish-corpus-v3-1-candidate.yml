@@ -39,22 +39,22 @@ jobs:
           repository: orbitalronin94/WISE-RONIN
           run-id: 45149684913
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Resolve and verify immutable source files
-        shell: bash
+      - name: Verify known immutable source paths
         run: |
           set -euo pipefail
-          test -s prepared/data/spanish-v2-plus-personality-250k.jsonl
-          CACHE=$(find prepared -type f -iname '*token*cache*.pt' | sort)
-          TOKENIZER=$(find prepared -type f -name 'tokenizer.json' | sort)
-          HOLDOUT=$(find prepared -type f -name 'holdout_multiple_choice.jsonl' | sort)
-          test "$(printf '%s\n' "$CACHE" | wc -l)" -eq 1
-          test "$(printf '%s\n' "$TOKENIZER" | wc -l)" -eq 1
-          test "$(printf '%s\n' "$HOLDOUT" | wc -l)" -eq 1
-          echo "BASE_JSONL=prepared/data/spanish-v2-plus-personality-250k.jsonl" >> "$GITHUB_ENV"
-          echo "BASE_CACHE=$CACHE" >> "$GITHUB_ENV"
+          BASE_JSONL=prepared/data/spanish-v2-plus-personality-250k.jsonl
+          BASE_CACHE=prepared/data/spanish-v2-plus-personality-token-cache.pt
+          TOKENIZER=prepared/artifacts/spanish-v2/tokenizer.json
+          HOLDOUT=prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl
+          test -s "$BASE_JSONL"
+          test -s "$BASE_CACHE"
+          test -s "$TOKENIZER"
+          test -s "$HOLDOUT"
+          echo "BASE_JSONL=$BASE_JSONL" >> "$GITHUB_ENV"
+          echo "BASE_CACHE=$BASE_CACHE" >> "$GITHUB_ENV"
           echo "TOKENIZER=$TOKENIZER" >> "$GITHUB_ENV"
           echo "HOLDOUT=$HOLDOUT" >> "$GITHUB_ENV"
-          sha256sum prepared/data/spanish-v2-plus-personality-250k.jsonl "$CACHE" "$TOKENIZER" "$HOLDOUT"
+          sha256sum "$BASE_JSONL" "$BASE_CACHE" "$TOKENIZER" "$HOLDOUT"
       - name: Audit the original personality/factual dataset
         run: |
           python scripts/audit_personality_corpus.py \
@@ -71,16 +71,13 @@ jobs:
             --max-len 128 \
             --review-per-source 200
       - name: Preserve frozen tokenizer, holdout and validation
-        shell: bash
         run: |
           set -euo pipefail
           cp "$TOKENIZER" artifacts/spanish-v3-1-candidate/tokenizer.json
           cp "$HOLDOUT" artifacts/spanish-v3-1-candidate/holdout_multiple_choice.jsonl
           cmp -s "$HOLDOUT" artifacts/spanish-v3-1-candidate/holdout_multiple_choice.jsonl
-          VALIDATION=$(find prepared -type f -name 'validation.jsonl' | sort)
-          if [[ -n "$VALIDATION" ]]; then
-            test "$(printf '%s\n' "$VALIDATION" | wc -l)" -eq 1
-            cp "$VALIDATION" artifacts/spanish-v3-1-candidate/validation.jsonl
+          if test -f prepared/artifacts/spanish-v2/validation.jsonl; then
+            cp prepared/artifacts/spanish-v2/validation.jsonl artifacts/spanish-v3-1-candidate/validation.jsonl
           fi
       - name: Validate manifest, cache, hashes and protected evaluation
         run: |

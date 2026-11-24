@@ -90,6 +90,10 @@ def find_blocked_base_documents(path: Path, patterns):
     blocked = {}
     for index, raw in enumerate(iter_jsonl_file(path)):
         row = normalize_base(raw, index)
+        source_name = str(row.get("source") or "unknown")
+        source_row = str(row.get("source_row") or "").strip()
+        if source_name == "BSC-LT/m-personas" and source_row:
+            source_row = source_row.split(".", 1)[0]
         document_id = (
             row.get("source_document_id")
             or row.get("document_id")
@@ -98,11 +102,12 @@ def find_blocked_base_documents(path: Path, patterns):
             or row.get("document_url")
             or row.get("article_url")
             or row.get("source_id")
+            or source_row
             or row.get("id")
         )
         if document_id is None or not str(document_id).strip():
             document_id = f"row:{index}"
-        document_key = f"{row.get('source', 'unknown')}::{document_id}"
+        document_key = f"{source_name}::{document_id}"
         prompt = str(row.get("prompt") or "")
         completion = str(row.get("completion") or "")
         hits = find_attractors(
@@ -291,6 +296,10 @@ def main():
         for index, row in enumerate(iter_jsonl_file(args.base_jsonl)):
             base_rows_seen += 1
             normalized_row = normalize_base(row, index)
+            source_name = str(normalized_row.get("source") or "unknown")
+            source_row = str(normalized_row.get("source_row") or "").strip()
+            if source_name == "BSC-LT/m-personas" and source_row:
+                source_row = source_row.split(".", 1)[0]
             document_id = (
                 normalized_row.get("source_document_id")
                 or normalized_row.get("document_id")
@@ -299,11 +308,12 @@ def main():
                 or normalized_row.get("document_url")
                 or normalized_row.get("article_url")
                 or normalized_row.get("source_id")
+                or source_row
                 or normalized_row.get("id")
             )
             if document_id is None or not str(document_id).strip():
                 document_id = f"row:{index}"
-            document_key = f"{normalized_row.get('source', 'unknown')}::{document_id}"
+            document_key = f"{source_name}::{document_id}"
             if document_key in blocked_documents:
                 reject(normalized_row, "source_document_contains_lumen_attractor",
                        blocked_documents[document_key])

@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/continue-paired-417500-467500-v32-lr3e5.yml
 
+# Explicit post-merge touch to dispatch this fixed, artifact-pinned continuation.
 permissions:
   contents: read
   actions: read

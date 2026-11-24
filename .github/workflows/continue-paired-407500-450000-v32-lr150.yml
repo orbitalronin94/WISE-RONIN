@@ -75,8 +75,8 @@ jobs:
           mkdir -p prepared parents/lumen/checkpoint parents/transformer/checkpoint
           cp -a source-inputs/. prepared/
           rm -rf prepared/parent
-          cp source-lumen/checkpoint/step_407500.pt parents/lumen/checkpoint/step_407500.pt
-          cp source-transformer/checkpoint/step_407500.pt parents/transformer/checkpoint/step_407500.pt
+          cp source-lumen/checkpoints/lumen/step_407500.pt parents/lumen/checkpoint/step_407500.pt
+          cp source-transformer/checkpoints/transformer/step_407500.pt parents/transformer/checkpoint/step_407500.pt
           if [ -s source-lumen/lumen-wall.json ]; then cp source-lumen/lumen-wall.json parents/lumen/lumen-wall.json; fi
           if [ -s source-transformer/transformer-wall.json ]; then cp source-transformer/transformer-wall.json parents/transformer/transformer-wall.json; fi
           python - <<'PY'

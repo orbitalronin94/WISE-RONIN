@@ -85,3 +85,24 @@ La propuesta inicial queda en data/corpus_v4_source_plan.json. Priorizar:
 9. Personalidad: ampliar perfiles y diálogos variados con datos sintéticos claramente etiquetados o fuentes con permiso/licencia explícita; excluir datos personales reales y campos biográficos identificables.
 
 **No se congela ni se autoriza entrenamiento todavía.** Esta PR instala la auditoría inicial y el control de admisión; la ingestión completa, el recuento final y la congelación se harán después de ejecutar los lotes y revisar sus manifiestos.
+
+
+## Reauditoría documental del artefacto emparejado (2026-11-24)
+
+Esta sección sustituye las estimaciones preliminares anteriores sobre el alcance de la lista de atractores. Se ha vuelto a recorrer el JSONL exacto de 279.613 filas con la lista ampliada y la regla de agrupación documental usada por el merge.
+
+- Filas con coincidencia directa en cuerpo o metadatos: **20.590**.
+- Identificadores documentales afectados: **19.168**.
+- Filas rechazadas al extender el rechazo a todos los fragmentos hermanos del documento: **28.383**.
+- Filas base restantes tras el rechazo documental: **251.230**.
+- Del bloque raw_text_pretraining se rechazan 2.217 filas; permanecen 175.873.
+- Del bloque de personalidad se rechazan 14.864 filas; permanecen 57.870.
+- Se rechazan las 9.091 filas del bloque contextual_legal_qa al aparecer el atractor en el texto.
+
+**Corrección de identidad documental:** source_doi identifica en csic_es y tdx_es la colección/dataset, no cada documento. No se usa para agrupar rechazos. La clave prioriza source_document_id, identificadores/URLs documentales, source_id y source_row; en m-personas se agrupan los turnos por el ID de persona padre. Se añadió una prueba de regresión para impedir que un DOI compartido expulse documentos no relacionados.
+
+### Ajuste de la cuota de personalidad
+
+Con el rechazo documental completo, el candidato inicial de 160.000 filas dejaría el bloque de personalidad por debajo del mínimo del 10% después de la deduplicación y la mezcla. La cuota se elevó a **165.000 filas** (100.000 m-personas + 65.000 SFT-General Spanish). Con las cifras de auditoría anteriores, el margen teórico es aproximadamente 10,06%; el manifiesto final debe confirmar la proporción real después de deduplicar.
+
+Este cálculo no autoriza el entrenamiento. La compilación documental de 1,8 M, el merge final y la auditoría independiente de los shards siguen siendo requisitos.

@@ -17,7 +17,7 @@ from model.config import CONFIG
 from model.lumen import RoninLumen
 from model.plasticity import PlasticityProfile
 from train.curriculum import datos_para_fase, sample_phase2
-from train.dataset import (BPETokenizer, collate_rows, collate_cached_indices,
+from train.dataset import (BPETokenizer, IndexedJsonlCorpus, collate_rows, collate_cached_indices,
                             load_jsonl, load_token_cache, pack_token_cache)
 from train.loss import perdida_total
 from train.sleep import sueno
@@ -420,6 +420,8 @@ def main():
         data_hash, tokenizer, phase_data = "dummy-m1-no-corpus", None, None
     else:
         rows, data_hash = load_jsonl(args.data)
+        if args.token_cache and isinstance(rows, IndexedJsonlCorpus):
+            raise ValueError("Large sharded corpora use lazy indexed sampling; omit --token-cache")
         tokenizer = BPETokenizer(args.tokenizer)
         data_path = Path(args.data)
         manifest_path = data_path / "manifest.json" if data_path.is_dir() else (
@@ -434,7 +436,12 @@ def main():
             raise ValueError("Tokenizer vocabulary size must match model config")
         if tokenizer.tokenizer.token_to_id("[PAD]") != 0:
             raise ValueError("[PAD] must be token ID 0")
-        phase_data = rows if args.pilot_all_rows else datos_para_fase(rows, args.phase)
+        phase_data = (
+            rows if args.pilot_all_rows or isinstance(rows, IndexedJsonlCorpus)
+            else datos_para_fase(rows, args.phase)
+        )
+        if isinstance(rows, IndexedJsonlCorpus):
+            LOG.info("using lazy indexed corpus rows=%d; no full-corpus row materialization", len(rows))
 
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay,
@@ -680,8 +687,11 @@ def main():
             tokens = torch.randint(4, CONFIG.vocab_size,
                                    (args.batch, args.max_len), device=device)
         else:
-            chosen = (sample_phase2(phase_data, args.batch, local_rng)
-                      if args.phase == 2 else local_rng.choices(phase_data, k=args.batch))
+            chosen = (
+                sample_phase2(phase_data, args.batch, local_rng)
+                if args.phase == 2 and isinstance(phase_data, dict)
+                else local_rng.choices(phase_data, k=args.batch)
+            )
             if packed_token_rows is None:
                 tokens = collate_rows(chosen, tokenizer, args.max_len)
             else:

@@ -16,6 +16,19 @@ ELIGIBLE = {
  "PlanTL-GOB-ES/pharmaconer":"supervised_extraction",
  "bigbio/distemist":"supervised_extraction"
 }
+CONFIG_OVERRIDES = {
+ "BSC-LT/m-personas":["es"]
+}
+CONTENT_FIELDS = {
+ "OysterCoreAI/SFT-General-Spanish-50K":("messages",),
+ "BSC-LT/m-personas":("persona","prompt","messages"),
+ "Kukedlc/Personas_Spanish-40k":("Persona_Descripcion","descripcion","text"),
+ "StrataSynth/stratasynth-personas-spain":("persona","daily_routine","speaking_style"),
+ "somosnlp/instruct-legal-refugiados-es":("question","context","answer"),
+ "dariolopez/ms-marco-es-500k":("query","passage"),
+ "PlanTL-GOB-ES/pharmaconer":("tokens",),
+ "bigbio/distemist":("text","tokens","document")
+}
 EXCLUDED = {
  "ola-owo/big-five-personality-traits":"psychometric_labels_excluded",
  "somosnlp/LingComp_QA":"741_rows_already_in_v3_1_no_reimport",
@@ -47,12 +60,23 @@ def collect(v,out,depth=0):
    if str(k).lower() not in {"id","uuid","url","link","license","language","lang","split","label","labels"}:collect(x,out,depth+1)
  elif isinstance(v,(list,tuple)):
   for x in v:collect(x,out,depth+1)
-def rowtext(row):
- a=[];collect(row,a);seen=set();b=[]
- for x in a:
-  x=" ".join(x.split())
-  if x and x not in seen:seen.add(x);b.append(x)
- return "\n".join(b)
+def rowtext(row,repo):
+ fields=CONTENT_FIELDS.get(repo,())
+ values=[]
+ for field in fields:
+  value=row.get(field) if isinstance(row,dict) else None
+  if isinstance(value,str) and len(value.strip())>=1:
+   values.append(" ".join(value.split()))
+  elif field=="messages" and isinstance(value,list):
+   for message in value:
+    if isinstance(message,dict) and isinstance(message.get("content"),str):
+     values.append(" ".join(message["content"].split()))
+  elif field=="tokens" and isinstance(value,(list,tuple)):
+   values.append(" ".join(str(token) for token in value))
+ seen=set(); unique=[]
+ for value in values:
+  if value and value not in seen: seen.add(value); unique.append(value)
+ return "\n".join(unique)
 def lang(row,s):
  if isinstance(row,dict):
   x=str(row.get("language",row.get("lang",""))).lower()
@@ -74,7 +98,7 @@ def audit_split(db,repo,revision,config,split,limit,sample_n):
  stream=load_dataset(repo,name=None if config=="default" else config,split=split,streaming=True,revision=revision)
  for i,row in enumerate(stream):
   if limit and i>=limit:break
-  stats["rows_seen"]+=1;s=rowtext(row)
+  stats["rows_seen"]+=1;s=rowtext(row,repo)
   if not s:stats["empty_or_nontext"]+=1;continue
   language=lang(row,s);stats["language_"+language]+=1
   if language.startswith("non_es"):
@@ -111,7 +135,7 @@ def audit_split(db,repo,revision,config,split,limit,sample_n):
    val=(fp>>(band*16))&65535
    db.execute("INSERT INTO sim VALUES (?,?,?,?,?)",(band,val,f"{fp:016x}",repo,str(i)))
   if len(samples)<sample_n and (i<sample_n or (i+1)%(max(1,limit//sample_n) if limit else 1000)==0):
-   samples.append({"source":repo,"config":config,"split":split,"row_index":i,"language":lang(row,s),"flags":flags,"excerpt":s[:700]})
+   samples.append({"source":repo,"revision":revision,"config":config,"split":split,"row_index":i,"language":language,"flags":flags,"text_sha256":digest,"text_chars":len(s),"whitespace_tokens":len(n.split()),"raw_text_exported":False})
   if i and i%10000==0:db.commit();print(f"{repo}/{config}/{split}: {i}",flush=True)
  db.commit();stats["elapsed_seconds"]=round(time.time()-started,2)
  return dict(stats),samples,duplicates
@@ -157,7 +181,7 @@ def main():
    card=info.card_data.to_dict() if info.card_data else {}
    record=registry_sources.get(repo,{})
    ent.update({"revision":revision,"declared_license_card":card.get("license"),"declared_license_registry":record.get("license"),"registry_entry_found":bool(record)})
-   configs=get_dataset_config_names(repo,revision=revision) or ["default"]
+   configs=CONFIG_OVERRIDES.get(repo) or get_dataset_config_names(repo,revision=revision) or ["default"]
    for config in configs:
     try:splits=get_dataset_split_names(repo,config_name=None if config=="default" else config,revision=revision)
     except Exception as e:ent["configs"][config]={"error":"split discovery: "+repr(e)};continue

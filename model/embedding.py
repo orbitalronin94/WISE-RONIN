@@ -7,6 +7,7 @@ class VivoEmbedding(nn.Module):
         super().__init__()
         self.vocab, self.dim = vocab, dim
         self.max_prune_fraction = max_prune_fraction
+        self.usage_interval = 1
         self.emb = nn.Embedding(vocab, dim)
         nn.init.normal_(self.emb.weight, mean=0.0, std=0.02)
         self.register_buffer("uso", torch.zeros(vocab, dtype=torch.float32))
@@ -14,8 +15,11 @@ class VivoEmbedding(nn.Module):
 
     def forward(self, x):
         with torch.no_grad():
-            counts = torch.bincount(x.reshape(-1), minlength=self.vocab)
-            self.uso.add_(counts.to(self.uso.dtype))
+            if self.usage_interval < 1:
+                raise ValueError("usage_interval must be >= 1")
+            if self.usage_interval == 1 or int(self.pasos_desde_poda.item()) % self.usage_interval == 0:
+                counts = torch.bincount(x.reshape(-1), minlength=self.vocab)
+                self.uso.add_(counts.to(self.uso.dtype))
             self.pasos_desde_poda.add_(1)
         return self.emb(x)
 

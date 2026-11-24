@@ -89,7 +89,7 @@ jobs:
           for name,path in paths.items():
               state=torch.load(path,map_location="cpu",weights_only=False)
               assert int(state.get("step",-1))==417500, (name,state.get("step"))
-              assert isinstance(state.get("model"),dict) and state["model"], name
+              assert hasattr(state.get("model"),"items") and len(state["model"])>0, (name,type(state.get("model")))
               states[name]=state
               print(f"{name}: verified step={state['step']} with model weights")
           assert states["lumen"].get("tokenizer_sha256")==states["transformer"].get("tokenizer_sha256")

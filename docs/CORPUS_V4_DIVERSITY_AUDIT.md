@@ -53,13 +53,14 @@ La regla se implementa en scripts/filter_corpus_attractors.py y la lista queda v
 2. **Datos legales sintéticos o derivados:** el manifiesto de v3.2.004 indica respuestas generadas desde contexto y validez legal no verificada independientemente. No debe presentarse como autoridad legal vigente.
 3. **Campos de persona:** v3.2.005 declara campos de origen excluidos, pero el texto de ejemplo todavía contiene nombre, edad y circunstancias familiares. Se debe auditar el texto serializado, no confiar solo en la lista de campos excluidos; minimizar o eliminar identificadores biográficos innecesarios.
 4. **Calidad OCR:** libros y prensa históricos pueden aportar enorme diversidad, pero requieren filtros de OCR, idioma, longitud, duplicación y fragmentos incompletos.
-5. **Licencias:** la licencia del código del dataset no basta; se debe registrar la licencia del texto subyacente por documento o colección y excluir fuentes incompatibles/no verificadas.
+5. **Compatibilidad del entrenador:** train/dataset.py exige prompt y completion y trunca a max_len=128; los deltas v3.2 contienen text. Hace falta un adaptador explícito antes de entrenar.
+6. **Licencias:** la licencia del código del dataset no basta; se debe registrar la licencia del texto subyacente por documento o colección y excluir fuentes incompatibles/no verificadas.
 
 ## Objetivo de corpus v4
 
 - **Mínimo:** 10× el número real de filas del corpus de entrenamiento congelado (si son 180.000, al menos 1,8 M).
 - **Aspiracional:** 100× (si son 180.000, 18 M), solo si la ingestión real produce suficientes documentos únicos, útiles y con derechos verificables.
-- Fragmentar documentos largos en ventanas de texto coherentes con el contexto del modelo; registrar source_document_id, chunk_index, offsets y procedencia para deduplicar y reconstruir.
+- El entrenador actual usa max_len=128 y espera prompt/completion, mientras los deltas v3.2 serializan text. El adaptador debe convertir texto documental a prompt vacío + completion y trocear a un máximo de 126 tokens BPE (reservando BOS/EOS); registrar source_document_id, chunk_index, offsets y procedencia. No almacenar párrafos de miles de palabras como una sola fila: el entrenador truncaría casi todo el documento.
 - Mantener la personalidad como una franja estable de aproximadamente 10–15% del corpus final, no dejarla desaparecer bajo el volumen documental. La proporción se mide tras el filtro de atractores y deduplicación.
 - Congelar una versión inmutable con manifiesto, SHA-256, conteo de filas/tokens, distribución por dominio/tipo, licencia y reporte de rechazos.
 

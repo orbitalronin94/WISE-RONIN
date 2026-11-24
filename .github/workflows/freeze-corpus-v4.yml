@@ -152,7 +152,9 @@ jobs:
           from scripts.merge_corpus_v4 import metadata_text, has_personal_identifier
           root=Path("artifacts/corpus-v4-frozen")
           m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
-          tokenizer=Tokenizer.from_file("inputs/artifacts/tokenizer.json")
+          tokenizer_path=root/"tokenizer.json"
+          assert hashlib.sha256(tokenizer_path.read_bytes()).hexdigest()==m["tokenizer_sha256"]
+          tokenizer=Tokenizer.from_file(str(tokenizer_path))
           denylist,patterns=load_denylist(root/"attractor_denylist.json")
           assert m["training_authorized"] is False
           assert m["raw_text_target_met"] is True

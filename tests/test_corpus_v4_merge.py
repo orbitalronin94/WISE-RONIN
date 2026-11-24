@@ -106,3 +106,25 @@ def test_final_merge_rejects_personal_identifier_patterns():
     assert has_personal_identifier("DNI 12345678Z")
     assert has_personal_identifier("Teléfono 612 345 678")
     assert not has_personal_identifier("Texto general sobre astronomía y física.")
+
+
+
+def test_m_personas_turns_share_parent_persona_rejection_key(tmp_path):
+    import json
+    from scripts.merge_corpus_v4 import find_blocked_base_documents
+    from scripts.build_corpus_v4_openculture import load_denylist
+
+    path = tmp_path / "base.jsonl"
+    rows = [
+        {"source": "BSC-LT/m-personas", "source_row": "persona-42.turn-a",
+         "prompt": "", "completion": "Conversación neutral."},
+        {"source": "BSC-LT/m-personas", "source_row": "persona-42.turn-b",
+         "prompt": "", "completion": "Conversación con contexto documental."},
+        {"source": "BSC-LT/m-personas", "source_row": "persona-43.turn-a",
+         "prompt": "", "completion": "Otra conversación neutral."},
+    ]
+    path.write_text("".join(json.dumps(row, ensure_ascii=False) + chr(10) for row in rows), encoding="utf-8")
+    _denylist, patterns = load_denylist(__import__("pathlib").Path("data/corpus_v4_attractor_denylist.json"))
+    blocked = find_blocked_base_documents(path, patterns)
+    assert "BSC-LT/m-personas::persona-42" in blocked
+    assert "BSC-LT/m-personas::persona-43" not in blocked

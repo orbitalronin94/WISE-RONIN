@@ -188,7 +188,7 @@ def main():
         payload = {
             "id": row.get("id"),
             "source": row.get("source"),
-            "source_document_id": row.get("source_document_id"),
+            "source_document_id": (row.get("source_document_id") or row.get("document_id") or row.get("source_url") or row.get("document_url") or row.get("article_url") or row.get("source_id") or row.get("source_row")),
             "task": row.get("task") or row.get("task_type"),
             "content_sha256": hashlib.sha256(
                 normalize(prompt + "\n" + completion).encode("utf-8")

@@ -58,6 +58,8 @@ def main():
                 try: row=json.loads(line)
                 except Exception: continue
                 chunks=[value for _,value in extract_chunks(row, fields, a.messages_field) if value] if isinstance(row,dict) else []
+                if not chunks and isinstance(row,dict) and isinstance(row.get("text"),str) and norm(row["text"]):
+                    chunks=[norm(row["text"])]
                 if chunks: base.add(hashlib.sha256("\n".join(chunks).encode()).hexdigest())
     out=Path(a.output); out.parent.mkdir(parents=True,exist_ok=True)
     stats={"rows_seen":0,"rows_with_text":0,"empty_text":0,"exact_duplicate_v3_1":0,

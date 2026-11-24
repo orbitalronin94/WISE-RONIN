@@ -41,8 +41,7 @@ class ReviewQueueTests(unittest.TestCase):
    row={"tokens":["La","molécula","activa","es","atenolol","."],"ner_tags":["O","O","O","O","B-NORMALIZABLES","O"]}
    source.write_text(json.dumps(row,ensure_ascii=False)+"\n",encoding="utf-8")
    proc=subprocess.run([sys.executable,str(SCRIPT),"--input",str(source),"--output",str(output),
-    "--source","example/ner","--revision","deadbeef","--text-fields","unused",
-    "--tokens-field","tokens","--tags-field","ner_tags"],capture_output=True,text=True)
+    "--source","example/ner","--revision","deadbeef","--tokens-field","tokens","--tags-field","ner_tags"],capture_output=True,text=True)
    self.assertEqual(proc.returncode,0,proc.stderr)
    record=json.loads(output.read_text(encoding="utf-8").splitlines()[0])
    self.assertEqual(record["task_type"],"sequence_labeling")

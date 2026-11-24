@@ -23,6 +23,7 @@ from train.loss import perdida_total
 from train.sleep import sueno
 from train.quant import fake_int8_tensor
 from train.scheduler_transition import CosineTransitionScheduler
+from train.data_transition import resolve_data_transition
 
 LOG = logging.getLogger("lumen.train")
 
@@ -141,6 +142,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "seed": args.seed,
         "config": CONFIG.to_dict(),
         "data_sha256": data_hash,
+        "data_lineage": list(getattr(args, "data_lineage", [])),
         "rng": capture_rng(local_rng),
         "torch_version": torch.__version__,
         "cpu_threads": torch.get_num_threads(),
@@ -293,6 +295,10 @@ def main():
     parser.add_argument("--total-steps", type=int, default=CONFIG.total_steps)
     parser.add_argument("--seed", type=int, default=CONFIG.seed)
     parser.add_argument("--grad-clip", type=float, default=1.0)
+    parser.add_argument("--allow-data-change-on-resume", action="store_true",
+                        help="Allow an explicitly declared corpus expansion while preserving optimizer/model state")
+    parser.add_argument("--parent-data-sha256", default=None)
+    parser.add_argument("--data-change-label", default="explicit corpus transition")
     parser.add_argument("--lazy-backward", action="store_true",
                         help="Reuse the previous full gradient, decayed by 0.9, on alternating eligible steps")
     parser.add_argument("--surprise-gate-loss", type=float, default=None,
@@ -503,8 +509,19 @@ def main():
             raise ValueError("Checkpoint training hyperparameters mismatch")
         if state.get("seed", args.seed) != args.seed:
             raise ValueError("Checkpoint seed mismatch")
-        if state["config"] != CONFIG.to_dict() or state["data_sha256"] != data_hash:
-            raise ValueError("Checkpoint config or training corpus hash mismatch")
+        if state["config"] != CONFIG.to_dict():
+            raise ValueError("Checkpoint model config mismatch")
+        args.data_lineage = list(state.get("data_lineage", []))
+        transition = resolve_data_transition(
+            state.get("data_sha256"), data_hash,
+            allow_change=args.allow_data_change_on_resume,
+            expected_parent_hash=args.parent_data_sha256,
+            step=int(state.get("step", -1)),
+            label=args.data_change_label,
+        )
+        if transition:
+            args.data_lineage.append(transition)
+            LOG.warning("explicit_data_transition %s", json.dumps(transition, sort_keys=True))
         if state["phase"] != args.phase:
             raise ValueError("Cannot change curriculum phase when resuming a checkpoint")
         if args.pilot_all_rows and (

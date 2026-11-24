@@ -42,7 +42,7 @@ SOURCES = [
         "repo": "OysterCoreAI/SFT-General-Spanish-50K",
         "revision": "25d2187",
         "split": "train",
-        "quota_share": 0.375,
+        "quota_share": 0.3939393939,
         "license": "CC-BY-4.0",
         "license_url": "https://creativecommons.org/licenses/by/4.0/",
         "attribution": "SFT-General-Spanish-50K v1.0.0, authors/compilers, CC BY 4.0",

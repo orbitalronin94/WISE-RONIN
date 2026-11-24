@@ -83,8 +83,11 @@ def find_blocked_base_documents(path: Path, patterns):
         document_id = (
             row.get("source_document_id")
             or row.get("document_id")
-            or row.get("source_id")
             or row.get("source_doi")
+            or row.get("source_url")
+            or row.get("document_url")
+            or row.get("article_url")
+            or row.get("source_id")
             or row.get("id")
         )
         if document_id is None or not str(document_id).strip():
@@ -272,8 +275,11 @@ def main():
             document_id = (
                 normalized_row.get("source_document_id")
                 or normalized_row.get("document_id")
-                or normalized_row.get("source_id")
                 or normalized_row.get("source_doi")
+                or normalized_row.get("source_url")
+                or normalized_row.get("document_url")
+                or normalized_row.get("article_url")
+                or normalized_row.get("source_id")
                 or normalized_row.get("id")
             )
             if document_id is None or not str(document_id).strip():
@@ -302,8 +308,10 @@ def main():
                 raise ValueError(f"{label} candidate tokenizer hash does not match the paired-model tokenizer")
             candidate_terms = set(source_manifest.get("denylist_terms", []))
             final_terms = set(denylist["terms"])
-            if not candidate_terms.issubset(final_terms):
-                raise ValueError(f"{label} candidate used an unrecognized or weaker attractor denylist")
+            if candidate_terms != final_terms:
+                raise ValueError(f"{label} candidate denylist terms do not exactly match the frozen v4 denylist")
+            if source_manifest.get("denylist_sha256") != sha256_file(args.denylist):
+                raise ValueError(f"{label} candidate denylist SHA-256 does not match the frozen v4 denylist")
             if int(source_manifest.get("chunk_tokens", 999)) > args.chunk_tokens:
                 raise ValueError(f"{label} candidate chunks exceed the final merge token budget")
             if source_manifest.get("row_target_met") is not True:

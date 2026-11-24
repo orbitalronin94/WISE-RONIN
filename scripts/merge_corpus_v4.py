@@ -44,7 +44,7 @@ def iter_jsonl_file(path: Path):
 
 
 def iter_candidate_rows(root: Path):
-    for path in sorted(root.glob("*.jsonl")):
+    for path in sorted(root.rglob("*.jsonl")):
         yield from iter_jsonl_file(path)
 
 

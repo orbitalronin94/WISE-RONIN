@@ -225,6 +225,8 @@ Los microbenchmarks de 100 o 500 pasos sirven para filtrar hipótesis de entrena
 - [Especificación V1](SPEC_RONIN_LUMEN_V1.md) — contrato arquitectónico.
 - [Índice de documentación](docs/README.md).
 
+- [Loss y capacidades: auditoría de evidencia](docs/LOSS_CAPABILITY_ANALYSIS.md) — qué cambia cuando baja la loss, holdouts comparables y métricas para detectar fortalezas.
+
 ### Código principal
 
 - [Modelo integrado](model/lumen.py)

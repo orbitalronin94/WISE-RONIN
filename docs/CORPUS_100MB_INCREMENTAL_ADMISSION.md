@@ -1,43 +1,57 @@
 # Incremental 100 MiB corpus admission
 
-This is the bounded promotion stage for WISE-RONIN/LUMEN corpus growth.
+Each accepted increment creates a **new cumulative corpus version**:
 
-## Contract
+- `v3.2.001`: frozen v3.1 plus delta 001.
+- `v3.2.002`: v3.2.001 plus delta 002.
+- `v3.2.003`: v3.2.002 plus delta 003.
+- Continue sequentially; never reuse or skip a version number.
 
-- Target block ceiling: **100 MiB (104,857,600 bytes)**. The final block may be smaller.
-- Inputs are normalized JSONL records with `text`, `source`, `source_revision`,
-  `license`, `rights_status`, and `review_status`.
-- A row is admitted only when `review_status=accept`, `rights_status=verified`,
-  and the license is explicitly allowlisted.
-- Exact normalized-text duplicates are rejected across the entire input stream.
-- Possible email, Spanish NIF, and phone patterns are quarantined for review.
-- A record larger than the configured block ceiling is rejected, never split.
-- Each block receives a SHA-256 and source/revision row counts in the manifest.
-- The builder writes data artifacts only; it does not modify the frozen v3.1/v3.2
-  corpus, merge branches, or authorize training.
+The data is stored efficiently as immutable delta JSONL files. Each version manifest
+names its parent version, delta filename, byte count, row count, whitespace-token
+count, source/revision counts and SHA-256. A version is cumulative by following its
+parent chain; old deltas are never rewritten.
 
-## Sequential loop
+## Admission contract
 
-1. Audit and pin one source revision.
-2. Normalize only its approved train records into the required JSONL schema.
-3. Human-review samples and resolve rights/privacy/quality flags.
-4. Run `scripts/build_corpus_100mb_blocks.py` against the reviewed stream.
-5. Inspect the manifest and every rejection category.
-6. Promote only complete, verified blocks into the next cumulative corpus version.
-7. Re-run deduplication against the cumulative corpus before accepting the next source.
+- Hard ceiling: **100 MiB (104,857,600 bytes) per delta**. A smaller final delta is valid.
+- Input is normalized JSONL with `text`, `source`, `source_revision`, `license`,
+  `rights_status`, `privacy_status`, `quality_status`, and `review_status`.
+- A row is accepted only with human `review_status=accept`, `rights_status=verified`,
+  `privacy_status=clear`, `quality_status=approved`, and an allowlisted license.
+- Exact normalized-text deduplication is seeded from frozen v3.1 and persists in SQLite
+  across subsequent version builds. Near-duplicate candidates still require semantic review.
+- A record larger than 100 MiB is rejected, never silently split.
+- Every delta and manifest receives a SHA-256. The chain summary records all versions.
+- The script does not download sources, promote into main, or authorize model training.
 
-Do not count source archive size as accepted corpus size. Report both compressed download
-size and normalized UTF-8 block bytes, plus rows and tokenizer token counts.
+## Repeatable loop
+
+1. Pin a source to an immutable commit and independently verify its license/upstream rights.
+2. Stream only the permitted train split; preserve task structure (chat, documents,
+   retrieval, NER) rather than flattening incompatible tasks.
+3. Normalize into the input schema, retaining source/revision and source-specific metadata.
+4. Human-review samples and resolve duplicate, privacy, rights and quality flags.
+5. Run the builder against the reviewed stream and frozen v3.1 JSONL.
+6. Inspect every version manifest, delta, rejection count and source attribution.
+7. Promote only verified versions, in order, into the cumulative corpus catalogue.
+8. Re-run tokenizer counts and frozen holdout checks before any training authorization.
+
+Do not confuse archive download size with admitted corpus size. Report archive bytes,
+normalized UTF-8 bytes, rows, whitespace tokens and tokenizer token IDs separately.
 
 ## Example
 
 ```bash
 python scripts/build_corpus_100mb_blocks.py \
   --input artifacts/reviewed-normalized.jsonl \
-  --output-dir artifacts/corpus-blocks \
-  --block-prefix lumen-v3-2
+  --base-jsonl artifacts/spanish-v3-1-candidate.jsonl \
+  --output-dir artifacts/corpus-v3-2-versions \
+  --parent-version v3.1 \
+  --start-version 1
 ```
 
-The generated manifest always has `training_authorized: false`. Training requires a
-separate explicit promotion decision after corpus-wide validation and frozen holdout
-checks.
+The script emits `lumen-corpus-v3.2.NNN-delta.jsonl`, one manifest per version,
+and `lumen-corpus-v3-2-version-chain.json`. Every manifest has
+`training_authorized: false`. Training remains a separate explicit decision after
+corpus-wide validation and matched holdout checks.

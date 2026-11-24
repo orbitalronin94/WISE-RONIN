@@ -33,9 +33,14 @@ jobs:
         with:
           name: ronin-check0-shared-inputs-45391619940
           path: .
-          repository: ${ github.repository }}
-          run-id: ${ env.SOURCE_RUN_ID }}
-          github-token: ${ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install tokenizer validation dependency
+        run: python -m pip install tokenizers
       - name: Verify shared inputs and hashes
         run: |
           set -euo pipefail
@@ -61,7 +66,7 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: paired-check0-shared-inputs-${ github.run_id }}
+          name: paired-check0-shared-inputs-${{ github.run_id }}
           path: |
             artifacts/spanish-v1/
             data/spanish/
@@ -111,24 +116,24 @@ jobs:
           python -m pip install tokenizers numpy tqdm
       - uses: actions/download-artifact@v4
         with:
-          name: paired-check0-shared-inputs-${ github.run_id }}
+          name: paired-check0-shared-inputs-${{ github.run_id }}
           path: .
-      - name: Run paired main + ${ matrix.hypothesis }} on this runner (fresh check 0, 1000 steps each)
+      - name: Run paired main + ${{ matrix.hypothesis }} on this runner (fresh check 0, 1000 steps each)
         run: |
           set -euo pipefail
           python scripts/run_paired_hypothesis.py \
-            --hypothesis "${ matrix.hypothesis }}" \
+            --hypothesis "${{ matrix.hypothesis }}" \
             --steps 1000 --batch 8 --max-len 128 --seed 42 \
             --lr 3e-5 --warmup 100 \
-            --output "paired-result-${ matrix.hypothesis }}.json"
+            --output "paired-result-${{ matrix.hypothesis }}.json"
       - name: Upload paired result and logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: paired-${ matrix.hypothesis }}-${ github.run_id }}
+          name: paired-${{ matrix.hypothesis }}-${{ github.run_id }}
           path: |
-            paired-result-${ matrix.hypothesis }}.json
-            paired-results/${ matrix.hypothesis }}/
+            paired-result-${{ matrix.hypothesis }}.json
+            paired-results/${{ matrix.hypothesis }}/
           if-no-files-found: warn
           retention-days: 90
           compression-level: 0
@@ -149,7 +154,7 @@ jobs:
           python -m pip install tokenizers numpy tqdm
       - uses: actions/download-artifact@v4
         with:
-          name: paired-check0-shared-inputs-${ github.run_id }}
+          name: paired-check0-shared-inputs-${{ github.run_id }}
           path: .
       - name: Train Transformer from fresh check 0 — speed reference only
         run: |
@@ -178,7 +183,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: paired-transformer-${ github.run_id }}
+          name: paired-transformer-${{ github.run_id }}
           path: |
             transformer-reference.json
             checkpoints/transformer/
@@ -195,13 +200,13 @@ jobs:
       - name: Download all paired results
         uses: actions/download-artifact@v4
         with:
-          pattern: paired-* -${ github.run_id }}
+          pattern: paired-*-${{ github.run_id }}
           path: collected
           merge-multiple: true
       - name: Publish comparison table
         env:
-          MATRIX_RESULT: ${ needs.paired-hypothesis.result }}
-          TRANSFORMER_RESULT: ${ needs.transformer-reference.result }}
+          MATRIX_RESULT: ${{ needs.paired-hypothesis.result }}
+          TRANSFORMER_RESULT: ${{ needs.transformer-reference.result }}
         run: |
           python - <<'PY'
           import glob, json, os

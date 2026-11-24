@@ -405,6 +405,14 @@ def main():
     for organ in model.homeo:
         organ.fused_scatter_add = bool(runtime_profile.get("homeostasis_fused_scatter", False))
     model.memoria.one_shot_enabled = plasticity_profile.one_shot_enabled
+    model.local_learning_enabled = bool(runtime_profile.get("local_learning", False))
+    model.memoria.vectorized_memory_writes = bool(runtime_profile.get("vectorized_memory_writes", False))
+    model.memoria.batched_decay_accounting = bool(runtime_profile.get("batched_decay_accounting", False))
+    model.emb.usage_interval = int(runtime_profile.get("embedding_usage_interval", 1))
+    if model.emb.usage_interval < 1:
+        raise ValueError("embedding_usage_interval must be >= 1")
+    for organ in model.homeo:
+        organ.track_input_activity = bool(runtime_profile.get("homeostasis_track_input_activity", True))
     LOG.info("plasticity_profile: %s", plasticity_profile)
     LOG.info("lumen_fastpaths: %s", {
         "delta_pre_normalize": bool(runtime_profile.get("delta_pre_normalize", False)),
@@ -427,9 +435,13 @@ def main():
             raise ValueError("[PAD] must be token ID 0")
         phase_data = rows if args.pilot_all_rows else datos_para_fase(rows, args.phase)
 
+    optimizer_fused = bool(runtime_profile.get("optimizer_fused", False))
+    optimizer_foreach = bool(runtime_profile.get("foreach", not args.disable_foreach))
+    if optimizer_fused and optimizer_foreach:
+        raise ValueError("runtime profile cannot enable optimizer_fused and foreach together")
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay,
-        foreach=not args.disable_foreach,
+        foreach=optimizer_foreach, fused=optimizer_fused,
     )
     scheduler = None if args.scheduler_transition else make_scheduler(optimizer, args.warmup, args.total_steps)
     start, state = 0, None
@@ -646,6 +658,9 @@ def main():
     if args.compile_mode:
         compiled_model = torch.compile(model, mode=args.compile_mode)
         LOG.info("torch_compile enabled: mode=%s; diagnostic forwards remain eager", args.compile_mode)
+    diagnostics_interval = int(runtime_profile.get("diagnostics_interval", 100))
+    if diagnostics_interval < 1:
+        raise ValueError("diagnostics_interval must be >= 1")
     glucose_loss_window = deque(maxlen=args.log_every)
     profile = {"forward": 0.0, "backward": 0.0, "sleep": 0.0, "wall": 0.0}
     cached_gradients = None
@@ -683,7 +698,7 @@ def main():
 
         tokens_seen += int(tokens.ne(0).sum())
         forward_started = time.perf_counter()
-        collect_diagnostics = (step % 100 == 0 or step == start + 1)
+        collect_diagnostics = (step % diagnostics_interval == 0 or step == start + 1)
         forward_model = (model if collect_diagnostics or compiled_model is None else compiled_model)
         output = forward_model(tokens, reset_state=True, collect_diagnostics=collect_diagnostics)
         profile["forward"] += time.perf_counter() - forward_started
@@ -694,6 +709,7 @@ def main():
             use_free_energy=args.v32_ze,
             beta=0.01,
             pad_id=0,
+            shared_loss_normalization=bool(runtime_profile.get("shared_loss_normalization", False)),
         )
         glucose_loss_window.append(float(loss.detach().item()))
         if not torch.isfinite(loss.detach()).all():

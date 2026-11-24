@@ -42,6 +42,8 @@ class RoninLumen(nn.Module):
         self.heads = Heads(config.model_dim)
         self.head_out = nn.Linear(config.model_dim, config.vocab_size, bias=False)
         self.head_out.weight = self.emb.emb.weight
+        # Experimental local-learning path is opt-in and adds no parameters.
+        self.local_learning_enabled = False
         self.jepa_predictor = nn.Sequential(
             nn.Linear(config.model_dim, config.model_dim), nn.GELU(),
             nn.Linear(config.model_dim, config.model_dim),
@@ -76,7 +78,8 @@ class RoninLumen(nn.Module):
         surprises = []
         chunk_sizes = []
         complexity_terms = []
-        for delta, homeo in zip(self.delta_layers, self.homeo):
+        local_hidden = []
+        for layer_index, (delta, homeo) in enumerate(zip(self.delta_layers, self.homeo)):
             # Delta returns an associative-memory update, not a replacement
             # representation. Preserve the information stream through a
             # residual path so a cold/low-norm memory read cannot zero the stack.
@@ -91,6 +94,12 @@ class RoninLumen(nn.Module):
             surprises.append(surprise)
             if self.v32_ze:
                 complexity_terms.append(delta.last_complexity)
+            if self.local_learning_enabled:
+                local_hidden.append(h)
+                if layer_index < len(self.delta_layers) - 1:
+                    # Each Delta organ receives a detached representation from
+                    # the preceding organ; its own local objective trains it.
+                    h = h.detach()
         surprise = torch.stack(surprises).mean(0)
         signals = SignalContext.from_surprise(surprise)
         free_energy_complexity = (
@@ -119,6 +128,7 @@ class RoninLumen(nn.Module):
             "free_energy_complexity": free_energy_complexity,
             "ze": ze_metrics,
             "chunk_sizes": tuple(chunk_sizes),
+            "local_hidden": tuple(local_hidden),
             "eligibility_norms": tuple(delta.last_eligibility_norm for delta in self.delta_layers),
         }
 

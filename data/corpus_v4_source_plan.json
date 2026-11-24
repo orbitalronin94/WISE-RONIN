@@ -18,7 +18,7 @@
     "underlying text license verified, not merely dataset-script license",
     "provenance retained per document",
     "attractor denylist applied before deduplication and admission",
-    "exact and near-duplicate filtering",
+    "exact deduplication across all sources; near-duplicate detection is a separate follow-up audit and is not claimed as completed",
     "OCR and encoding quality checks where applicable",
     "PII and sensitive-data screening",
     "train/validation/holdout leakage checks",

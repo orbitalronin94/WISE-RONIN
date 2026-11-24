@@ -48,6 +48,7 @@ jobs:
         run: |
           python scripts/audit_hf_corpus_v3_2.py \
             --registry data/corpus_v3_2_sources.json \
+            --base-jsonl "$(find artifacts/v3-1 -type f -name 'train.jsonl' -print -quit)" \
             --db artifacts/corpus-v3-2-audit.sqlite \
             --output artifacts/corpus-v3-2-audit-report.json \
             --max-rows-per-split "\${{ inputs.max_rows_per_split }}" \

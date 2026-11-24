@@ -1,0 +1,116 @@
+name: LUMEN — unofficial holdout at 329700
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/holdout-lumen-329700-unofficial.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-unofficial-holdout-329700
+  cancel-in-progress: false
+
+env:
+  SOURCE_RUN_ID: "45273897576"
+  DATA_RUN_ID: "45149684913"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  holdout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU evaluation runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+      - name: Download frozen corpus and holdout
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-v2-plus-personality-250k-45149684913
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.DATA_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact LUMEN checkpoint artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-step-329700-45273897576
+          path: checkpoint-artifact
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify frozen holdout and checkpoint provenance
+        run: |
+          set -euo pipefail
+          test -s prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl
+          test -s prepared/artifacts/spanish-v2/tokenizer.json
+          python - <<'PY'
+          import json, torch, hashlib
+          from pathlib import Path
+          files=list(Path("checkpoint-artifact").rglob("*.pt"))
+          found=[]
+          for p in files:
+              try: c=torch.load(p,map_location="cpu",weights_only=False)
+              except Exception: continue
+              if isinstance(c,dict) and int(c.get("step",-1))==329700 and c.get("architecture_id")=="ronin_lumen_v3_3_neuroplasticity":
+                  found.append((p,c))
+          if len(found)!=1:
+              raise SystemExit(f"Expected exactly one LUMEN step-329700 checkpoint; found {[str(p) for p,_ in found]}")
+          p,c=found[0]
+          assert isinstance(c.get("model"),dict) and c["model"], "Model state missing"
+          assert c.get("optimizer"), "Optimizer state missing"
+          assert c.get("rng"), "RNG state missing"
+          tok=Path("prepared/artifacts/spanish-v2/tokenizer.json")
+          tok_sha=hashlib.sha256(tok.read_bytes()).hexdigest()
+          saved=c.get("tokenizer_sha256")
+          if saved and saved != tok_sha:
+              raise SystemExit(f"Tokenizer SHA mismatch: checkpoint={saved}, holdout={tok_sha}")
+          rows=[json.loads(x) for x in Path("prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(rows)==2431, f"Expected 2431 frozen rows, got {len(rows)}"
+          Path("resolved").mkdir(exist_ok=True)
+          import shutil
+          shutil.copy2(p,"resolved/lumen-329700.pt")
+          print("Checkpoint:",p)
+          print("Step:",c["step"],"architecture:",c["architecture_id"])
+          print("Tokenizer SHA:",tok_sha)
+          print("Frozen holdout rows:",len(rows))
+          print("Unofficial single-model evaluation; no training or checkpoint mutation.")
+          PY
+      - name: Score LUMEN on untouched multiple-choice holdout
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          python scripts/evaluate_multiple_choice_holdout.py \
+            --holdout prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl \
+            --tokenizer prepared/artifacts/spanish-v2/tokenizer.json \
+            --lumen resolved/lumen-329700.pt \
+            --expected-lumen-step 329700 \
+            --out results/lumen_step329700_unofficial_holdout.json \
+            --threads 4 --max-len 128
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: lumen-step329700-unofficial-holdout-${{ github.run_id }}
+          path: results/lumen_step329700_unofficial_holdout.json
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Report provenance
+        if: always()
+        run: |
+          echo "Unofficial LUMEN 329700 holdout run: ${{ github.run_id }}"
+          test -s results/lumen_step329700_unofficial_holdout.json

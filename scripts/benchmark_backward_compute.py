@@ -22,6 +22,7 @@ from model.lumen import RoninLumen
 from train.dataset import load_jsonl, load_token_cache, pack_token_cache, collate_cached_indices
 from train.loss import perdida_total
 from train.sleep import sueno
+from train.scheduler_transition import CosineTransitionScheduler
 
 CANDIDATES = {
     "01_surprise_gate": "Skip backward and optimizer update when scalar loss <= 1.8.",
@@ -72,8 +73,21 @@ def build_model_and_optimizer(checkpoint_path: Path):
     lr = float(optimizer_state["param_groups"][0]["lr"])
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=CONFIG.weight_decay, foreach=False)
     optimizer.load_state_dict(optimizer_state)
+    transition = state["scheduler_transition"]
+    scheduler = CosineTransitionScheduler(
+        optimizer,
+        start_step=transition["start_step"],
+        end_step=transition["end_step"],
+        old_lr=transition["old_lr"],
+        new_lr=transition["new_lr"],
+        warmup_steps=transition["warmup_steps"],
+        plateau_steps=transition.get("plateau_steps", 0),
+        min_lr_ratio=transition.get("min_lr_ratio", 0.0),
+        current_step=transition["current_step"],
+    )
+    scheduler.load_state_dict(transition)
     model.train()
-    return state, model, optimizer, lr
+    return state, model, optimizer, scheduler, lr
 
 def attach_candidate(model, name: str):
     handles = []
@@ -122,7 +136,7 @@ def one_run(label: str, candidate: str | None, checkpoint_path: Path,
             packed, lengths, row_count: int, steps: int, seed: int):
     torch.manual_seed(seed)
     random.seed(seed)
-    state, model, optimizer, parent_lr = build_model_and_optimizer(checkpoint_path)
+    state, model, optimizer, scheduler, parent_lr = build_model_and_optimizer(checkpoint_path)
     hooks = attach_candidate(model, candidate) if candidate else []
     sampler = random.Random(seed + int(state["step"]))
     cached_gradients = None
@@ -139,7 +153,10 @@ def one_run(label: str, candidate: str | None, checkpoint_path: Path,
             model.reset_states()
             forward_started = time.perf_counter()
             output = model(tokens, reset_state=True, collect_diagnostics=False)
-            loss, _ = perdida_total(output, tokens, model, use_jepa=True, use_rep=True)
+            loss, _ = perdida_total(
+                output, tokens, model, use_jepa=True, use_rep=True,
+                use_free_energy=bool(state.get("v32_ze", False)),
+            )
             timings["forward"] += time.perf_counter() - forward_started
             value = float(loss.detach())
             if not torch.isfinite(loss):
@@ -173,6 +190,7 @@ def one_run(label: str, candidate: str | None, checkpoint_path: Path,
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0, foreach=False)
             optimizer_started = time.perf_counter()
             optimizer.step()
+            scheduler.step()
             timings["optimizer"] += time.perf_counter() - optimizer_started
 
             if candidate == "08_sleep_replay20" and index == steps - 1:

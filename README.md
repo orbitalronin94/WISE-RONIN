@@ -21,7 +21,7 @@ El repositorio conserva el nombre técnico **WISE-RONIN**. El proyecto activo es
 - [La tesis: el perro y el loro](#la-tesis-el-perro-y-el-loro)
 - [Qué estamos construyendo](#qué-estamos-construyendo)
 - [Arquitectura actual](#arquitectura-actual)
-- [La campaña de entrenamiento: de cero a 400k](#la-campaña-de-entrenamiento-de-cero-a-400k)
+- [La campaña de entrenamiento: de cero a 750k](#la-campaña-de-entrenamiento-de-cero-a-750k)
 - [Resultados emparejados](#resultados-emparejados)
 - [Corpus y evaluación](#corpus-y-evaluación)
 - [Benchmark de optimización CPU](#benchmark-de-optimización-cpu)
@@ -32,7 +32,12 @@ El repositorio conserva el nombre técnico **WISE-RONIN**. El proyecto activo es
 
 ## Estado actual
 
-<sup>Actualizado: 23 de noviembre de 2026 · rama `main`</sup>
+<sup>Actualizado: 24 de noviembre de 2026 · rama `main`</sup>
+
+**Estado vigente — checkpoints emparejados de 500.000 pasos.** La continuación desde 467.500 terminó correctamente para LUMEN y Transformer en el run [45454209241](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45454209241). En el holdout congelado de 2.431 preguntas, LUMEN obtuvo **816/2.431 (33,57 %; NLL 5,5997)** y Transformer **840/2.431 (34,55 %; NLL 5,3877)**. El control aventaja por 24 respuestas y menor NLL; el contraste pareado no es concluyente (McNemar exacto, p=0,3421). La campaña siguiente parte de esos dos checkpoints y avanza hasta 750.000 en **25 bloques consecutivos de 10.000 pasos por modelo**, manteniendo el corpus v3.2.005 autorizado, tokenizer, holdout, batch, contexto y mecanismos actuales. [Ficha completa del holdout 500k](docs/RESULTADOS_HOLDOUT_500K_ES.md) · [Workflow 500k→750k](.github/workflows/continue-paired-500000-750000-v32-lr3e5.yml).
+
+**Corpus v4 aún no se usa.** Su compilación de candidatos terminó, pero la auditoría independiente rechazó un registro sin source_document_id; sigue sin autorización de entrenamiento y no se ha mezclado con esta campaña. [Auditoría de congelación v4](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45456512539).
+
 
 <details>
 <summary><strong>La campaña activa</strong></summary>
@@ -101,7 +106,7 @@ La extensión dual-state ZE está disponible en el código, pero no se activa en
 
 La descripción completa, con responsabilidades, fórmulas, parámetros y distinción entre código disponible y código activo, está en [Arquitectura actual](docs/ARQUITECTURA_ACTUAL_ES.md).
 
-## La campaña de entrenamiento: de cero a 400k
+## La campaña de entrenamiento: de cero a 750k
 
 El linaje emparejado se inició desde cero y avanzó mediante continuaciones verificadas. Cada bloque conserva checkpoints y estado de optimizador; los holdouts comparan ambos modelos sobre las mismas 2.431 preguntas.
 
@@ -132,18 +137,19 @@ La crónica completa explica qué cambió en cada tramo, qué runs fallaron desp
 
 ## Resultados emparejados
 
-Último holdout completo: **Lumen 219.700 vs Transformer 219.750**, run [45257284512](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45257284512), con el holdout congelado de 2.431 preguntas.
+Último holdout completo: **LUMEN step 500.000 vs Transformer step 500.000**, run [45454209241](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45454209241), sobre el mismo holdout congelado de 2.431 preguntas y el mismo tokenizer.
 
 | Modelo | Aciertos | Accuracy | NLL media |
 |---|---:|---:|---:|
-| **Lumen-Ronin** | **831/2.431** | **34,18 %** | 5,7441 |
-| Transformer baseline | 805/2.431 | 33,11 % | **5,5147** |
+| LUMEN | 816/2.431 | 33,57 % | 5,5997 |
+| **Transformer baseline** | **840/2.431** | **34,55 %** | **5,3877** |
 
-Lumen supera al control por **26 respuestas (+1,07 puntos porcentuales)**. Transformer obtiene una NLL media inferior por 0,2294. Por tanto, la ventaja de Lumen está en la elección correcta; la distribución probabilística del Transformer sigue siendo mejor según esta NLL. No se deben colapsar ambas métricas en una única afirmación de victoria total.
+Transformer obtiene **24 aciertos más (+0,99 puntos porcentuales)** y una NLL media inferior en 0,2120. En el emparejamiento pregunta a pregunta: ambos correctos 535; solo LUMEN correcto 281; solo Transformer correcto 305; ambos incorrectos 1.310. El test exacto de McNemar da **p=0,3421**: la diferencia no es estadísticamente concluyente en este holdout. No declaramos ganador definitivo.
 
-La comparación es casi emparejada, con 50 actualizaciones de diferencia entre checkpoints. Ambos modelos utilizaron el mismo tokenizer, contexto y holdout, sin actualizaciones durante la evaluación. Conteos emparejados: ambos correctos 456; solo Lumen correcto 313; solo Transformer correcto 289; ambos incorrectos 1.198.
+Respecto al control anterior de step 467.500, LUMEN pasa de 807 a 816 aciertos (+9) y Transformer de 822 a 840 (+18). La NLL de LUMEN cambia de 5,5894 a 5,5997; la del Transformer, de 5,4356 a 5,3877. Son comparaciones del mismo conjunto, pero la diferencia de calidad sigue siendo modesta y debe leerse junto con el resultado pareado, no como prueba de superioridad general.
 
-[Artefacto completo con predicciones por pregunta](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45257284512/artifacts/14859702424). La ficha de promoción y procedencia está en [experiments/step_219700_promotion.json](experiments/step_219700_promotion.json).
+El artefacto conserva las predicciones por pregunta: [holdout 500k, artefacto 14959695455](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45454209241/artifacts/14959695455). La ficha metodológica y los conteos pareados están en [RESULTADOS_HOLDOUT_500K_ES.md](docs/RESULTADOS_HOLDOUT_500K_ES.md).
+
 ## Corpus y evaluación
 
 La referencia de trabajo más reciente para la próxima campaña es [Corpus v3.2 — estado, manifiestos y auditoría](docs/CORPUS_V3_2_NEXT_TRAIN.md). Está enlazada para continuar la revisión, pero **no está autorizada aún para entrenamiento** (`training_authorized=false`); la campaña de 400k mantiene el snapshot v2 congelado.
@@ -299,3 +305,18 @@ El perfil conserva los fast paths CPU/Delta ya seleccionados y activa además lo
 LUMEN mantiene lazy-backward + surprise-gate (`loss <= 1.8`); Transformer permanece como control de cómputo sin esos mecanismos. Ambos conservan sus estados de optimizador/RNG y registran la transición explícita de corpus. El tokenizer no cambia. El holdout no entra en entrenamiento.
 
 El workflow corregido conserva el objetivo común **400.000 → 407.500** y publica checkpoints, logs y evaluación emparejada. El resultado de 7.500 pasos medirá throughput, loss, estabilidad, activación real del sueño y holdout por separado; no se promoverá la composición solo por el resultado de un cribado corto.
+
+
+## Continuación emparejada 500k→750k
+
+Los dos checkpoints step 500.000 se han validado como padres de la siguiente campaña. El workflow [continue-paired-500000-750000-v32-lr3e5.yml](.github/workflows/continue-paired-500000-750000-v32-lr3e5.yml) encadena 25 bloques de 10.000 pasos para cada arquitectura y ejecuta un nuevo holdout emparejado al alcanzar 750.000.
+
+- **Padres:** LUMEN y Transformer step 500.000, artefactos del run 45454209241.
+- **Datos:** corpus español v3.2.005, 279.613 filas de entrenamiento; SHA-256 de datos 0f7db9d6c4264f68fd6a12a9fe5bfa708e4fc30c1df176de5a4f53081bfe79aa.
+- **Tokenizer:** compartido, SHA-256 d7869c11809a28085d5156638086c4831a3dcbacfda4a60b69ec71e26ed3fefe.
+- **Configuración común:** seed 42, batch 8, contexto 128, CPU con cuatro hilos y LR objetivo 3e-5.
+- **Scheduler:** transición cosenoidal nueva desde el estado efectivo del checkpoint de 500k hasta el objetivo 750k; se conservan los momentos del optimizador y el RNG.
+- **LUMEN:** perfil aprobado check 0, lazy-backward y surprise-gate; el Transformer sigue como baseline sin esos mecanismos.
+- **Evaluación:** holdout fijo de 2.431 preguntas, sin uso durante entrenamiento.
+
+El corpus v4 no participa: su auditoría independiente detectó una fila sin source_document_id y el gate de autorización no se superó.

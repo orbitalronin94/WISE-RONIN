@@ -246,6 +246,22 @@ def main():
                 raise ValueError(f"{label} candidate chunks exceed the final merge token budget")
             if source_manifest.get("row_target_met") is not True:
                 raise ValueError(f"{label} candidate did not meet its row target")
+            if label == "personality":
+                expected_sources = {
+                    "m_personas_es": ("BSC-LT/m-personas", "6fab205a86a9244c90a2782e28055027f45ddd03", "Apache-2.0", 20_000),
+                    "sft_general_spanish": ("OysterCoreAI/SFT-General-Spanish-50K", "25d2187", "CC-BY-4.0", 20_000),
+                }
+                stats = source_manifest.get("source_stats", {})
+                for source_key, (repo, revision, license_name, minimum_rows) in expected_sources.items():
+                    source_info = stats.get(source_key, {})
+                    if (
+                        source_info.get("repo") != repo
+                        or source_info.get("revision") != revision
+                        or source_info.get("license") != license_name
+                    ):
+                        raise ValueError(f"Personality source lineage mismatch: {source_key}")
+                    if int(source_info.get("rows", 0)) < minimum_rows:
+                        raise ValueError(f"Personality source contribution too small: {source_key}")
             if label == "openculture":
                 expected_sources = {
                     "spanish_pd_books": ("PleIAs/Spanish-PD-Books", "001eaf13681f483069361dd82195ce279e12ed63", 500_000),

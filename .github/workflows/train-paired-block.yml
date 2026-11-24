@@ -122,6 +122,7 @@ jobs:
               --recovery-checkpoint-every 100 --parameter-check-every 100 \
               --threads 4 --interop-threads 2 \
               --ckpt-dir "$OUTDIR" --wall-clock-file "$WALL" \
+              --lazy-backward --surprise-gate-loss 1.8 \
               2>&1 | tee "$LOG"
           else
             OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.transformer_baseline \

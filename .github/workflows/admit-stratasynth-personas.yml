@@ -1,0 +1,92 @@
+name: Batch-admit narrative fields from StrataSynth Spain
+
+on:
+  push:
+    branches:
+      - corpus-v3-2-100mb-acceptance
+    paths:
+      - "scripts/admit_stratasynth_personas.py"
+      - "scripts/build_corpus_100mb_blocks.py"
+      - "tests/test_admit_stratasynth_personas.py"
+      - ".github/workflows/admit-stratasynth-personas.yml"
+  workflow_dispatch:
+    inputs:
+      max_rows:
+        description: "0 = process the full pinned train split"
+        required: true
+        default: "0"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  batch-admission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install source reader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "datasets>=3.0,<5" "huggingface_hub>=0.26" pyarrow
+      - name: Test StrataSynth policy and incremental builder
+        run: |
+          python -m py_compile scripts/admit_stratasynth_personas.py scripts/build_corpus_100mb_blocks.py
+          python tests/test_admit_stratasynth_personas.py
+          python tests/test_corpus_100mb_version_chain.py
+      - name: Download previous cumulative corpus
+        uses: actions/download-artifact@v4
+        with:
+          name: lumen-corpus-v3-2-through-legal-qa-45369976573
+          repository: \${{ github.repository }}
+          run-id: 45369976573
+          github-token: \${{ secrets.GITHUB_TOKEN }}
+          path: artifacts/previous
+      - name: Prepare cumulative chain and verify inherited dedup index
+        run: |
+          mkdir -p artifacts/corpus-v3-2-chain
+          cp -a artifacts/previous/corpus-v3-2-chain/. artifacts/corpus-v3-2-chain/
+          test -f artifacts/corpus-v3-2-chain/v3-2-chain-dedup.sqlite
+          python - <<'PY'
+          import json, sqlite3
+          from pathlib import Path
+          root = Path("artifacts/corpus-v3-2-chain")
+          chain = json.loads((root / "lumen-corpus-v3-2-version-chain.json").read_text())
+          assert [x["version"] for x in chain["versions"]] == ["v3.2.001", "v3.2.002", "v3.2.003", "v3.2.004"]
+          db = sqlite3.connect(root / "v3-2-chain-dedup.sqlite")
+          base_rows = db.execute("SELECT COUNT(*) FROM accepted WHERE version='v3.1'").fetchone()[0]
+          total_rows = db.execute("SELECT COUNT(*) FROM accepted").fetchone()[0]
+          assert base_rows >= 197000 and total_rows >= base_rows + 80575
+          print({"frozen_v3_1_hashes": base_rows, "dedup_hashes_total": total_rows})
+          PY
+      - name: Batch-normalize StrataSynth narrative fields
+        run: |
+          python scripts/admit_stratasynth_personas.py \
+            --output artifacts/stratasynth-personas-auto-approved.jsonl \
+            --report artifacts/stratasynth-personas-admission-report.json \
+            --max-rows "\${{ inputs.max_rows || '0' }}"
+      - name: Append new immutable corpus versions
+        run: |
+          python scripts/build_corpus_100mb_blocks.py \
+            --input artifacts/stratasynth-personas-auto-approved.jsonl \
+            --base-jsonl artifacts/empty-base-already-indexed.jsonl \
+            --output-dir artifacts/corpus-v3-2-chain \
+            --parent-version v3.2.004 \
+            --start-version 5 \
+            --dedup-db artifacts/corpus-v3-2-chain/v3-2-chain-dedup.sqlite \
+            --allow-auto-approved
+      - name: Upload cumulative corpus and admission report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-corpus-v3-2-through-stratasynth-\${{ github.run_id }}
+          path: |
+            artifacts/stratasynth-personas-admission-report.json
+            artifacts/corpus-v3-2-chain/*
+          if-no-files-found: warn
+          retention-days: 90

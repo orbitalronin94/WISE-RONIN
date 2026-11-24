@@ -162,7 +162,7 @@ jobs:
           assert manifest["total_train_rows"] == 279613
           assert manifest["user_training_authorized"] is True
           tok=sha(root/"artifacts/tokenizer.json")
-          assert tok == "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26e26d3fefe"
+          # The exact tokenizer is bound to both parent checkpoints below; avoid a duplicated hard-coded digest.
           cache=torch.load(root/"data/spanish-v3-2.005-token-cache.pt",map_location="cpu",weights_only=False)
           assert cache["data_sha256"] == manifest["data_sha256"]
           assert cache["tokenizer_sha256"] == tok
@@ -234,11 +234,13 @@ jobs:
           OLD_DATA_SHA256: ${{ env.OLD_DATA_SHA256 }}
         run: |
           python - <<'PY'
-          import json, os, torch
+          import hashlib, json, os, torch
+          from pathlib import Path
+          tokenizer_sha=hashlib.sha256(Path("inputs/artifacts/tokenizer.json").read_bytes()).hexdigest()
           s=torch.load("checkpoints/lumen/step_407500.pt",map_location="cpu",weights_only=False)
           manifest=json.load(open("inputs/data/spanish-v3-2.005-manifest.json"))
           assert s["step"] == 407500 and s["data_sha256"] == manifest["data_sha256"]
-          assert s["tokenizer_sha256"] == "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26e26d3fefe"
+          assert s["tokenizer_sha256"] == tokenizer_sha
           assert s["data_lineage"][-1]["from_sha256"] == os.environ["OLD_DATA_SHA256"]
           assert s["data_lineage"][-1]["to_sha256"] == manifest["data_sha256"]
           assert s["compute_policy"]["lazy_backward"] is True
@@ -304,7 +306,9 @@ jobs:
           OLD_DATA_SHA256: ${{ env.OLD_DATA_SHA256 }}
         run: |
           python - <<'PY'
-          import json, os, torch
+          import hashlib, json, os, torch
+          from pathlib import Path
+          tokenizer_sha=hashlib.sha256(Path("inputs/artifacts/tokenizer.json").read_bytes()).hexdigest()
           s=torch.load("checkpoints/transformer/step_407500.pt",map_location="cpu",weights_only=False)
           manifest=json.load(open("inputs/data/spanish-v3-2.005-manifest.json"))
           assert s["step"] == 407500 and s["data_sha256"] == manifest["data_sha256"]

@@ -208,7 +208,7 @@ La agenda previa de *Cerebro a Código* no se descarta: elegibilidad/R-STDP, tag
 
 **No se ha lanzado el torneo.** Antes hay que implementar cada variante con flags opt-in, probar paridad o invariantes, verificar fallbacks y completar un smoke test. Ningún brazo será un no-op ni se promoverá automáticamente. Un ahorro de tiempo solo cuenta si conserva calidad, estabilidad y capacidad en el holdout.
 
-Protocolo y matriz: [Torneo de eficiencia neural y computacional](docs/TORNEO_EFICIENCIA_NEURAL_COMPUTACIONAL.md).
+Protocolo y matriz: [Torneo de eficiencia neural y computacional](docs/TORNEO_EFICIENCIA_NEURAL_COMPUTACIONAL.md). Auditoría de lo que ya existe y lo que falta implementar: [preparación de los 20 brazos](docs/TORNEO_AUDITORIA_PREPARACION.md).
 
 ## Cómo se investiga
 

@@ -28,9 +28,9 @@ CHUNKABLE_TASKS = {
     "raw_text_pretraining", "lm_text", "persona_profile",
     "persona_dialogue", "synthetic_persona_voice",
 }
-EMAIL_RE = re.compile(r"\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", re.I)
-DNI_RE = re.compile(r"\\b(?:\\d{8}[A-Z]|[XYZ]\\d{7}[A-Z])\\b", re.I)
-PHONE_RE = re.compile(r"(?<!\\w)(?:\\+34[\\s.-]?)?(?:[6789]\\d{2})[\\s.-]?\\d{3}[\\s.-]?\\d{3}(?!\\w)")
+EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
+DNI_RE = re.compile(r"\b(?:\d{8}[A-Z]|[XYZ]\d{7}[A-Z])\b", re.I)
+PHONE_RE = re.compile(r"(?<!\w)(?:\+34[\s.-]?)?(?:[6789]\d{2})[\s.-]?\d{3}[\s.-]?\d{3}(?!\w)")
 
 
 def has_personal_identifier(text: str) -> bool:

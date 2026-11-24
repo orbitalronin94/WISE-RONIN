@@ -12,7 +12,7 @@ from pathlib import Path
 from datasets import load_dataset
 from tokenizers import Tokenizer
 
-from scripts.build_corpus_v4_openculture import (
+from build_corpus_v4_openculture import (
     ShardWriter, encode_chunks, find_attractors, load_denylist,
     normalize, sha256_file, text_quality,
 )

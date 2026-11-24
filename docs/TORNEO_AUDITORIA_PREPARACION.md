@@ -19,7 +19,7 @@
 | H12 deferred diagnostics | `collect_diagnostics` y trace norm on-demand existen parcialmente | Inventariar cada métrica y sus consumidores; medir sincronizaciones restantes |
 | H13 shared invariants | Cache de máscaras causales existe con `share_causal_masks` | Validar cache hit, límites, device/dtype y equivalencia; no cachear estado dinámico |
 | H14 selective backward | Lazy backward + surprise gate ya existen | Comparar rutas y gate temporal; test de resume, optimizer/scheduler y holdout |
-| H15 shared loss normalization | Repetition loss ya comparte log-softmax internamente | Variante que comparte normalización con CE; igualdad numérica y gradientes |
+| H15 shared loss normalization | Repetition loss ya comparte log-softmax internamente | **Prototipo opt-in implementado** en `train/loss.py` y conectado al runtime profile; tests de paridad de loss/gradiente añadidos. Pendiente CI y benchmark de tiempo/memoria |
 | H16 backend kernels | MKLDNN, OpenMP, foreach y fused scatter tienen soporte configurable | Microbench por kernel/operación y perfil idéntico; no asumir que fused AdamW acelera CPU |
 | H17 vectorized memory | Escrituras secuenciales por muestra y reemplazo least-used | Vectorizar solo caso con equivalencia exacta de orden/contadores; fallback secuencial obligatorio |
 | H18 Python/Torch sync | Hay `.item()` en chunking, gate de elegibilidad y diagnósticos | Clasificar cada sincronización funcional/diagnóstica; quitar solo las no funcionales o agruparlas sin alterar decisiones |

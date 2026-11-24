@@ -165,6 +165,8 @@ La procedencia, fuentes, manifiesto, hashes y estado de la ampliación están en
 
 ## Benchmark de optimización CPU
 
+La integración reversible de `lazy backward` + `surprise gate` en el trainer de LUMEN está documentada en [LAZY_BACKWARD_SURPRISE_INTEGRATION.md](docs/LAZY_BACKWARD_SURPRISE_INTEGRATION.md). En la campaña emparejada se activa solo para LUMEN; el Transformer conserva su ruta de control.
+
 El 23 de noviembre de 2026 se ejecutó un cribado paralelo de **20 hipótesis de optimización** sobre Lumen-Ronin. Cada candidata y su control partieron del mismo checkpoint promovido (step 140.700), corpus v2 + personalidad, tokenizer, seed 42, scheduler y configuración de entrenamiento; se midieron 100 pasos por brazo, en cinco ventanas de 20 pasos. El experimento completo está en [GitHub Actions run 45158484545](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45158484545).
 
 **Ganador del cribado: desactivar MKLDNN (mkldnn_enabled=false)**, manteniendo cuatro hilos intra-op, dos inter-op, AdamW foreach=false y afinidad CPU fijada.

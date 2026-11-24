@@ -297,6 +297,8 @@ jobs:
             f"- Denylist SHA-256: {m['denylist_sha256']}",
             f"- Source plan SHA-256: {m['source_plan_sha256']}",
             f"- Training authorized: **{str(m['training_authorized']).lower()}**",
+            f"- OpenCulture candidate run: {m['candidate_workflow_runs']['openculture']}",
+            f"- Personality candidate run: {m['candidate_workflow_runs']['personality']}",
             "",
             "## Sources",
           ]

@@ -1,0 +1,116 @@
+name: Build corpus v4 OpenCulture — 1.8M rows
+
+on:
+  push:
+    branches: [corpus-v4-diversity-attractor-gate]
+    paths:
+      - scripts/build_corpus_v4_openculture.py
+      - data/corpus_v4_attractor_denylist.json
+      - .github/workflows/build-corpus-v4-openculture.yml
+  workflow_dispatch:
+    inputs:
+      target_rows:
+        description: "Accepted unique rows"
+        required: true
+        default: "1800000"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: wise-ronin-corpus-v4-openculture
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      PYTHONUNBUFFERED: "1"
+      HF_HUB_DISABLE_XET: "1"
+      TARGET_ROWS: \${{ inputs.target_rows || '1800000' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: corpus-v4-diversity-attractor-gate
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install streaming corpus dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "datasets>=3,<4" "tokenizers>=0.20,<1" "langid>=1.1.6" pyarrow
+
+      - name: Download the exact tokenizer used by the paired v3.2.005 models
+        uses: actions/download-artifact@v4
+        with:
+          name: paired-v32-inputs-45405758303
+          path: prepared
+          repository: \${{ github.repository }}
+          run-id: 45405758303
+          github-token: \${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify tokenizer lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKENIZER="$(find prepared -name tokenizer.json -type f | head -n 1)"
+          test -s "$TOKENIZER"
+          ACTUAL="$(sha256sum "$TOKENIZER" | cut -d' ' -f1)"
+          EXPECTED="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          test "$ACTUAL" = "$EXPECTED"
+          echo "TOKENIZER_PATH=$TOKENIZER" >> "$GITHUB_ENV"
+          echo "Verified tokenizer $ACTUAL"
+
+      - name: Compile and test attractor filter
+        run: |
+          python -m py_compile scripts/build_corpus_v4_openculture.py scripts/filter_corpus_attractors.py
+          python -m pip install pytest
+          PYTHONPATH=. pytest -q tests/test_corpus_attractor_filter.py
+
+      - name: Stream and build 100 MiB OpenCulture shards
+        run: |
+          python scripts/build_corpus_v4_openculture.py \
+            --tokenizer "$TOKENIZER_PATH" \
+            --target-rows "$TARGET_ROWS" \
+            --chunk-tokens 126 \
+            --max-shard-bytes 104857600 \
+            --output-dir artifacts/corpus-v4-openculture
+
+      - name: Verify shard caps, row counts, hashes and denylist
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path("artifacts/corpus-v4-openculture")
+          m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          assert m["training_authorized"] is False
+          assert m["actual_rows"] >= m["target_rows"]
+          assert m["chunk_tokens"] <= 126
+          assert m["max_shard_bytes"] <= 104857600
+          total=0
+          for shard in m["shards"]:
+              p=root/shard["file"]
+              b=p.stat().st_size
+              assert b <= 104857600, (p,b)
+              assert hashlib.sha256(p.read_bytes()).hexdigest() == shard["sha256"]
+              rows=sum(1 for line in p.open(encoding="utf-8") if line.strip())
+              assert rows == shard["rows"]
+              total += rows
+          assert total == m["actual_rows"], (total,m["actual_rows"])
+          print(json.dumps({k:m[k] for k in ("actual_rows","target_rows","documents_seen","documents_accepted","rejections","source_stats")},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Upload immutable candidate shards and manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-corpus-v4-openculture-\${{ github.run_id }}
+          path: artifacts/corpus-v4-openculture/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1

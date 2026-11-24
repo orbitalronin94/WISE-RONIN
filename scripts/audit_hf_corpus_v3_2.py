@@ -76,7 +76,13 @@ def audit_split(db,repo,config,split,limit,sample_n):
   if limit and i>=limit:break
   stats["rows_seen"]+=1;s=rowtext(row)
   if not s:stats["empty_or_nontext"]+=1;continue
-  n=norm(s);stats["whitespace_tokens"]+=len(n.split());stats["language_"+lang(row,s)]+=1
+  language=lang(row,s);stats["language_"+language]+=1
+  if language.startswith("non_es"):
+   stats["non_spanish_excluded"]+=1;continue
+  if language=="language_unresolved":
+   stats["language_unresolved_quarantined"]+=1;continue
+  stats["spanish_rows_scanned"]+=1
+  n=norm(s);stats["whitespace_tokens"]+=len(n.split())
   flags=[]
   if EMAIL.search(s):flags.append("possible_email")
   if NIF.search(s):flags.append("possible_spanish_nif")

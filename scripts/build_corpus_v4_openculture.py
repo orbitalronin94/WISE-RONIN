@@ -250,8 +250,13 @@ def main():
     chunk_seen = 0
 
     try:
-        for source in SOURCES:
-            quota = round(args.target_rows * source["share"])
+        for source_index, source in enumerate(SOURCES):
+            # The final source absorbs any shortfall from earlier quotas.
+            quota = (
+                args.target_rows - total_rows
+                if source_index == len(SOURCES) - 1
+                else round(args.target_rows * source["share"])
+            )
             source_rows = 0
             source_docs = 0
             accepted_source_docs = 0

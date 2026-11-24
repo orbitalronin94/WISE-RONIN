@@ -85,6 +85,17 @@
       "This candidate is not the same lineage as current v3.2.005, whose declared v3.1 base is 197,788 rows.",
       "ALIA contribution is CC-BY-SA-4.0 and requires separate compatibility and provenance review.",
       "50,000 verifiable_personality records derive from 40 fact cards and seven institutional URLs; 119,026 synthetic curricula derive from 24x10 reviewed seed cases."
-    ]
+    ],
+    "raw_token_ratio_vs_v32": 90.56022583073468,
+    "token_count_comparison_note": "The 2,014,093,292 candidate count is pre-truncation. The current training loader truncates sequences to max_len=128 (127 IDs plus EOS). The v3.1 ALIA builder emitted 180-token chunks, so build a max_len=128 cache before claiming an effective training-token multiplier."
+  },
+  "current_token_cache": {
+    "format": "ronin_token_cache_v1",
+    "rows": 279613,
+    "max_len": 128,
+    "tokenizer_sha256": "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe",
+    "effective_token_ids_in_cache_including_eos_excluding_padding": 22240374,
+    "non_eos_token_ids": 21960761,
+    "data_sha256": "0f7db9d6c4264f68fd6a12a9fe5bfa708e4fc30c1df176de5a4f53081bfe79aa"
   }
 }

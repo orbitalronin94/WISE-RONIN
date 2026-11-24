@@ -1,6 +1,9 @@
 name: Audit Spanish corpus v3.2 sources
 
 on:
+  push:
+    branches:
+      - corpus-v3-2-audit-identity
   workflow_dispatch:
     inputs:
       max_rows_per_split:

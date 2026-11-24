@@ -163,6 +163,16 @@ La procedencia, fuentes, manifiesto, hashes y estado de la ampliación están en
 
 **Corpus v3 congelado y próximo paso:** v3.0.0 queda como la siguiente ampliación planificada para el próximo train emparejado. El experimento comprobará si seguir escalando y diversificando el corpus de forma gradual mejora la generalización, en lugar de asumir que más datos siempre ayudan. La auditoría automática está completada, pero no equivale a una certificación perfecta: se mantienen pendientes la revisión de near-duplicates y respuestas repetidas, el examen de los 41 marcadores potencialmente sensibles y la trazabilidad individual de parte de la literatura. El manifiesto conserva `training_authorized=false` como registro del estado de admisión de la auditoría; antes de ejecutar el train se deberá cerrar y documentar explícitamente el gate de datos. [Ficha y composición v3](docs/CORPUS_V3_ES.md) · [Auditoría 45142717502](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45142717502).
 
+### Auditoría y ampliación v4 — 24 de noviembre de 2026
+
+La auditoría se ha hecho sobre el JSONL real del experimento v3.2.005: **279.613 filas**, de las cuales 178.090 son texto documental, 72.734 perfiles/diálogos/voz de personalidad y 28.789 pertenecen a otras tareas SFT/QA. El objetivo inicial de v4 es multiplicar por diez el bloque documental de ~180k, no confundirlo con el total del manifiesto.
+
+El gate de admisión bloquea documentos completos que contengan los atractores observados en el holdout libre de LUMEN: «contexto documental», «democracia» y variantes, «música», «deformación», «latinoamericano/a», «estados miembros» y «unión europea». La coincidencia ignora mayúsculas y acentos. La auditoría detectó 18.563 filas del corpus actual con alguno de esos términos; se excluyen al reconstruir v4 y se conserva un registro de rechazo con hash y procedencia, sin duplicar el texto rechazado.
+
+La construcción candidata busca añadir **1,8 M de fragmentos documentales** desde libros y prensa española de dominio público y **160 k fragmentos de personalidad/diálogo**, todos troceados a un máximo de 126 tokens con el tokenizer compartido (4.096 IDs), deduplicados y almacenados en bloques inmutables de hasta 100 MiB. La personalidad/conversación se mantiene como franja objetivo del 10–15% del corpus final.
+
+**Estado:** auditoría y builders en revisión; los artefactos deben completar sus verificaciones y combinarse antes de congelar v4.0.0. El corpus candidato no está autorizado para entrenamiento. El objetivo de 18 M (100× el bloque documental actual) queda como expansión posterior, sujeta a capacidad de ingestión y memoria del trainer. [Auditoría v4](docs/CORPUS_V4_DIVERSITY_AUDIT.md) · [Plan de fuentes](data/corpus_v4_source_plan.json) · [PR v4 en borrador](https://github.com/orbitalronin94/WISE-RONIN/pull/97).
+
 ## Benchmark de optimización CPU
 
 La integración reversible de `lazy backward` + `surprise gate` en el trainer de LUMEN está documentada en [LAZY_BACKWARD_SURPRISE_INTEGRATION.md](docs/LAZY_BACKWARD_SURPRISE_INTEGRATION.md). En la campaña emparejada se activa solo para LUMEN; el Transformer conserva su ruta de control.

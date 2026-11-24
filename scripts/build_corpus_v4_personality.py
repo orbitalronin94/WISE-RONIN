@@ -20,7 +20,7 @@ try:
     )
 except ImportError:
     from build_corpus_v4_openculture import (
-        ShardWriter, encode_chunks, find_attractors, load_denylist,
+        ShardWriter, encode_chunks, find_attractors, load_denylist, metadata_text,
         normalize, sha256_file, text_quality,
     )
 

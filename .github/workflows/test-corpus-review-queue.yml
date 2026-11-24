@@ -1,0 +1,31 @@
+name: Test privacy-minimized corpus review index
+
+on:
+  push:
+    branches:
+      - corpus-v3-2-100mb-acceptance
+    paths:
+      - "scripts/build_corpus_review_queue.py"
+      - "tests/test_corpus_review_queue.py"
+      - ".github/workflows/test-corpus-review-queue.yml"
+  pull_request:
+    paths:
+      - "scripts/build_corpus_review_queue.py"
+      - "tests/test_corpus_review_queue.py"
+      - ".github/workflows/test-corpus-review-queue.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  review-queue:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile review index builder
+        run: python -m py_compile scripts/build_corpus_review_queue.py
+      - name: Test privacy boundaries and field-aware flags
+        run: python tests/test_corpus_review_queue.py

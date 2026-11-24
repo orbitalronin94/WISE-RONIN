@@ -73,6 +73,8 @@ La propuesta inicial queda en data/corpus_v4_source_plan.json. Priorizar:
 4. Ciencia y divulgación de repositorios open access, con licencia comprobada por documento.
 5. Wikidata CC0 y Stack Exchange CC BY-SA, como fuentes separadas y con sus respectivas condiciones.
 6. Documentación técnica, código y manuales con licencias permisivas verificadas.
-7. Personalidad: ampliar perfiles y diálogos variados con datos sintéticos claramente etiquetados o fuentes con permiso/licencia explícita; excluir datos personales reales y campos biográficos identificables.
+7. SQAC (18.817 QA; 15.036 train) queda en espera: los metadatos declaran CC BY-SA 4.0, pero el cuerpo del README declara CC BY 4.0. No se incorpora hasta resolver la discrepancia de licencia.
+8. SIQA_es y openbookqa-es permanecen excluidos por ser fuentes del holdout; EsBBQ solo ofrece test. AQuAS y RagQuAS quedan excluidos por CC BY-NC-SA no comercial.
+9. Personalidad: ampliar perfiles y diálogos variados con datos sintéticos claramente etiquetados o fuentes con permiso/licencia explícita; excluir datos personales reales y campos biográficos identificables.
 
 **No se congela ni se autoriza entrenamiento todavía.** Esta PR instala la auditoría inicial y el control de admisión; la ingestión completa, el recuento final y la congelación se harán después de ejecutar los lotes y revisar sus manifiestos.

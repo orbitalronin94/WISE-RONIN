@@ -73,6 +73,8 @@ class IndexedJsonlCorpus:
                     offsets.append(offset)
                     shard_rows += 1
             if shard_meta is not None:
+                if shard_path.stat().st_size != int(shard_meta.get("bytes", -1)):
+                    raise ValueError(f"Shard byte count mismatch: {shard_path}")
                 if shard_rows != int(shard_meta.get("rows", -1)):
                     raise ValueError(f"Shard row count mismatch: {shard_path}")
                 if shard_digest.hexdigest() != shard_meta.get("sha256"):

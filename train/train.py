@@ -27,6 +27,18 @@ from train.scheduler_transition import CosineTransitionScheduler
 LOG = logging.getLogger("lumen.train")
 
 
+def should_surprise_gate(loss_value: float, threshold: float | None) -> bool:
+    """Skip a parameter update when the observed loss is already below threshold."""
+    return threshold is not None and float(loss_value) <= float(threshold)
+
+
+def should_reuse_cached_gradient(
+    lazy_backward: bool, local_step_index: int, cached_gradients
+) -> bool:
+    """Reuse the previous full gradient on alternating eligible local steps."""
+    return bool(lazy_backward and local_step_index % 2 == 1 and cached_gradients is not None)
+
+
 
 def _tensor_health(value):
     if not isinstance(value, torch.Tensor):
@@ -116,6 +128,13 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         },
         "params": sum(parameter.numel() for parameter in model.parameters()),
         "optimizer": optimizer.state_dict(),
+        "compute_policy": {
+            "lazy_backward": bool(args.lazy_backward),
+            "lazy_gradient_decay": 0.9 if args.lazy_backward else None,
+            "surprise_gate_loss": args.surprise_gate_loss,
+            "scheduler_advances_on_observation": True,
+            "cached_gradients_checkpointed": False,
+        },
         "scheduler": scheduler.state_dict(),
         "step": step,
         "phase": args.phase,
@@ -274,6 +293,10 @@ def main():
     parser.add_argument("--total-steps", type=int, default=CONFIG.total_steps)
     parser.add_argument("--seed", type=int, default=CONFIG.seed)
     parser.add_argument("--grad-clip", type=float, default=1.0)
+    parser.add_argument("--lazy-backward", action="store_true",
+                        help="Reuse the previous full gradient, decayed by 0.9, on alternating eligible steps")
+    parser.add_argument("--surprise-gate-loss", type=float, default=None,
+                        help="Skip backward and optimizer update when scalar loss is <= this threshold")
     parser.add_argument("--scheduler-transition", action="store_true")
     parser.add_argument("--restart-scheduler-transition", action="store_true",
                         help="Start a new cosine segment from an exhausted transition checkpoint")
@@ -299,6 +322,8 @@ def main():
         parser.error("--steps must be between 1 and 10000")
     if args.log_every < 1 or args.checkpoint_every < 1 or args.recovery_checkpoint_every < 0 or args.parameter_check_every < 1:
         parser.error("log/checkpoint/parameter-check intervals must be positive; recovery interval may be zero")
+    if args.surprise_gate_loss is not None and args.surprise_gate_loss < 0:
+        parser.error("--surprise-gate-loss must be non-negative")
     if args.threads < 1 or args.interop_threads < 1:
         parser.error("--threads and --interop-threads must be at least 1")
     if args.orpo:
@@ -606,6 +631,17 @@ def main():
         LOG.info("torch_compile enabled: mode=%s; diagnostic forwards remain eager", args.compile_mode)
     glucose_loss_window = deque(maxlen=args.log_every)
     profile = {"forward": 0.0, "backward": 0.0, "sleep": 0.0, "wall": 0.0}
+    cached_gradients = None
+    optimizer_updates = 0
+    surprise_gated_steps = 0
+    lazy_reused_steps = 0
+    backward_calls = 0
+    if args.lazy_backward or args.surprise_gate_loss is not None:
+        LOG.info(
+            "compute_saving_policy lazy_backward=%s gradient_decay=%.2f surprise_gate_loss=%s "
+            "scheduler_advances_on_observation=True cached_gradients_checkpointed=False",
+            args.lazy_backward, 0.9, args.surprise_gate_loss,
+        )
     block_started = time.perf_counter()
     elapsed_offset = 0.0
     if args.wall_clock_file and Path(args.wall_clock_file).is_file():
@@ -648,22 +684,48 @@ def main():
             raise FloatingPointError(
                 f"non-finite loss at global step {step}; optimizer update skipped"
             )
+        loss_value = float(loss.detach().item())
+        surprise_gate = should_surprise_gate(loss_value, args.surprise_gate_loss)
         optimizer.zero_grad(set_to_none=True)
-        backward_started = time.perf_counter()
-        loss.backward()
-        profile["backward"] += time.perf_counter() - backward_started
-        try:
-            grad_norm = torch.nn.utils.clip_grad_norm_(
-                model.parameters(), args.grad_clip,
-                foreach=not args.disable_foreach, error_if_nonfinite=True,
+        if surprise_gate:
+            # Keep the observation for loss/affect/homeostasis, but do not
+            # compute gradients or mutate model/optimizer parameters.
+            surprise_gated_steps += 1
+        else:
+            local_step_index = step - start - 1
+            lazy_reuse = should_reuse_cached_gradient(
+                args.lazy_backward, local_step_index, cached_gradients
             )
-        except RuntimeError:
-            log_nonfinite_diagnostics(model, output, metrics, loss, optimizer, step, "non-finite gradient norm")
-            for name, parameter in model.named_parameters():
-                if parameter.grad is not None and not torch.isfinite(parameter.grad).all():
-                    LOG.error("NONFINITE_GRADIENT step=%d name=%s %s", step, name, _tensor_health(parameter.grad))
-            raise
-        optimizer.step()
+            if lazy_reuse:
+                for parameter, cached in zip(model.parameters(), cached_gradients):
+                    if cached is not None:
+                        parameter.grad = cached.mul(0.9)
+                lazy_reused_steps += 1
+            else:
+                backward_started = time.perf_counter()
+                loss.backward()
+                profile["backward"] += time.perf_counter() - backward_started
+                backward_calls += 1
+                if args.lazy_backward:
+                    # Cache the un-clipped gradient; clipping is reapplied to
+                    # each reused copy immediately before the optimizer step.
+                    cached_gradients = [
+                        None if parameter.grad is None else parameter.grad.detach().clone()
+                        for parameter in model.parameters()
+                    ]
+            try:
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), args.grad_clip,
+                    foreach=not args.disable_foreach, error_if_nonfinite=True,
+                )
+            except RuntimeError:
+                log_nonfinite_diagnostics(model, output, metrics, loss, optimizer, step, "non-finite gradient norm")
+                for name, parameter in model.named_parameters():
+                    if parameter.grad is not None and not torch.isfinite(parameter.grad).all():
+                        LOG.error("NONFINITE_GRADIENT step=%d name=%s %s", step, name, _tensor_health(parameter.grad))
+                raise
+            optimizer.step()
+            optimizer_updates += 1
         # Keep cheap numerical guards on every update (finite loss and
         # error_if_nonfinite gradient clipping above); amortize the full model
         # and Adam-state scans, which otherwise read every parameter each step.
@@ -692,6 +754,8 @@ def main():
             raise FloatingPointError(
                 f"optimizer produced non-finite state at global step {step}"
             )
+        # The LR schedule follows observed training steps, including gated
+        # observations, so checkpoint scheduler_step remains aligned with step.
         scheduler.step()
         for target in (6.0, 5.8):
             if target not in reached_targets and loss.item() <= target:
@@ -746,6 +810,10 @@ def main():
             if output["ze"] is not None:
                 ze_conflict = float(output["ze"]["conflict"].mean().detach())
                 ze_erase = int(model.ze.erase_count.item())
+            LOG.info(
+                "compute_saving step=%d optimizer_updates=%d surprise_gated=%d lazy_reused=%d backward_calls=%d",
+                step, optimizer_updates, surprise_gated_steps, lazy_reused_steps, backward_calls,
+            )
             LOG.info(
                 "step=%d loss=%.5f token=%.5f latent=%.5f div=%.5f "
                 "router=%.5f rep=%.5f "

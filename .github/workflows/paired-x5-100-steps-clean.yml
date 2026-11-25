@@ -68,8 +68,11 @@ jobs:
           for shard in shards:
               path = root / shard["file"]
               assert path.is_file() and path.stat().st_size == int(shard["bytes"]), shard["file"]
-              digest = hashlib.sha256(path.read_bytes()).hexdigest()
-              assert digest == shard["sha256"], shard["file"]
+              hasher = hashlib.sha256()
+              with path.open("rb") as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      hasher.update(chunk)
+              assert hasher.hexdigest() == shard["sha256"], shard["file"]
               rows += int(shard["rows"])
           assert rows == 2_293_883, rows
           print(f"FROZEN_V4_OK rows={rows} shards={len(shards)} tokenizer_sha256={expected}")

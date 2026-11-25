@@ -109,6 +109,7 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
+          from model.config import LumenConfig
           source=Path("config/lumen_wise_x5.json")
           config=json.loads(source.read_text(encoding="utf-8"))
           config.update({
@@ -121,11 +122,13 @@ jobs:
           target=Path("config/lumen_wise_x5_train1000.json")
           target.write_text(json.dumps(config, indent=2)+"\n", encoding="utf-8")
           check=json.loads(target.read_text(encoding="utf-8"))
-          assert check["model_dim"]==672 and check["vocab_size"]==4096
-          assert check["learning_rate"]==3e-5 and check["batch_size"]==8
-          assert check["warmup_steps"]==100
-          assert check["total_steps"]==1000 and check["seed"]==42
-          print("LUMEN_X5_CONFIG_OK architecture preserved; lr=3e-5 batch=8 len=128 warmup=100 total=1000 seed=42")
+          typed=LumenConfig(**check)
+          assert typed.model_dim==672 and typed.vocab_size==4096
+          assert typed.sequence_length==128
+          assert typed.learning_rate==3e-5 and typed.batch_size==8
+          assert typed.warmup_steps==100 and typed.total_steps==1000 and typed.seed==42
+          assert typed.weight_decay==0.01
+          print("LUMEN_X5_CONFIG_SCHEMA_OK architecture preserved; lr=3e-5 batch=8 len=128 warmup=100 total=1000 seed=42")
           PY
       - name: Train official LUMEN-WISE x5 from step 0 to 1000 with 750k profile
         shell: bash
@@ -183,11 +186,22 @@ jobs:
           test -s config/transformer_wise_x5.json
           mkdir -p checkpoints/transformer logs
           { date -u; nproc; free -h; df -h .; } | tee logs/runner-baseline.txt
-      - name: Train official Transformer x5 from step 0 to 1000 with 750k profile
+      - name: Validate identical paired CPU runtime profile
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path("config/lumen_cpu_profile.json").read_text(encoding="utf-8"))
+          expected={"threads":4,"interop_threads":2,"mkldnn_enabled":False,"foreach":False,"cpu_affinity":True}
+          for key,value in expected.items():
+              assert p.get(key)==value,(key,p.get(key),value)
+          print("PAIRED_CPU_PROFILE_OK intraop=4 interop=2 mkldnn=off foreach=off affinity=on")
+          PY
+      - name: Train official Transformer x5 from step 0 to 1000 with matched 750k CPU profile
         shell: bash
         run: |
           set -euo pipefail
-          python -m train.transformer_baseline --steps 1000 --data corpus --tokenizer corpus/tokenizer.json --batch 8 --max-len 128 --seed 42 --threads 4 --lr 3e-5 --warmup 100 --total-steps 1000 --checkpoint-every 1000 --parameter-check-every 100 --ckpt-dir checkpoints/transformer --model-dim 488 --heads 8 --ff-width 1464 2>&1 | tee logs/transformer.log
+          python -m train.transformer_baseline --steps 1000 --data corpus --tokenizer corpus/tokenizer.json --batch 8 --max-len 128 --seed 42 --threads 4 --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity --lr 3e-5 --warmup 100 --total-steps 1000 --checkpoint-every 1000 --parameter-check-every 100 --ckpt-dir checkpoints/transformer --model-dim 488 --heads 8 --ff-width 1464 2>&1 | tee logs/transformer.log
       - name: Verify official Transformer checkpoint
         run: |
           python - <<'PY'

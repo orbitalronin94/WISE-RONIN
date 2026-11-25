@@ -1,0 +1,251 @@
+{
+  "name": "WISE-RONIN Spanish corpus v3.2 source registry",
+  "version": "3.2.0-curation",
+  "status": "CURATION_REGISTRY_NOT_TRAINING_AUTHORIZED",
+  "training_authorized": false,
+  "selection_policy": {
+    "licenses": [
+      "Apache-2.0",
+      "MIT",
+      "CC-BY-4.0",
+      "public-domain/per-document-rights-verified"
+    ],
+    "exclude": [
+      "CC-BY-NC-*",
+      "CC-BY-NC-ND-*",
+      "unresolved-rights",
+      "datasets with undocumented upstream component rights"
+    ],
+    "principles": [
+      "Spanish-only filtering where multilingual",
+      "preserve source-level attribution and revision",
+      "do not convert retrieval/ranking or NER labels into fabricated QA",
+      "protect validation/test splits",
+      "keep synthetic personality separate from factual knowledge",
+      "no automatic admission based on dataset-card license alone"
+    ]
+  },
+  "sources": [
+    {
+      "id": "OysterCoreAI/SFT-General-Spanish-50K",
+      "domain": "general_conversation_instructions",
+      "license": "CC-BY-4.0",
+      "size": "50,413 records (48.4k train shown by viewer)",
+      "format": "chat messages",
+      "route": "sft_chat",
+      "status": "candidate_audit",
+      "notes": "Original synthetic editorial Spanish; automated release rubric is not human validation; preserve attribution and inspect samples."
+    },
+    {
+      "id": "BSC-LT/m-personas",
+      "domain": "persona_dialogue",
+      "license": "Apache-2.0",
+      "size": "510,000 records / 173M tokens across 15 languages",
+      "format": "persona + prompt + messages",
+      "route": "persona_dialogue",
+      "status": "candidate_audit",
+      "notes": "Filter lang=es only; obtain exact Spanish count from pinned revision; deduplicate persona and dialogue separately."
+    },
+    {
+      "id": "Kukedlc/Personas_Spanish-40k",
+      "domain": "persona_profiles",
+      "license": "Apache-2.0",
+      "size": "37,476 rows",
+      "format": "CSV persona descriptions",
+      "route": "persona_profile",
+      "status": "candidate_audit",
+      "notes": "Descriptions skew toward artistic/cultural/theatre professions; use as a narrow slice, not population representation."
+    },
+    {
+      "id": "StrataSynth/stratasynth-personas-spain",
+      "domain": "persona_profiles_personality",
+      "license": "CC-BY-4.0",
+      "size": "1,250 synthetic Spain profiles",
+      "format": "JSON structured profiles",
+      "route": "persona_profile",
+      "status": "candidate_audit",
+      "notes": "Synthetic Big Five and speaking style; strip names and demographic/attachment fields from model conditioning; avoid turning correlations into stereotypes."
+    },
+    {
+      "id": "ola-owo/big-five-personality-traits",
+      "domain": "personality_trait_descriptions",
+      "license": "CC-BY-4.0",
+      "size": "Spanish parquet split; exact count to resolve",
+      "format": "trait/level/description",
+      "route": "persona_trait_description",
+      "status": "candidate_audit",
+      "notes": "Synthetic trait descriptions; verify Spanish split row count and provenance; do not treat traits as clinical labels."
+    },
+    {
+      "id": "somosnlp/LingComp_QA",
+      "domain": "education_computational_linguistics",
+      "license": "Apache-2.0",
+      "size": "803 rows",
+      "format": "pregunta/respuesta",
+      "route": "qa",
+      "status": "candidate_audit",
+      "notes": "Existing v3.1 admitted 741 rows; re-use pinned revision and do not duplicate."
+    },
+    {
+      "id": "somosnlp/lenguaje-claro-dataset",
+      "domain": "administrative_plain_language",
+      "license": "Apache-2.0",
+      "size": "4,094 rows",
+      "format": "question/answer",
+      "route": "qa_rewrite",
+      "status": "candidate_audit",
+      "notes": "Existing v3.1 admitted 55 rows due context limit; test a document-continuation route for long source text rather than silently truncating."
+    },
+    {
+      "id": "somosnlp/instruct-legal-refugiados-es",
+      "domain": "law_refugee_migration",
+      "license": "Apache-2.0",
+      "size": "9,430 train rows",
+      "format": "prompt/context/answer",
+      "route": "contextual_qa",
+      "status": "candidate_audit",
+      "notes": "Pin source documents and jurisdiction/date; keep answers time-qualified and avoid legal advice claims."
+    },
+    {
+      "id": "GovEasy",
+      "domain": "public_administration",
+      "license": "CC-BY-4.0",
+      "size": "438 procedures",
+      "format": "structured administrative procedures",
+      "route": "document_and_task",
+      "status": "candidate_audit",
+      "notes": "Small but high-value Spain administrative coverage; preserve source links and publication dates."
+    },
+    {
+      "id": "ESQAD",
+      "domain": "education_question_answering",
+      "license": "CC-BY-4.0",
+      "size": "676.1 MB archive",
+      "format": "QAG pairs + teacher/student-rated subset",
+      "route": "qa_with_quality_metadata",
+      "status": "candidate_audit",
+      "notes": "Separate human-rated/benchmark material from train; inspect generated vs expert-authored subsets and rating fields."
+    },
+    {
+      "id": "TDX Thesis Spanish Corpus",
+      "domain": "academic_science_humanities",
+      "license": "CC-BY-4.0",
+      "size": "248,676,517 tokens; 9,790 documents",
+      "format": "clean text documents",
+      "route": "pretraining_document",
+      "status": "candidate_audit",
+      "notes": "Large academic Spanish text; retain thesis-level provenance and remove bibliography/boilerplate."
+    },
+    {
+      "id": "PleIAs/BDH-Books",
+      "domain": "literature_humanities_history",
+      "license": "public-domain per-work verification",
+      "size": "~139,932 titles; provider-reported scale",
+      "format": "book text/OCR",
+      "route": "pretraining_document",
+      "status": "candidate_audit",
+      "notes": "Admit only works with item-level public-domain status; OCR quality scoring and dedup against other book corpora."
+    },
+    {
+      "id": "Spanish-PD-Books",
+      "domain": "literature_general_knowledge",
+      "license": "public-domain per-work verification",
+      "size": "~302,640 texts; provider-reported scale",
+      "format": "book text",
+      "route": "pretraining_document",
+      "status": "candidate_audit",
+      "notes": "Check rights at work/edition level; substantial overlap risk with BDH and other public-domain books."
+    },
+    {
+      "id": "PleIAs/common_corpus",
+      "domain": "multidomain_pretraining",
+      "license": "per-document free-license/public-domain filter only",
+      "size": "Spanish component reported >10B tokens",
+      "format": "document corpus with provenance",
+      "route": "pretraining_document",
+      "status": "candidate_audit",
+      "notes": "Never ingest the full multilingual release blindly; filter lang=es and allowlisted document licenses, retain per-document rights."
+    },
+    {
+      "id": "dariolopez/ms-marco-es-500k",
+      "domain": "retrieval_ranking",
+      "license": "Apache-2.0",
+      "size": "500,000 triples",
+      "format": "query/positive/negative",
+      "route": "retrieval_pairwise",
+      "status": "candidate_audit",
+      "notes": "Do not flatten into ordinary next-token QA; preserve retrieval objective or use only positive documents after dedup and source review."
+    },
+    {
+      "id": "Alvaro8gb/enfermedades-wiki-marzo-2024",
+      "domain": "biomedical_reference",
+      "license": "MIT",
+      "size": "~1.42M tokens reported in SMC source inventory",
+      "format": "encyclopedic text",
+      "route": "pretraining_document",
+      "status": "candidate_audit",
+      "notes": "Pin exact revision; verify upstream Wikimedia attribution and article-level provenance."
+    },
+    {
+      "id": "PlanTL-GOB-ES/pharmaconer",
+      "domain": "biomedical_ner_pharmacology",
+      "license": "CC-BY-4.0",
+      "size": "15,868 annotated sentences across splits; 8,129 train",
+      "format": "IOB/CoNLL",
+      "route": "supervised_extraction",
+      "status": "candidate_audit",
+      "notes": "Train split only; convert labels to explicit entity-extraction examples, preserve span labels and no test leakage."
+    },
+    {
+      "id": "bigbio/meddocan",
+      "domain": "biomedical_deidentification",
+      "license": "CC-BY-4.0",
+      "size": "364,462 tokens in source inventory",
+      "format": "annotated clinical documents",
+      "route": "supervised_deidentification",
+      "status": "candidate_audit",
+      "notes": "Use only train split and inspect de-identification guarantees; never expose or reconstruct patient identifiers."
+    },
+    {
+      "id": "bigbio/distemist",
+      "domain": "biomedical_disease_mentions",
+      "license": "CC-BY-4.0",
+      "size": "550,203 tokens in source inventory",
+      "format": "annotated biomedical text",
+      "route": "supervised_extraction",
+      "status": "candidate_audit",
+      "notes": "Train split only; preserve disease mention labels; not a medical-advice dialogue dataset."
+    },
+    {
+      "id": "BARR2",
+      "domain": "biomedical_background_text",
+      "license": "CC-BY-4.0",
+      "size": "1,732,432 tokens in source inventory",
+      "format": "background biomedical text",
+      "route": "pretraining_document",
+      "status": "candidate_audit",
+      "notes": "Verify canonical source/revision and source-level rights before ingestion; dedup against SMC and biomedical crawls."
+    }
+  ],
+  "required_checks": [
+    "resolve immutable commit/revision for every source",
+    "download and inspect actual files/splits/schema",
+    "confirm repository license and upstream rights independently",
+    "count Spanish rows/tokens after filtering",
+    "inspect at least 100 stratified rows per source (all rows for small sources)",
+    "PII and sensitive-data scan",
+    "exact and near-duplicate checks against v3.1 and across sources",
+    "separate persona, factual pretraining, QA, retrieval, and supervised extraction tasks",
+    "preserve validation/test splits and frozen WISE-RONIN holdout",
+    "write source-level attribution and SHA-256 manifest",
+    "build immutable cache using frozen 4,096-tokenizer and max_len 128",
+    "compare identical corpus/cache/hash for LUMEN and Transformer"
+  ],
+  "prohibited_shortcuts": [
+    "no converting long documents into invented Q&A",
+    "no mixing non-Spanish rows into Spanish subsets",
+    "no training on protected test/benchmark partitions",
+    "no treating synthetic personas as real demographic statistics",
+    "no blanket license inheritance from aggregator cards when upstream sources differ"
+  ]
+}

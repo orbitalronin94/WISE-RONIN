@@ -1,0 +1,582 @@
+name: WISE-LUMEN x5 + Transformer x5 — durable 1k checkpoints (V4)
+
+on:
+  workflow_dispatch:
+    inputs:
+      freeze_run_id:
+        description: "Authorized V4 freeze run ID"
+        required: true
+        type: string
+        default: "45580013610"
+  push:
+    paths:
+      - ".github/workflows/train-x5-durable.yml"
+      - ".github/workflows/reusable-x5-checkpoint-chunk.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: wise-x5-durable-v4
+  cancel-in-progress: false
+
+env:
+  FREEZE_RUN_ID: ${{ inputs.freeze_run_id || '45580013610' }}
+
+jobs:
+  prepare-v4:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-corpus-v4-frozen-${{ env.FREEZE_RUN_ID }}
+          path: corpus
+          repository: ${{ github.repository }}
+          run-id: ${{ env.FREEZE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify authorization, every shard hash, and tokenizer
+        run: |
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path("corpus")
+          manifest_path=root/"manifest.json"
+          m=json.loads(manifest_path.read_text(encoding="utf-8"))
+          assert m.get("version")=="v4.0.0"
+          assert m.get("status")=="FROZEN_TRAINABLE"
+          assert m.get("training_authorized") is True
+          assert m.get("tokenizer_sha256")=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest()==m["tokenizer_sha256"]
+          total=0
+          for shard in m["shards"]:
+              p=root/shard["file"]
+              assert p.is_file() and p.stat().st_size==shard["bytes"]<=104857600
+              h=hashlib.sha256()
+              with p.open("rb") as f:
+                  for chunk in iter(lambda:f.read(1024*1024),b""): h.update(chunk)
+              assert h.hexdigest()==shard["sha256"], shard["file"]
+              total+=shard["rows"]
+          assert total==m["total_rows"]
+          print(f"V4 VERIFIED rows={total} tokens={m['token_count_without_special_tokens']} shards={len(m['shards'])} tokenizer={m['tokenizer_sha256']}")
+          PY
+      - name: Publish verified V4 inputs for all resumable chunks
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-corpus-inputs
+          path: corpus/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+
+  lumen-1000:
+    needs: prepare-v4
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 0
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: ""
+    secrets: inherit
+
+  lumen-2000:
+    needs: lumen-1000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 1000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-1000"
+    secrets: inherit
+
+  lumen-3000:
+    needs: lumen-2000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 2000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-2000"
+    secrets: inherit
+
+  lumen-4000:
+    needs: lumen-3000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 3000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-3000"
+    secrets: inherit
+
+  lumen-5000:
+    needs: lumen-4000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 4000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-4000"
+    secrets: inherit
+
+  lumen-6000:
+    needs: lumen-5000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 5000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-5000"
+    secrets: inherit
+
+  lumen-7000:
+    needs: lumen-6000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 6000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-6000"
+    secrets: inherit
+
+  lumen-8000:
+    needs: lumen-7000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 7000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-7000"
+    secrets: inherit
+
+  lumen-9000:
+    needs: lumen-8000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 8000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-8000"
+    secrets: inherit
+
+  lumen-10000:
+    needs: lumen-9000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 9000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-9000"
+    secrets: inherit
+
+  lumen-11000:
+    needs: lumen-10000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 10000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-10000"
+    secrets: inherit
+
+  lumen-12000:
+    needs: lumen-11000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 11000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-11000"
+    secrets: inherit
+
+  lumen-13000:
+    needs: lumen-12000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 12000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-12000"
+    secrets: inherit
+
+  lumen-14000:
+    needs: lumen-13000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 13000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-13000"
+    secrets: inherit
+
+  lumen-15000:
+    needs: lumen-14000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 14000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-14000"
+    secrets: inherit
+
+  lumen-16000:
+    needs: lumen-15000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 15000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-15000"
+    secrets: inherit
+
+  lumen-17000:
+    needs: lumen-16000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 16000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-16000"
+    secrets: inherit
+
+  lumen-18000:
+    needs: lumen-17000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 17000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-17000"
+    secrets: inherit
+
+  lumen-19000:
+    needs: lumen-18000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 18000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-18000"
+    secrets: inherit
+
+  lumen-20000:
+    needs: lumen-19000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 19000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-19000"
+    secrets: inherit
+
+  lumen-21000:
+    needs: lumen-20000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 20000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-20000"
+    secrets: inherit
+
+  lumen-22000:
+    needs: lumen-21000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 21000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-21000"
+    secrets: inherit
+
+  lumen-23000:
+    needs: lumen-22000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 22000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-22000"
+    secrets: inherit
+
+  lumen-24000:
+    needs: lumen-23000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 23000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-23000"
+    secrets: inherit
+
+  lumen-25000:
+    needs: lumen-24000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "lumen"
+      start_step: 24000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-24000"
+    secrets: inherit
+
+  transformer-1000:
+    needs: prepare-v4
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 0
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: ""
+    secrets: inherit
+
+  transformer-2000:
+    needs: transformer-1000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 1000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-1000"
+    secrets: inherit
+
+  transformer-3000:
+    needs: transformer-2000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 2000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-2000"
+    secrets: inherit
+
+  transformer-4000:
+    needs: transformer-3000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 3000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-3000"
+    secrets: inherit
+
+  transformer-5000:
+    needs: transformer-4000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 4000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-4000"
+    secrets: inherit
+
+  transformer-6000:
+    needs: transformer-5000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 5000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-5000"
+    secrets: inherit
+
+  transformer-7000:
+    needs: transformer-6000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 6000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-6000"
+    secrets: inherit
+
+  transformer-8000:
+    needs: transformer-7000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 7000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-7000"
+    secrets: inherit
+
+  transformer-9000:
+    needs: transformer-8000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 8000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-8000"
+    secrets: inherit
+
+  transformer-10000:
+    needs: transformer-9000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 9000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-9000"
+    secrets: inherit
+
+  transformer-11000:
+    needs: transformer-10000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 10000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-10000"
+    secrets: inherit
+
+  transformer-12000:
+    needs: transformer-11000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 11000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-11000"
+    secrets: inherit
+
+  transformer-13000:
+    needs: transformer-12000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 12000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-12000"
+    secrets: inherit
+
+  transformer-14000:
+    needs: transformer-13000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 13000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-13000"
+    secrets: inherit
+
+  transformer-15000:
+    needs: transformer-14000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 14000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-14000"
+    secrets: inherit
+
+  transformer-16000:
+    needs: transformer-15000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 15000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-15000"
+    secrets: inherit
+
+  transformer-17000:
+    needs: transformer-16000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 16000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-16000"
+    secrets: inherit
+
+  transformer-18000:
+    needs: transformer-17000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 17000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-17000"
+    secrets: inherit
+
+  transformer-19000:
+    needs: transformer-18000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 18000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-18000"
+    secrets: inherit
+
+  transformer-20000:
+    needs: transformer-19000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 19000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-19000"
+    secrets: inherit
+
+  transformer-21000:
+    needs: transformer-20000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 20000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-20000"
+    secrets: inherit
+
+  transformer-22000:
+    needs: transformer-21000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 21000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-21000"
+    secrets: inherit
+
+  transformer-23000:
+    needs: transformer-22000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 22000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-22000"
+    secrets: inherit
+
+  transformer-24000:
+    needs: transformer-23000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 23000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-23000"
+    secrets: inherit
+
+  transformer-25000:
+    needs: transformer-24000
+    uses: ./.github/workflows/reusable-x5-checkpoint-chunk.yml
+    with:
+      model: "transformer"
+      start_step: 24000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-24000"
+    secrets: inherit
+
+  paired-training-complete:
+    needs:
+      - lumen-25000
+      - transformer-25000
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Record completed paired training
+        run: |
+          echo "Both models completed 25000 steps with verified 1000-step checkpoints."
+          echo "V4 freeze run: ${{ env.FREEZE_RUN_ID }}"

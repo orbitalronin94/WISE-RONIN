@@ -1,0 +1,231 @@
+name: LUMEN — 18 CPU throughput hypotheses (matched real training)
+
+on:
+  push:
+    branches: [perf/lumen-18-throughput-tournament]
+    paths:
+      - ".github/workflows/benchmark-lumen-18-throughput.yml"
+      - "scripts/benchmark_lumen_18_throughput.py"
+      - "tests/test_lumen_throughput_profiles.py"
+      - "config/lumen_cpu_profile.json"
+      - "train/**"
+      - "model/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-18-throughput-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PARENT_RUN_ID: "45177953462"
+  PREPARED_RUN_ID: "45149684913"
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+
+jobs:
+  benchmark:
+    name: "${{ matrix.candidate }} — paired 100-step LUMEN throughput"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 18
+      matrix:
+        candidate:
+          - 01_threads_2
+          - 02_threads_6
+          - 03_threads_8
+          - 04_interop_1
+          - 05_interop_4
+          - 06_mkldnn_on
+          - 07_foreach_on
+          - 08_affinity_off
+          - 09_threads_2_interop_2
+          - 10_threads_2_mkldnn_on
+          - 11_threads_2_foreach_on
+          - 12_threads_2_affinity
+          - 13_threads_6_interop_2
+          - 14_interop_1_affinity_off
+          - 15_mkldnn_foreach_on
+          - 16_compile_default
+          - 17_compile_reduce_overhead
+          - 18_omp_active_compact
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+
+      - name: Install the same CPU training runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+
+      - name: Download exact promoted LUMEN step-170700 checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-approved-neuroplasticity-step170700-45177953462
+          path: parent
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PARENT_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download exact frozen corpus, tokenizer and token cache
+        uses: actions/download-artifact@v7
+        with:
+          name: ronin-v2-plus-personality-250k-45149684913
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PREPARED_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify identical benchmark inputs
+        run: |
+          set -euo pipefail
+          CHECKPOINT="$(find parent -name step_170700.pt -print -quit)"
+          test -n "$CHECKPOINT"
+          test -s prepared/data/spanish-v2-plus-personality-250k.jsonl
+          test -s prepared/data/spanish-v2-plus-personality-token-cache.pt
+          test -s prepared/artifacts/spanish-v2/tokenizer.json
+          echo "CHECKPOINT=$CHECKPOINT" >> "$GITHUB_ENV"
+          export CHECKPOINT
+          python - <<'PY'
+          import hashlib, os, torch
+          from pathlib import Path
+          checkpoint = Path(os.environ["CHECKPOINT"])
+          data = Path("prepared/data/spanish-v2-plus-personality-250k.jsonl")
+          tokenizer = Path("prepared/artifacts/spanish-v2/tokenizer.json")
+          state = torch.load(checkpoint, map_location="cpu", weights_only=False)
+          sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+          assert state["step"] == 170700
+          assert state["architecture_id"] == "ronin_lumen_v3_3_neuroplasticity"
+          assert state["phase"] == 1 and state["pilot_all_rows"] is True
+          assert state["seed"] == 42
+          assert state["training_config"]["batch"] == 8
+          assert state["training_config"]["max_len"] == 128
+          assert state["training_config"]["lr"] == 3e-5
+          assert state["data_sha256"] == sha(data)
+          assert state["tokenizer_sha256"] == sha(tokenizer)
+          assert state.get("optimizer") and state.get("rng") and state.get("scheduler_transition")
+          print("Verified exact LUMEN parent, data and tokenizer:", checkpoint)
+          print("data_sha256:", sha(data))
+          print("tokenizer_sha256:", sha(tokenizer))
+          PY
+
+      - name: Run matched control and one runtime candidate
+        run: |
+          set -euo pipefail
+          python scripts/benchmark_lumen_18_throughput.py \
+            --candidate "${{ matrix.candidate }}" \
+            --repo-root . \
+            --prepared-root prepared \
+            --checkpoint "$CHECKPOINT" \
+            --output "benchmark-results/${{ matrix.candidate }}"
+
+      - name: Preserve both logs and comparison JSON
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lumen-throughput-18-${{ matrix.candidate }}-${{ github.run_id }}
+          path: benchmark-results/${{ matrix.candidate }}/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6
+
+  aggregate:
+    name: Aggregate 18 CPU throughput hypotheses
+    needs: [benchmark]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+
+      - name: Download candidate evidence
+        uses: actions/download-artifact@v7
+        with:
+          pattern: lumen-throughput-18-*-${{ github.run_id }}
+          path: benchmark-results
+          merge-multiple: false
+
+      - name: Rank results and preserve pending candidates
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("benchmark-results")
+          reports = []
+          for path in root.glob("**/comparison.json"):
+              try:
+                  reports.append(json.loads(path.read_text()))
+              except Exception as exc:
+                  reports.append({"candidate": path.parent.name, "status": "unreadable", "reason": str(exc)})
+          reports.sort(key=lambda x: (
+              x.get("decision") != "POSITIVE_SCREENING_REQUIRES_REPEAT",
+              -(x.get("speedup_percent") if x.get("speedup_percent") is not None else -1e9),
+              x.get("candidate", ""),
+          ))
+          approved = [x["candidate"] for x in reports if x.get("decision") == "POSITIVE_SCREENING_REQUIRES_REPEAT"]
+          lines = [
+              "# LUMEN 18-way CPU throughput tournament",
+              "",
+              "Paired 100-step real-training screening from the exact step-170700 checkpoint.",
+              "All candidates preserve every organ, objective, memory subsystem and Delta fastpath.",
+              "",
+              "| Candidate | Status | Speedup | Final loss delta | Dead delta (pp) | Decision |",
+              "|---|---:|---:|---:|---:|---|",
+          ]
+          for x in reports:
+              lines.append("| {candidate} | {status} | {speed} | {loss} | {dead} | {decision} |".format(
+                  candidate=x.get("candidate","?"),
+                  status=x.get("status","?"),
+                  speed=("%.3f%%" % x["speedup_percent"]) if x.get("speedup_percent") is not None else "—",
+                  loss=("%.6f" % x["final_loss_delta"]) if x.get("final_loss_delta") is not None else "—",
+                  dead=("%.3f" % x["dead_delta_percentage_points"]) if x.get("dead_delta_percentage_points") is not None else "—",
+                  decision=x.get("decision","PENDING"),
+              ))
+          lines += [
+              "",
+              "## Decision policy",
+              "",
+              "- Screening gate: strictly faster than control (>0%), final loss regression no greater than 0.01, dead-activity regression no greater than 0.5 percentage points, finite completed run and four-layer diagnostics.",
+              "- A positive screen is retained for repeated validation; no candidate is merged on a single noisy measurement.",
+              "- No candidate is allowed to change or remove an organ, alter the training objective, change plasticity settings, or reduce architectural work.",
+              "- This is not a holdout or a generalization claim.",
+              "",
+              f"Completed reports: {len(reports)}/18. Screening passes: {len(approved)}.",
+          ]
+          (root / "AGGREGATE.md").write_text("\n".join(lines) + "\n")
+          (root / "positive_candidates.json").write_text(json.dumps({
+              "training_authorized": False,
+              "positive_screening_requires_repeat": approved,
+              "completed_reports": len(reports),
+              "expected_candidates": 18,
+              "reason": "Every positive speedup is retained for repeated validation; no candidate is merged on a single noisy measurement."
+          }, indent=2) + "\n")
+          print("\n".join(lines))
+          PY
+
+      - name: Upload aggregate tournament report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lumen-throughput-18-summary-${{ github.run_id }}
+          path: benchmark-results/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6

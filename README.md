@@ -177,6 +177,17 @@ El segundo resultado fue homeostasis_fused_scatter (+1,96 % de velocidad); el te
 **Importante: es una selección provisional, no una victoria que haya superado el gate.** El protocolo había fijado un mínimo de +3 % de aceleración y una regresión máxima de loss del 0,5 %; ninguna de las 20 candidatas alcanzó el umbral de velocidad (0/20 elegibles). Se adopta MKLDNN off como mejor configuración observada para el siguiente ciclo, pero el margen del 2,38 % procede de una sola comparación de 100 pasos y puede incluir variación del runner. No es un holdout ni evidencia de mejor calidad o generalización. Debe confirmarse con repeticiones más largas antes de considerarlo una optimización robusta.
 
 La configuración activa queda registrada en config/lumen_cpu_profile.json. El informe agregado y los informes individuales se conservaron como artefactos de la ejecución. El benchmark también incorporó una migración de compatibilidad para los checkpoints step-140.700 anteriores a las trazas persistentes de elegibilidad: únicamente inicializa a cero esos buffers nuevos ausentes y mantiene estricta la comprobación de cualquier otra clave inesperada o ausente.
+
+### Segunda ronda: torneo de 18 hipótesis de throughput
+
+Se prepara una segunda campaña de rendimiento, ahora anclada al checkpoint LUMEN **170.700** y a la configuración CPU provisional vigente. El workflow .github/workflows/benchmark-lumen-18-throughput.yml compara 18 perfiles de ejecución con entrenamiento real y emparejado: cada candidato se enfrenta al control en el mismo runner, desde el mismo checkpoint, corpus, tokenizer, token cache, RNG y objetivo.
+
+Las hipótesis exploran número de hilos intra/inter-op, MKLDNN, AdamW foreach, afinidad CPU, combinaciones de estos parámetros, torch.compile y afinidad/espera OpenMP. Cada brazo ejecuta 100 pasos; el tiempo se mide con el perfilador del trainer e incluye muestreo/collation, forward, loss, backward, optimizador y diagnósticos ordinarios. Se excluyen inicialización y escritura de checkpoint, y se conserva también el tiempo total de proceso para contextualizar compilación.
+
+**Restricción arquitectónica no negociable:** no se elimina, desactiva ni reduce ningún órgano. Los perfiles candidatos solo pueden cambiar parámetros de ejecución; glucosa, dolor, placer, homeostasis, Delta, memoria, chunking, cabezas, objetivo de entrenamiento y fastpaths ya aprobados permanecen idénticos. El workflow valida además que ninguna candidata modifique los ajustes protegidos.
+
+Gate de cribado: se conserva **cualquier mejora positiva de pasos/segundo (>0 %)**, siempre que la regresión de loss final no supere **0,01**, el empeoramiento de actividad muerta no supere **0,5 puntos porcentuales**, la ejecución sea completa y existan diagnósticos de las cuatro capas. Toda mejora positiva pasa a validación repetida; ninguna se descarta solo porque otra sea mayor. Solo se mergean las mejoras reproducibles y compatibles entre sí. No es un holdout ni una afirmación de generalización.
+
 ## Integración progresiva de neuroplasticidad
 
 La [PR #71](https://github.com/orbitalronin94/WISE-RONIN/pull/71) investiga una siguiente generación de mecanismos para Lumen-Ronin. Su objetivo transversal es **compartir señales y cálculos entre órganos**, evitando EMAs y operaciones redundantes, y coordinar mejor cuándo se escribe, consolida, debilita o protege lo aprendido.

@@ -46,7 +46,7 @@ Las diferencias propias de cada arquitectura (JEPA, memoria, ZE y sueño en LUME
 3. Ejecutar `python scripts/validate_lumen_wise_x5.py` y toda la suite de tests.
 4. Lanzar el workflow pareado en cinco bloques de 5.000 pasos por arquitectura; exige un `freeze_run_id` cuyo artefacto incluya `training_authorized=true`.
 5. Evaluar los dos checkpoints finales contra el mismo holdout congelado y auditar el emparejamiento de resultados.
-6. Ejecutar un smoke test de forward/backward y checkpoint/resume de ambos modelos con datos sintéticos, sin tocar el corpus real.
+6. Ejecutar un smoke test de forward/backward y checkpoint/resume de ambos modelos con datos sintéticos, sin tocar el corpus real. El script `scripts/smoke_test_lumen_wise_x5_resume.py` ejecuta ambos entrenadores reales en 0→1→2 pasos, comprueba los checkpoints y exige restauración de optimizer, scheduler y RNG.
 7. Congelar manifiesto de holdout y prompts antes del step 0.
 8. V4 usa el cargador lazy indexado: no se genera una caché tokenizada monolítica. Cada job verifica el manifiesto, los hashes de shards y tokenizer antes de entrenar.
 

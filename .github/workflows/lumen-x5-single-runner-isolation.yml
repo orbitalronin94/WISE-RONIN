@@ -1,0 +1,106 @@
+name: LUMEN-WISE x5 — isolated single-runner 10-step test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/lumen-x5-single-runner-isolation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lumen-x5-single-runner-isolation-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+
+jobs:
+  lumen-x5:
+    name: LUMEN x5 — one runner, ten real steps
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "numpy>=1.26,<3" "tokenizers>=0.20,<1.0" "tqdm>=4.66,<5"
+
+      - name: Verify exact LUMEN x5 model
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from model.config import LumenConfig
+          from model.lumen import RoninLumen
+          cfg=LumenConfig(**json.loads(Path("config/lumen_wise_x5.json").read_text()))
+          model=RoninLumen(config=cfg,v32_ze=True)
+          params=sum(p.numel() for p in model.parameters())
+          assert params == 12022016, f"unexpected parameter count: {params}"
+          print(f"MODEL_PREFLIGHT_OK params={params} V32-ZE=on vocab=4096 dim=672")
+          PY
+
+      - name: Run ten training steps on this single runner
+        run: |
+          set -euo pipefail
+          mkdir -p benchmark-output/lumen-x5-isolated checkpoints/lumen-x5-isolated
+          python -m train.train \
+            --steps 10 --log-every 1 --checkpoint-every 1000 \
+            --parameter-check-every 10 \
+            --threads 4 --interop-threads 2 \
+            --batch 8 --max-len 128 --seed 42 --lr 3e-5 --warmup 100 --total-steps 1000 \
+            --ckpt-dir checkpoints/lumen-x5-isolated --phase 1 \
+            --model-config config/lumen_wise_x5.json \
+            --runtime-profile config/lumen_cpu_profile.json \
+            --v32-ze --lazy-backward --surprise-gate-loss 1.8 --dummy-m1 \
+            --wall-clock-file benchmark-output/lumen-x5-isolated/wall-clock.json \
+            2>&1 | tee benchmark-output/lumen-x5-isolated/train.log
+
+      - name: Record observed step count
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, re
+          from pathlib import Path
+          p=Path("benchmark-output/lumen-x5-isolated/train.log")
+          log=p.read_text(errors="replace") if p.exists() else ""
+          steps=[int(x) for x in re.findall(r"INFO step=(\d+)",log)]
+          result={
+            "model":"LUMEN-WISE x5",
+            "expected_parameters":12022016,
+            "observed_step_logs":steps,
+            "completed_steps":max(steps,default=0),
+            "all_ten_steps_logged":10 in steps,
+            "runner":"ubuntu-24.04",
+            "parallel_jobs":1
+          }
+          Path("benchmark-output/lumen-x5-isolated/result.json").write_text(json.dumps(result,indent=2)+"\n")
+          print("ISOLATED_BENCHMARK_RESULT="+json.dumps(result,sort_keys=True))
+          PY
+
+      - name: Upload logs and measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-x5-isolated-10-step-${{ github.run_id }}
+          path: benchmark-output/lumen-x5-isolated/
+          if-no-files-found: warn
+          retention-days: 30
+          compression-level: 1

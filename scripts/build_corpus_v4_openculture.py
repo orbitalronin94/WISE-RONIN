@@ -401,3 +401,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# Rebuild immutable candidate after removing non-public-domain documentary sources; allowlist regression test gates this run.

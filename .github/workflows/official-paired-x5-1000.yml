@@ -23,7 +23,7 @@ env:
   MKL_DYNAMIC: "FALSE"
   OMP_WAIT_POLICY: "PASSIVE"
   FREEZE_RUN_ID: "45580013610"
-  EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26d3fefe"
+  EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
 
 jobs:
   validate-corpus:
@@ -55,7 +55,7 @@ jobs:
           assert m.get("version")=="v4.0.0"
           assert m.get("status")=="FROZEN_TRAINABLE"
           assert m.get("training_authorized") is True
-          expected="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26d3fefe"
+          expected="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
           assert m.get("tokenizer_sha256")==expected
           assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest()==expected
           assert len(m.get("shards",[]))==24
@@ -141,7 +141,7 @@ jobs:
           assert s["architecture_id"]=="ronin_lumen_v3_3_neuroplasticity"
           assert s["v32_ze"] is True and s["pilot_all_rows"] is True
           assert int(s["seed"])==42 and int(s["training_config"]["total_steps"])==1000
-          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26d3fefe"
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
           assert all(s.get(k) is not None for k in ("model","optimizer","scheduler","rng","data_sha256"))
           print("OFFICIAL_LUMEN_CHECKPOINT_OK step=1000 params=12022016")
           PY
@@ -201,7 +201,7 @@ jobs:
           assert int(s["step"])==1000 and int(s["params"])==11611472
           assert s["architecture_id"]=="decoder_transformer_4l_d488_h8_ff1464_tied_v1"
           assert int(s["seed"])==42 and int(s["training_config"]["total_steps"])==1000
-          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26d3fefe"
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
           assert all(s.get(k) is not None for k in ("model","optimizer","scheduler","rng","data_sha256"))
           print("OFFICIAL_TRANSFORMER_CHECKPOINT_OK step=1000 params=11611472")
           PY

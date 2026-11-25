@@ -17,6 +17,25 @@ def count(model):
 def main():
     lumen_cfg = LumenConfig(**json.loads((ROOT / "config/lumen_wise_x5.json").read_text()))
     transformer_cfg = json.loads((ROOT / "config/transformer_wise_x5.json").read_text())
+    runtime_cfg = json.loads((ROOT / "config/lumen_cpu_profile.json").read_text())
+    expected_lumen = {
+        "vocab_size": 4096, "sequence_length": 128, "batch_size": 8,
+        "total_steps": 25000, "learning_rate": 0.00015,
+        "warmup_steps": 100, "seed": 42, "weight_decay": 0.01,
+    }
+    expected_transformer = {
+        "vocab_size": 4096, "max_sequence_length": 128, "model_dim": 488,
+        "heads": 8, "ff_width": 1464, "batch_size": 8, "total_steps": 25000,
+        "learning_rate": 0.00015, "warmup_steps": 100, "seed": 42,
+        "weight_decay": 0.01, "tied_embeddings": True, "layers": 4,
+    }
+    for key, value in expected_lumen.items():
+        assert getattr(lumen_cfg, key) == value, (key, getattr(lumen_cfg, key), value)
+    for key, value in expected_transformer.items():
+        assert transformer_cfg.get(key) == value, (key, transformer_cfg.get(key), value)
+    for key, value in {"threads": 4, "interop_threads": 2, "mkldnn_enabled": False,
+                       "foreach": False, "cpu_affinity": True}.items():
+        assert runtime_cfg.get(key) == value, (key, runtime_cfg.get(key), value)
     lumen = RoninLumen(config=lumen_cfg, v32_ze=True)
     lumen_base = RoninLumen(config=LumenConfig(), v32_ze=True)
     transformer = SmallTransformerLM(

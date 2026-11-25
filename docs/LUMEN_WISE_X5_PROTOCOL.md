@@ -24,9 +24,9 @@ El script `scripts/validate_lumen_wise_x5.py` instancia los dos modelos y sus re
 - Contexto 128; batch 8; seed 42.
 - AdamW, LR inicial 1,5e-4, warmup 100, weight decay 0,01 y clipping 1,0.
 - Scheduler cosine con horizonte de 25.000 pasos.
-- Mismo holdout sellado, mismo conjunto de prompts, misma política de generación y misma frecuencia de evaluación.
+- Mismo holdout sellado, mismo conjunto de prompts y mismo tokenizador; una evaluación pareada final en el paso 25.000, sin seleccionar checkpoints mediante el holdout.
 - CPU, 4 hilos intra-op y 2 inter-op en ambos; sin GPU ni cambios automáticos de perfil a mitad de la pareja.
-- Checkpoint cada 250 pasos; métricas cada 100; auditoría de finitud y salud numérica.
+- Checkpoint nominal cada 1.000 pasos en ambos modelos; métricas y auditoría numérica cada 100 pasos; checkpoint exacto al final de cada bloque de 5.000.
 - Los entrenamientos se ejecutarán en **cinco bloques reanudables de 5.000 pasos**: 0→5k→10k→15k→20k→25k. Cada bloque conserva checkpoint, estado de AdamW, scheduler y RNG del bloque anterior del mismo modelo. LUMEN y Transformer no comparten pesos ni checkpoints. Los checkpoints de bloque se publican por separado y permiten reanudar sin perder bloques ya completados.
 
 ## Qué se compara

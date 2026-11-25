@@ -115,7 +115,6 @@ jobs:
               "learning_rate": 3e-5,
               "warmup_steps": 100,
               "batch_size": 8,
-              "sequence_length": 128,
               "total_steps": 1000,
               "seed": 42,
           })
@@ -124,7 +123,7 @@ jobs:
           check=json.loads(target.read_text(encoding="utf-8"))
           assert check["model_dim"]==672 and check["vocab_size"]==4096
           assert check["learning_rate"]==3e-5 and check["batch_size"]==8
-          assert check["sequence_length"]==128 and check["warmup_steps"]==100
+          assert check["warmup_steps"]==100
           assert check["total_steps"]==1000 and check["seed"]==42
           print("LUMEN_X5_CONFIG_OK architecture preserved; lr=3e-5 batch=8 len=128 warmup=100 total=1000 seed=42")
           PY

@@ -337,4 +337,4 @@ La campaña [45577355018](https://github.com/orbitalronin94/WISE-RONIN/actions/r
 
 ## Pareja x5 desde cero — preparada, pendiente de V4
 
-WISE-LUMEN x5 (12.022.016 parámetros) y Transformer x5 (11.611.472) han superado validación de paridad y smoke test real de checkpoint/resume con datos sintéticos. Cada uno está configurado para 25.000 pasos en cinco bloques de 5.000, seed 42, batch 8, contexto 128 y holdout compartido. No se lanzará el entrenamiento hasta disponer del artefacto V4 congelado con `training_authorized=true`.
+WISE-LUMEN x5 (12.022.016 parámetros) y Transformer x5 (11.611.472) han superado validación de paridad y smoke test real de checkpoint/resume con datos sintéticos ([CI 45578786832](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45578786832)). Cada uno está configurado para 25.000 pasos en cinco bloques de 5.000, seed 42, batch 8, contexto 128 y holdout compartido. No se lanzará el entrenamiento hasta disponer del artefacto V4 congelado con `training_authorized=true`.

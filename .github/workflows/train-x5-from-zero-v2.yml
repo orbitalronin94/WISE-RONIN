@@ -1,0 +1,738 @@
+name: WISE-RONIN paired x5 — 1000-step chained blocks, 100-step telemetry
+
+on:
+  workflow_dispatch:
+    inputs:
+      freeze_run_id:
+        description: "Authorized frozen V4 corpus run"
+        required: true
+        type: string
+        default: "45580013610"
+  push:
+    paths:
+      - ".github/workflows/train-x5-from-zero-v2.yml"
+      - ".github/workflows/reusable-x5-chunk-1000.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: wise-x5-from-zero-v4
+  cancel-in-progress: true
+
+jobs:
+  prepare-v4:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      FREEZE_RUN_ID: ${{ inputs.freeze_run_id || '45580013610' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Download frozen V4 corpus
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-corpus-v4-frozen-${{ env.FREEZE_RUN_ID }}
+          path: corpus
+          repository: ${{ github.repository }}
+          run-id: ${{ env.FREEZE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify V4 authorization, all shards and tokenizer
+        run: |
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path("corpus")
+          m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          assert m.get("version")=="v4.0.0"
+          assert m.get("status")=="FROZEN_TRAINABLE"
+          assert m.get("training_authorized") is True
+          expected="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26d3fefe"
+          assert m.get("tokenizer_sha256")==expected
+          assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest()==expected
+          total=0
+          for shard in m["shards"]:
+              p=root/shard["file"]
+              assert p.is_file() and p.stat().st_size==shard["bytes"],shard["file"]
+              h=hashlib.sha256()
+              with p.open("rb") as f:
+                  for chunk in iter(lambda:f.read(1024*1024),b""): h.update(chunk)
+              assert h.hexdigest()==shard["sha256"],shard["file"]
+              total+=shard["rows"]
+          assert total==m["total_rows"]
+          assert len(m["shards"])==24
+          print(f"V4 VERIFIED rows={total} shards={len(m['shards'])} tokenizer={expected}")
+          PY
+      - name: Publish verified V4 input for this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-corpus-inputs
+          path: corpus/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
+      - name: Seed immutable corpus cache for every chained block
+        uses: actions/cache/save@v4
+        with:
+          path: corpus
+          key: wise-v4-corpus-${{ env.FREEZE_RUN_ID }}
+
+  preflight:
+    needs: prepare-v4
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      OMP_DYNAMIC: "FALSE"
+      MKL_DYNAMIC: "FALSE"
+      OMP_WAIT_POLICY: "PASSIVE"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Restore prepared V4 cache
+        id: corpus-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: corpus
+          key: wise-v4-corpus-${{ inputs.freeze_run_id || '45580013610' }}
+      - name: Download V4 only if cache is unavailable
+        if: steps.corpus-cache.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: v4-corpus-inputs
+          path: corpus
+      - name: Install CPU runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Real CLI smoke test and exact checkpoint resume
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m train.train --help >/dev/null
+          python -m train.transformer_baseline --help >/dev/null
+          mkdir -p preflight/lumen preflight/transformer
+          LUMEN=(--data corpus --tokenizer corpus/tokenizer.json --batch 8 --max-len 128
+            --seed 42 --lr 1.5e-4 --warmup 100 --total-steps 25000
+            --checkpoint-every 1 --parameter-check-every 1 --threads 4 --interop-threads 2
+            --ckpt-dir preflight/lumen --phase 1 --pilot-all-rows --v32-ze
+            --model-config config/lumen_wise_x5.json
+            --runtime-profile config/lumen_cpu_profile.json)
+          python -m train.train --steps 2 --log-every 1 "${LUMEN[@]}"
+          test -s preflight/lumen/step_2.pt
+          python -m train.train --steps 1 --log-every 1 "${LUMEN[@]}" --resume preflight/lumen/step_2.pt
+          test -s preflight/lumen/step_3.pt
+
+          TRANSFORMER=(--data corpus --tokenizer corpus/tokenizer.json --batch 8 --max-len 128
+            --seed 42 --lr 1.5e-4 --warmup 100 --total-steps 25000
+            --checkpoint-every 1 --parameter-check-every 1 --threads 4 --interop-threads 2
+            --disable-mkldnn --disable-foreach --cpu-affinity
+            --ckpt-dir preflight/transformer --model-dim 488 --heads 8 --ff-width 1464)
+          python -m train.transformer_baseline --steps 2 "${TRANSFORMER[@]}"
+          test -s preflight/transformer/step_2.pt
+          python -m train.transformer_baseline --steps 1 "${TRANSFORMER[@]}" --resume preflight/transformer/step_2.pt
+          test -s preflight/transformer/step_3.pt
+
+          python - <<'PY'
+          import torch
+          for p,arch,n in [
+            ("preflight/lumen/step_3.pt","ronin_lumen_v3_3_neuroplasticity",12022016),
+            ("preflight/transformer/step_3.pt","decoder_transformer_4l_d488_h8_ff1464_tied_v1",11611472),
+          ]:
+              s=torch.load(p,map_location="cpu",weights_only=False)
+              assert int(s["step"])==3 and s["architecture_id"]==arch and int(s["params"])==n
+              assert all(s.get(k) is not None for k in ("model","optimizer","scheduler","rng","data_sha256","tokenizer_sha256"))
+              assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26d3fefe"
+              assert int(s["seed"])==42 and int(s["training_config"]["total_steps"])==25000
+              print("PREFLIGHT_PASS",arch,"step=3","exact_resume=True")
+          PY
+      - name: Publish preflight evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-x5-preflight-evidence
+          path: preflight/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+
+  lumen-01000:
+    needs: preflight
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 0
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: ""
+    secrets: inherit
+
+  lumen-02000:
+    needs: lumen-01000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 1000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-1000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-03000:
+    needs: lumen-02000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 2000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-2000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-04000:
+    needs: lumen-03000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 3000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-3000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-05000:
+    needs: lumen-04000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 4000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-4000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-06000:
+    needs: lumen-05000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 5000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-5000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-07000:
+    needs: lumen-06000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 6000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-6000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-08000:
+    needs: lumen-07000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 7000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-7000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-09000:
+    needs: lumen-08000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 8000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-8000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-10000:
+    needs: lumen-09000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 9000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-9000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-11000:
+    needs: lumen-10000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 10000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-10000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-12000:
+    needs: lumen-11000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 11000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-11000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-13000:
+    needs: lumen-12000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 12000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-12000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-14000:
+    needs: lumen-13000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 13000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-13000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-15000:
+    needs: lumen-14000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 14000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-14000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-16000:
+    needs: lumen-15000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 15000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-15000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-17000:
+    needs: lumen-16000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 16000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-16000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-18000:
+    needs: lumen-17000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 17000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-17000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-19000:
+    needs: lumen-18000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 18000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-18000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-20000:
+    needs: lumen-19000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 19000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-19000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-21000:
+    needs: lumen-20000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 20000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-20000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-22000:
+    needs: lumen-21000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 21000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-21000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-23000:
+    needs: lumen-22000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 22000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-22000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-24000:
+    needs: lumen-23000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 23000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-23000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  lumen-25000:
+    needs: lumen-24000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "lumen"
+      start_step: 24000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "lumen-x5-step-24000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-01000:
+    needs: preflight
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 0
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: ""
+    secrets: inherit
+
+  transformer-02000:
+    needs: transformer-01000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 1000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-1000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-03000:
+    needs: transformer-02000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 2000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-2000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-04000:
+    needs: transformer-03000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 3000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-3000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-05000:
+    needs: transformer-04000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 4000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-4000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-06000:
+    needs: transformer-05000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 5000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-5000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-07000:
+    needs: transformer-06000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 6000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-6000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-08000:
+    needs: transformer-07000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 7000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-7000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-09000:
+    needs: transformer-08000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 8000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-8000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-10000:
+    needs: transformer-09000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 9000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-9000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-11000:
+    needs: transformer-10000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 10000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-10000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-12000:
+    needs: transformer-11000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 11000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-11000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-13000:
+    needs: transformer-12000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 12000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-12000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-14000:
+    needs: transformer-13000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 13000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-13000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-15000:
+    needs: transformer-14000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 14000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-14000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-16000:
+    needs: transformer-15000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 15000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-15000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-17000:
+    needs: transformer-16000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 16000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-16000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-18000:
+    needs: transformer-17000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 17000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-17000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-19000:
+    needs: transformer-18000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 18000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-18000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-20000:
+    needs: transformer-19000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 19000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-19000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-21000:
+    needs: transformer-20000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 20000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-20000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-22000:
+    needs: transformer-21000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 21000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-21000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-23000:
+    needs: transformer-22000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 22000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-22000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-24000:
+    needs: transformer-23000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 23000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-23000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  transformer-25000:
+    needs: transformer-24000
+    uses: ./.github/workflows/reusable-x5-chunk-1000.yml
+    with:
+      model: "transformer"
+      start_step: 24000
+      freeze_run_id: ${{ inputs.freeze_run_id || '45580013610' }}
+      previous_artifact: "transformer-x5-step-24000-run-${{ github.run_id }}"
+    secrets: inherit
+
+  paired-holdout:
+    needs: [lumen-25000, transformer-25000]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install paired evaluation runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy scipy
+      - name: Download final LUMEN checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: lumen-x5-step-25000-run-${{ github.run_id }}
+          path: checkpoints/lumen
+      - name: Download final Transformer checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: transformer-x5-step-25000-run-${{ github.run_id }}
+          path: checkpoints/transformer
+      - name: Download frozen paired holdout and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: paired-v32-inputs-500000-45480785478
+          path: eval_inputs
+          repository: ${{ github.repository }}
+          run-id: 45480785478
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify final exact-step checkpoints
+        run: |
+          python - <<'PY'
+          import torch
+          checks=[
+            ("checkpoints/lumen/checkpoint/step_25000.pt","ronin_lumen_v3_3_neuroplasticity",12022016),
+            ("checkpoints/transformer/checkpoint/step_25000.pt","decoder_transformer_4l_d488_h8_ff1464_tied_v1",11611472),
+          ]
+          for path,arch,params in checks:
+              s=torch.load(path,map_location="cpu",weights_only=False)
+              assert int(s["step"])==25000 and s["architecture_id"]==arch and int(s["params"])==params
+              assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26d3fefe"
+              print("FINAL_CHECKPOINT_VERIFIED",arch,25000)
+          PY
+      - name: Evaluate both models on the same untouched holdout
+        run: |
+          python scripts/evaluate_lumen_wise_x5_holdout.py \
+            --holdout eval_inputs/eval/holdout_multiple_choice.jsonl \
+            --tokenizer eval_inputs/artifacts/tokenizer.json \
+            --lumen checkpoints/lumen/checkpoint/step_25000.pt \
+            --transformer checkpoints/transformer/checkpoint/step_25000.pt \
+            --lumen-config config/lumen_wise_x5.json \
+            --transformer-model-dim 488 --transformer-heads 8 --transformer-ff-width 1464 \
+            --expected-lumen-step 25000 --expected-transformer-step 25000 \
+            --expected-holdout-sha256 e21ae7e292d603f1b8073d8114572c92fb0c6448bfaed9066413ddce09e5a359 \
+            --out results/lumen-wise-x5-holdout.json
+          python scripts/audit_paired_holdout.py \
+            --input results/lumen-wise-x5-holdout.json \
+            --output results/lumen-wise-x5-holdout-audit.json
+      - name: Publish paired holdout report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-x5-paired-holdout-report
+          path: results/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6

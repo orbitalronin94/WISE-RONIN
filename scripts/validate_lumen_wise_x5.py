@@ -3,6 +3,8 @@
 from __future__ import annotations
 import json
 from pathlib import Path
+import torch
+import torch.nn.functional as F
 from model.config import LumenConfig
 from model.lumen import RoninLumen
 from train.transformer_baseline import SmallTransformerLM
@@ -47,6 +49,30 @@ def main():
     assert lumen_cfg.total_steps == transformer_cfg["total_steps"]
     assert lumen_cfg.batch_size == transformer_cfg["batch_size"]
     assert lumen_cfg.seed == transformer_cfg["seed"]
+
+    # Synthetic CPU forward/backward smoke tests; no corpus or training run.
+    torch.manual_seed(42)
+    token_ids = torch.randint(4, lumen_cfg.vocab_size, (1, 8))
+    lumen.train()
+    lumen.reset_states()
+    lumen_logits = lumen(token_ids, reset_state=True, collect_diagnostics=False)["logits"]
+    lumen_loss = F.cross_entropy(lumen_logits[:, :-1].reshape(-1, lumen_cfg.vocab_size),
+                                 token_ids[:, 1:].reshape(-1))
+    lumen_loss.backward()
+    assert torch.isfinite(lumen_loss)
+    assert all(p.grad is None or torch.isfinite(p.grad).all() for p in lumen.parameters())
+
+    transformer.train()
+    transformer_logits = transformer(token_ids)
+    transformer_loss = F.cross_entropy(transformer_logits[:, :-1].reshape(-1, 4096),
+                                       token_ids[:, 1:].reshape(-1))
+    transformer_loss.backward()
+    assert torch.isfinite(transformer_loss)
+    assert all(p.grad is None or torch.isfinite(p.grad).all() for p in transformer.parameters())
+    print(json.dumps({"synthetic_forward_backward": {
+        "lumen_loss": float(lumen_loss.detach()), "transformer_loss": float(transformer_loss.detach()),
+        "device": "cpu", "sequence_length": 8
+    }}, indent=2))
 
 if __name__ == "__main__":
     main()

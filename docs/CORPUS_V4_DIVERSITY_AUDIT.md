@@ -103,7 +103,7 @@ Esta sección sustituye las estimaciones preliminares anteriores sobre el alcanc
 
 ### Ajuste de la cuota de personalidad
 
-Con el rechazo documental completo, el candidato inicial de 160.000 filas dejaría el bloque de personalidad por debajo del mínimo del 10% después de la deduplicación y la mezcla. La cuota se elevó a **165.000 filas** (100.000 m-personas + 65.000 SFT-General Spanish). Con las cifras de auditoría anteriores, el margen teórico es aproximadamente 10,06%; el manifiesto final debe confirmar la proporción real después de deduplicar.
+Con el rechazo documental completo, el candidato inicial de 160.000 filas dejaría el bloque de personalidad por debajo del mínimo del 10% después de la deduplicación y la mezcla. La cuota se elevó a **165.000 filas** (105.000 m-personas + 60.000 SFT-General Spanish). La proporción real solo se podrá confirmar después del merge, los rechazos y la deduplicación global.
 
 Este cálculo no autoriza el entrenamiento. La compilación documental de 1,8 M, el merge final y la auditoría independiente de los shards siguen siendo requisitos.
 
@@ -143,6 +143,6 @@ La congelación no debe tomar silenciosamente un artefacto antiguo cuando existe
 - Verificar que los commits candidatos pertenecen a la historia de la rama y que los scripts de construcción y la denylist no han cambiado desde la compilación.
 - Mantener separados los artefactos candidatos (siempre `training_authorized=false`) del corpus final congelado.
 
-La modificación del workflow está en la rama de la PR #97. La compilación OpenCulture iniciada el 25-11-2026 (run [45559446972](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45559446972)) sigue siendo la candidata documental más reciente; no se considera válida hasta que termine y sus shards y manifiesto superen el merge. La personalidad/diálogo tiene un artefacto candidato verificado de 165.000 filas, 105.000 de m-personas y 60.000 de SFT-General-Spanish; conserva `training_authorized=false`.
+La modificación del workflow está en la rama de la PR #97. La compilación OpenCulture anterior [45559446972](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45559446972) se sustituyó porque utilizaba una revisión del builder con fuentes que ya no forman parte de la allowlist. La nueva compilación estricta es [45561584743](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45561584743), basada en el commit `44db282`; sigue en curso y no se considera válida hasta que termine y sus shards y manifiesto superen el merge. La personalidad/diálogo tiene un artefacto candidato verificado de 165.000 filas, 105.000 de m-personas y 60.000 de SFT-General-Spanish; conserva `training_authorized=false`.
 
 **Estado de esta auditoría:** corpus todavía no entrenable. La cifra de filas candidatas, por sí sola, no cambia este estado. Solo el artefacto final con hashes verificados, objetivos cumplidos, proporción de personalidad dentro del 10–15%, procedencia/licencias comprobadas, ausencia de atractores/PII/holdout y smoke test del cargador real puede recibir autorización.

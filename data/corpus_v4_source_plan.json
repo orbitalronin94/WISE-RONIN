@@ -1,6 +1,6 @@
 {
   "schema": "wise-ronin-corpus-v4-source-plan-v1",
-  "status": "candidate_sources_not_yet_admitted",
+  "status": "strict_candidate_policy_books_only_for_documentary_ingestion",
   "targets": {
     "minimum_multiplier_on_current_raw_text_rows": 10,
     "stretch_multiplier_on_current_raw_text_rows": 100,
@@ -35,7 +35,7 @@
         "humanities"
       ],
       "candidate_license": "public_domain",
-      "admission": "candidate",
+      "admission": "accepted_candidate_only_after_document_quality_and_attractor_gates",
       "notes": "Dataset card reports 302640 texts and 13.9 billion words; split into coherent context-sized chunks, inspect OCR and retain title/author/source metadata.",
       "revision": "001eaf13681f483069361dd82195ce279e12ed63",
       "license_evidence_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Books"
@@ -51,8 +51,8 @@
         "daily_life"
       ],
       "candidate_license": "public_domain_claimed_by_dataset_card",
-      "admission": "candidate",
-      "notes": "Large newspaper archive; verify underlying publication/date/public-domain basis per source and filter OCR, duplicated syndication and attractor terms.",
+      "admission": "blocked_pending_per_publication_public_domain_evidence",
+      "notes": "Not admitted in this v4 build: dataset-level public-domain claim is insufficient without publication/date-level rights evidence.",
       "revision": "17509f22d33a5f82def051e853899b8b65d7a9e2",
       "license_evidence_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Newspapers"
     },
@@ -80,8 +80,8 @@
         "factual_knowledge"
       ],
       "candidate_license": "CC-BY-SA-3.0+GFDL",
-      "admission": "candidate",
-      "notes": "Spanish Wikipedia dump, 3.49 GB in 13 Parquet shards. Keep article URL/title, contributor attribution and ShareAlike/GFDL obligations. Wikidata CC0 is a separate future source and must not be conflated with this license.",
+      "admission": "blocked_pending_sharealike_gfdl_compatibility_review",
+      "notes": "Not admitted in this v4 build: explicit CC BY-SA/GFDL obligations require separate compatibility review; avoid legal ambiguity.",
       "revision": "cf584d1dc131caa92a5cb910f41a8b7591b12732",
       "license_evidence_url": "https://huggingface.co/datasets/wikimedia/wikipedia/tree/cf584d1dc131caa92a5cb910f41a8b7591b12732/20231101.es"
     },
@@ -201,6 +201,18 @@
     {
       "dataset": "IIC/RagQuAS",
       "reason": "CC BY-NC-SA 4.0 non-commercial license; excluded from this training corpus."
+    },
+    {
+      "dataset": "PleIAs/Spanish-PD-Newspapers",
+      "reason": "Excluded from this build until public-domain status is evidenced at publication/document level."
+    },
+    {
+      "dataset": "wikimedia/wikipedia (20231101.es)",
+      "reason": "Excluded from this build pending CC BY-SA 3.0/GFDL compatibility and attribution review."
+    },
+    {
+      "dataset": "Any base or candidate row with missing, non-commercial, internal, conflicting, or unapproved license",
+      "reason": "Strict v4 admission allowlist accepts only public_domain, Apache-2.0, and CC-BY-4.0."
     }
   ]
 }

@@ -148,7 +148,7 @@ jobs:
       parent_step: 750000
       target_step: 755000
       steps: 5000
-      parent_artifact: ${{ needs.prepare.outputs.artifact || 'lumen-step-750000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-750000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: true
   lumen-760000:
     needs: lumen-755000
@@ -158,7 +158,7 @@ jobs:
       parent_step: 755000
       target_step: 760000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-755000.outputs.artifact || 'lumen-step-755000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-755000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-765000:
     needs: lumen-760000
@@ -168,7 +168,7 @@ jobs:
       parent_step: 760000
       target_step: 765000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-760000.outputs.artifact || 'lumen-step-760000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-760000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-770000:
     needs: lumen-765000
@@ -178,7 +178,7 @@ jobs:
       parent_step: 765000
       target_step: 770000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-765000.outputs.artifact || 'lumen-step-765000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-765000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-775000:
     needs: lumen-770000
@@ -188,7 +188,7 @@ jobs:
       parent_step: 770000
       target_step: 775000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-770000.outputs.artifact || 'lumen-step-770000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-770000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-780000:
     needs: lumen-775000
@@ -198,7 +198,7 @@ jobs:
       parent_step: 775000
       target_step: 780000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-775000.outputs.artifact || 'lumen-step-775000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-775000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-785000:
     needs: lumen-780000
@@ -208,7 +208,7 @@ jobs:
       parent_step: 780000
       target_step: 785000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-780000.outputs.artifact || 'lumen-step-780000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-780000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-790000:
     needs: lumen-785000
@@ -218,7 +218,7 @@ jobs:
       parent_step: 785000
       target_step: 790000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-785000.outputs.artifact || 'lumen-step-785000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-785000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-795000:
     needs: lumen-790000
@@ -228,7 +228,7 @@ jobs:
       parent_step: 790000
       target_step: 795000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-790000.outputs.artifact || 'lumen-step-790000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-790000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-800000:
     needs: lumen-795000
@@ -238,7 +238,7 @@ jobs:
       parent_step: 795000
       target_step: 800000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-795000.outputs.artifact || 'lumen-step-795000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-795000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-805000:
     needs: lumen-800000
@@ -248,7 +248,7 @@ jobs:
       parent_step: 800000
       target_step: 805000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-800000.outputs.artifact || 'lumen-step-800000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-800000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-810000:
     needs: lumen-805000
@@ -258,7 +258,7 @@ jobs:
       parent_step: 805000
       target_step: 810000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-805000.outputs.artifact || 'lumen-step-805000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-805000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-815000:
     needs: lumen-810000
@@ -268,7 +268,7 @@ jobs:
       parent_step: 810000
       target_step: 815000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-810000.outputs.artifact || 'lumen-step-810000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-810000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-820000:
     needs: lumen-815000
@@ -278,7 +278,7 @@ jobs:
       parent_step: 815000
       target_step: 820000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-815000.outputs.artifact || 'lumen-step-815000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-815000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-825000:
     needs: lumen-820000
@@ -288,7 +288,7 @@ jobs:
       parent_step: 820000
       target_step: 825000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-820000.outputs.artifact || 'lumen-step-820000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-820000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-830000:
     needs: lumen-825000
@@ -298,7 +298,7 @@ jobs:
       parent_step: 825000
       target_step: 830000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-825000.outputs.artifact || 'lumen-step-825000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-825000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-835000:
     needs: lumen-830000
@@ -308,7 +308,7 @@ jobs:
       parent_step: 830000
       target_step: 835000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-830000.outputs.artifact || 'lumen-step-830000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-830000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-840000:
     needs: lumen-835000
@@ -318,7 +318,7 @@ jobs:
       parent_step: 835000
       target_step: 840000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-835000.outputs.artifact || 'lumen-step-835000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-835000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-845000:
     needs: lumen-840000
@@ -328,7 +328,7 @@ jobs:
       parent_step: 840000
       target_step: 845000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-840000.outputs.artifact || 'lumen-step-840000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-840000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-850000:
     needs: lumen-845000
@@ -338,7 +338,7 @@ jobs:
       parent_step: 845000
       target_step: 850000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-845000.outputs.artifact || 'lumen-step-845000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-845000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-855000:
     needs: lumen-850000
@@ -348,7 +348,7 @@ jobs:
       parent_step: 850000
       target_step: 855000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-850000.outputs.artifact || 'lumen-step-850000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-850000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-860000:
     needs: lumen-855000
@@ -358,7 +358,7 @@ jobs:
       parent_step: 855000
       target_step: 860000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-855000.outputs.artifact || 'lumen-step-855000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-855000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-865000:
     needs: lumen-860000
@@ -368,7 +368,7 @@ jobs:
       parent_step: 860000
       target_step: 865000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-860000.outputs.artifact || 'lumen-step-860000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-860000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-870000:
     needs: lumen-865000
@@ -378,7 +378,7 @@ jobs:
       parent_step: 865000
       target_step: 870000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-865000.outputs.artifact || 'lumen-step-865000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-865000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-875000:
     needs: lumen-870000
@@ -388,7 +388,7 @@ jobs:
       parent_step: 870000
       target_step: 875000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-870000.outputs.artifact || 'lumen-step-870000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-870000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-880000:
     needs: lumen-875000
@@ -398,7 +398,7 @@ jobs:
       parent_step: 875000
       target_step: 880000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-875000.outputs.artifact || 'lumen-step-875000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-875000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-885000:
     needs: lumen-880000
@@ -408,7 +408,7 @@ jobs:
       parent_step: 880000
       target_step: 885000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-880000.outputs.artifact || 'lumen-step-880000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-880000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-890000:
     needs: lumen-885000
@@ -418,7 +418,7 @@ jobs:
       parent_step: 885000
       target_step: 890000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-885000.outputs.artifact || 'lumen-step-885000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-885000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-895000:
     needs: lumen-890000
@@ -428,7 +428,7 @@ jobs:
       parent_step: 890000
       target_step: 895000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-890000.outputs.artifact || 'lumen-step-890000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-890000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-900000:
     needs: lumen-895000
@@ -438,7 +438,7 @@ jobs:
       parent_step: 895000
       target_step: 900000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-895000.outputs.artifact || 'lumen-step-895000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-895000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-905000:
     needs: lumen-900000
@@ -448,7 +448,7 @@ jobs:
       parent_step: 900000
       target_step: 905000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-900000.outputs.artifact || 'lumen-step-900000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-900000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-910000:
     needs: lumen-905000
@@ -458,7 +458,7 @@ jobs:
       parent_step: 905000
       target_step: 910000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-905000.outputs.artifact || 'lumen-step-905000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-905000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-915000:
     needs: lumen-910000
@@ -468,7 +468,7 @@ jobs:
       parent_step: 910000
       target_step: 915000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-910000.outputs.artifact || 'lumen-step-910000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-910000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-920000:
     needs: lumen-915000
@@ -478,7 +478,7 @@ jobs:
       parent_step: 915000
       target_step: 920000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-915000.outputs.artifact || 'lumen-step-915000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-915000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-925000:
     needs: lumen-920000
@@ -488,7 +488,7 @@ jobs:
       parent_step: 920000
       target_step: 925000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-920000.outputs.artifact || 'lumen-step-920000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-920000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-930000:
     needs: lumen-925000
@@ -498,7 +498,7 @@ jobs:
       parent_step: 925000
       target_step: 930000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-925000.outputs.artifact || 'lumen-step-925000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-925000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-935000:
     needs: lumen-930000
@@ -508,7 +508,7 @@ jobs:
       parent_step: 930000
       target_step: 935000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-930000.outputs.artifact || 'lumen-step-930000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-930000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-940000:
     needs: lumen-935000
@@ -518,7 +518,7 @@ jobs:
       parent_step: 935000
       target_step: 940000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-935000.outputs.artifact || 'lumen-step-935000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-935000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-945000:
     needs: lumen-940000
@@ -528,7 +528,7 @@ jobs:
       parent_step: 940000
       target_step: 945000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-940000.outputs.artifact || 'lumen-step-940000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-940000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-950000:
     needs: lumen-945000
@@ -538,7 +538,7 @@ jobs:
       parent_step: 945000
       target_step: 950000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-945000.outputs.artifact || 'lumen-step-945000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-945000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-955000:
     needs: lumen-950000
@@ -548,7 +548,7 @@ jobs:
       parent_step: 950000
       target_step: 955000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-950000.outputs.artifact || 'lumen-step-950000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-950000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-960000:
     needs: lumen-955000
@@ -558,7 +558,7 @@ jobs:
       parent_step: 955000
       target_step: 960000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-955000.outputs.artifact || 'lumen-step-955000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-955000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-965000:
     needs: lumen-960000
@@ -568,7 +568,7 @@ jobs:
       parent_step: 960000
       target_step: 965000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-960000.outputs.artifact || 'lumen-step-960000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-960000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-970000:
     needs: lumen-965000
@@ -578,7 +578,7 @@ jobs:
       parent_step: 965000
       target_step: 970000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-965000.outputs.artifact || 'lumen-step-965000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-965000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-975000:
     needs: lumen-970000
@@ -588,7 +588,7 @@ jobs:
       parent_step: 970000
       target_step: 975000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-970000.outputs.artifact || 'lumen-step-970000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-970000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-980000:
     needs: lumen-975000
@@ -598,7 +598,7 @@ jobs:
       parent_step: 975000
       target_step: 980000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-975000.outputs.artifact || 'lumen-step-975000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-975000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-985000:
     needs: lumen-980000
@@ -608,7 +608,7 @@ jobs:
       parent_step: 980000
       target_step: 985000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-980000.outputs.artifact || 'lumen-step-980000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-980000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-990000:
     needs: lumen-985000
@@ -618,7 +618,7 @@ jobs:
       parent_step: 985000
       target_step: 990000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-985000.outputs.artifact || 'lumen-step-985000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-985000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-995000:
     needs: lumen-990000
@@ -628,7 +628,7 @@ jobs:
       parent_step: 990000
       target_step: 995000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-990000.outputs.artifact || 'lumen-step-990000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-990000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   lumen-1000000:
     needs: lumen-995000
@@ -638,7 +638,7 @@ jobs:
       parent_step: 995000
       target_step: 1000000
       steps: 5000
-      parent_artifact: ${{ needs.lumen-995000.outputs.artifact || 'lumen-step-995000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: lumen-step-995000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-755000:
     needs: prepare
@@ -648,7 +648,7 @@ jobs:
       parent_step: 750000
       target_step: 755000
       steps: 5000
-      parent_artifact: ${{ needs.prepare.outputs.artifact || 'transformer-step-750000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-750000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: true
   transformer-760000:
     needs: transformer-755000
@@ -658,7 +658,7 @@ jobs:
       parent_step: 755000
       target_step: 760000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-755000.outputs.artifact || 'transformer-step-755000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-755000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-765000:
     needs: transformer-760000
@@ -668,7 +668,7 @@ jobs:
       parent_step: 760000
       target_step: 765000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-760000.outputs.artifact || 'transformer-step-760000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-760000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-770000:
     needs: transformer-765000
@@ -678,7 +678,7 @@ jobs:
       parent_step: 765000
       target_step: 770000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-765000.outputs.artifact || 'transformer-step-765000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-765000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-775000:
     needs: transformer-770000
@@ -688,7 +688,7 @@ jobs:
       parent_step: 770000
       target_step: 775000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-770000.outputs.artifact || 'transformer-step-770000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-770000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-780000:
     needs: transformer-775000
@@ -698,7 +698,7 @@ jobs:
       parent_step: 775000
       target_step: 780000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-775000.outputs.artifact || 'transformer-step-775000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-775000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-785000:
     needs: transformer-780000
@@ -708,7 +708,7 @@ jobs:
       parent_step: 780000
       target_step: 785000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-780000.outputs.artifact || 'transformer-step-780000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-780000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-790000:
     needs: transformer-785000
@@ -718,7 +718,7 @@ jobs:
       parent_step: 785000
       target_step: 790000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-785000.outputs.artifact || 'transformer-step-785000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-785000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-795000:
     needs: transformer-790000
@@ -728,7 +728,7 @@ jobs:
       parent_step: 790000
       target_step: 795000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-790000.outputs.artifact || 'transformer-step-790000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-790000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-800000:
     needs: transformer-795000
@@ -738,7 +738,7 @@ jobs:
       parent_step: 795000
       target_step: 800000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-795000.outputs.artifact || 'transformer-step-795000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-795000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-805000:
     needs: transformer-800000
@@ -748,7 +748,7 @@ jobs:
       parent_step: 800000
       target_step: 805000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-800000.outputs.artifact || 'transformer-step-800000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-800000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-810000:
     needs: transformer-805000
@@ -758,7 +758,7 @@ jobs:
       parent_step: 805000
       target_step: 810000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-805000.outputs.artifact || 'transformer-step-805000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-805000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-815000:
     needs: transformer-810000
@@ -768,7 +768,7 @@ jobs:
       parent_step: 810000
       target_step: 815000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-810000.outputs.artifact || 'transformer-step-810000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-810000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-820000:
     needs: transformer-815000
@@ -778,7 +778,7 @@ jobs:
       parent_step: 815000
       target_step: 820000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-815000.outputs.artifact || 'transformer-step-815000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-815000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-825000:
     needs: transformer-820000
@@ -788,7 +788,7 @@ jobs:
       parent_step: 820000
       target_step: 825000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-820000.outputs.artifact || 'transformer-step-820000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-820000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-830000:
     needs: transformer-825000
@@ -798,7 +798,7 @@ jobs:
       parent_step: 825000
       target_step: 830000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-825000.outputs.artifact || 'transformer-step-825000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-825000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-835000:
     needs: transformer-830000
@@ -808,7 +808,7 @@ jobs:
       parent_step: 830000
       target_step: 835000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-830000.outputs.artifact || 'transformer-step-830000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-830000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-840000:
     needs: transformer-835000
@@ -818,7 +818,7 @@ jobs:
       parent_step: 835000
       target_step: 840000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-835000.outputs.artifact || 'transformer-step-835000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-835000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-845000:
     needs: transformer-840000
@@ -828,7 +828,7 @@ jobs:
       parent_step: 840000
       target_step: 845000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-840000.outputs.artifact || 'transformer-step-840000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-840000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-850000:
     needs: transformer-845000
@@ -838,7 +838,7 @@ jobs:
       parent_step: 845000
       target_step: 850000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-845000.outputs.artifact || 'transformer-step-845000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-845000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-855000:
     needs: transformer-850000
@@ -848,7 +848,7 @@ jobs:
       parent_step: 850000
       target_step: 855000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-850000.outputs.artifact || 'transformer-step-850000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-850000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-860000:
     needs: transformer-855000
@@ -858,7 +858,7 @@ jobs:
       parent_step: 855000
       target_step: 860000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-855000.outputs.artifact || 'transformer-step-855000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-855000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-865000:
     needs: transformer-860000
@@ -868,7 +868,7 @@ jobs:
       parent_step: 860000
       target_step: 865000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-860000.outputs.artifact || 'transformer-step-860000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-860000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-870000:
     needs: transformer-865000
@@ -878,7 +878,7 @@ jobs:
       parent_step: 865000
       target_step: 870000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-865000.outputs.artifact || 'transformer-step-865000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-865000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-875000:
     needs: transformer-870000
@@ -888,7 +888,7 @@ jobs:
       parent_step: 870000
       target_step: 875000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-870000.outputs.artifact || 'transformer-step-870000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-870000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-880000:
     needs: transformer-875000
@@ -898,7 +898,7 @@ jobs:
       parent_step: 875000
       target_step: 880000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-875000.outputs.artifact || 'transformer-step-875000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-875000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-885000:
     needs: transformer-880000
@@ -908,7 +908,7 @@ jobs:
       parent_step: 880000
       target_step: 885000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-880000.outputs.artifact || 'transformer-step-880000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-880000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-890000:
     needs: transformer-885000
@@ -918,7 +918,7 @@ jobs:
       parent_step: 885000
       target_step: 890000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-885000.outputs.artifact || 'transformer-step-885000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-885000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-895000:
     needs: transformer-890000
@@ -928,7 +928,7 @@ jobs:
       parent_step: 890000
       target_step: 895000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-890000.outputs.artifact || 'transformer-step-890000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-890000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-900000:
     needs: transformer-895000
@@ -938,7 +938,7 @@ jobs:
       parent_step: 895000
       target_step: 900000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-895000.outputs.artifact || 'transformer-step-895000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-895000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-905000:
     needs: transformer-900000
@@ -948,7 +948,7 @@ jobs:
       parent_step: 900000
       target_step: 905000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-900000.outputs.artifact || 'transformer-step-900000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-900000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-910000:
     needs: transformer-905000
@@ -958,7 +958,7 @@ jobs:
       parent_step: 905000
       target_step: 910000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-905000.outputs.artifact || 'transformer-step-905000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-905000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-915000:
     needs: transformer-910000
@@ -968,7 +968,7 @@ jobs:
       parent_step: 910000
       target_step: 915000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-910000.outputs.artifact || 'transformer-step-910000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-910000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-920000:
     needs: transformer-915000
@@ -978,7 +978,7 @@ jobs:
       parent_step: 915000
       target_step: 920000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-915000.outputs.artifact || 'transformer-step-915000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-915000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-925000:
     needs: transformer-920000
@@ -988,7 +988,7 @@ jobs:
       parent_step: 920000
       target_step: 925000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-920000.outputs.artifact || 'transformer-step-920000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-920000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-930000:
     needs: transformer-925000
@@ -998,7 +998,7 @@ jobs:
       parent_step: 925000
       target_step: 930000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-925000.outputs.artifact || 'transformer-step-925000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-925000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-935000:
     needs: transformer-930000
@@ -1008,7 +1008,7 @@ jobs:
       parent_step: 930000
       target_step: 935000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-930000.outputs.artifact || 'transformer-step-930000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-930000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-940000:
     needs: transformer-935000
@@ -1018,7 +1018,7 @@ jobs:
       parent_step: 935000
       target_step: 940000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-935000.outputs.artifact || 'transformer-step-935000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-935000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-945000:
     needs: transformer-940000
@@ -1028,7 +1028,7 @@ jobs:
       parent_step: 940000
       target_step: 945000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-940000.outputs.artifact || 'transformer-step-940000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-940000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-950000:
     needs: transformer-945000
@@ -1038,7 +1038,7 @@ jobs:
       parent_step: 945000
       target_step: 950000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-945000.outputs.artifact || 'transformer-step-945000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-945000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-955000:
     needs: transformer-950000
@@ -1048,7 +1048,7 @@ jobs:
       parent_step: 950000
       target_step: 955000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-950000.outputs.artifact || 'transformer-step-950000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-950000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-960000:
     needs: transformer-955000
@@ -1058,7 +1058,7 @@ jobs:
       parent_step: 955000
       target_step: 960000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-955000.outputs.artifact || 'transformer-step-955000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-955000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-965000:
     needs: transformer-960000
@@ -1068,7 +1068,7 @@ jobs:
       parent_step: 960000
       target_step: 965000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-960000.outputs.artifact || 'transformer-step-960000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-960000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-970000:
     needs: transformer-965000
@@ -1078,7 +1078,7 @@ jobs:
       parent_step: 965000
       target_step: 970000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-965000.outputs.artifact || 'transformer-step-965000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-965000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-975000:
     needs: transformer-970000
@@ -1088,7 +1088,7 @@ jobs:
       parent_step: 970000
       target_step: 975000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-970000.outputs.artifact || 'transformer-step-970000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-970000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-980000:
     needs: transformer-975000
@@ -1098,7 +1098,7 @@ jobs:
       parent_step: 975000
       target_step: 980000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-975000.outputs.artifact || 'transformer-step-975000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-975000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-985000:
     needs: transformer-980000
@@ -1108,7 +1108,7 @@ jobs:
       parent_step: 980000
       target_step: 985000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-980000.outputs.artifact || 'transformer-step-980000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-980000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-990000:
     needs: transformer-985000
@@ -1118,7 +1118,7 @@ jobs:
       parent_step: 985000
       target_step: 990000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-985000.outputs.artifact || 'transformer-step-985000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-985000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-995000:
     needs: transformer-990000
@@ -1128,7 +1128,7 @@ jobs:
       parent_step: 990000
       target_step: 995000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-990000.outputs.artifact || 'transformer-step-990000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-990000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   transformer-1000000:
     needs: transformer-995000
@@ -1138,7 +1138,7 @@ jobs:
       parent_step: 995000
       target_step: 1000000
       steps: 5000
-      parent_artifact: ${{ needs.transformer-995000.outputs.artifact || 'transformer-step-995000-v32-1m-${{ github.run_id }}' }}
+      parent_artifact: transformer-step-995000-v32-1m-${{ github.run_id }}
       restart_scheduler_transition: false
   final-holdout:
     needs: [lumen-1000000, transformer-1000000]

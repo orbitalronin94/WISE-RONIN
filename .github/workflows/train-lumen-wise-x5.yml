@@ -39,7 +39,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install numpy tokenizers tqdm pytest
+          python -m pip install numpy tokenizers tqdm pytest "datasets>=3,<4" "langid>=1.1.6" pyarrow
+      - name: Require an explicitly supplied authorized V4 freeze run
+        run: test -n "$FREEZE_RUN_ID" && test "$FREEZE_RUN_ID" != "SET_FREEZE_RUN_ID_AFTER_V4"
       - name: Compile, run all tests and verify x5 parity
         run: |
           python -m compileall -q model train scripts

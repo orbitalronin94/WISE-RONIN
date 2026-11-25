@@ -334,7 +334,7 @@ jobs:
           LUMEN_CKPT="$(find checkpoints -path '*/step_25000.pt' | grep lumen | head -n 1)"
           TRANSFORMER_CKPT="$(find checkpoints -path '*/step_25000.pt' | grep transformer | head -n 1)"
           test -s "$LUMEN_CKPT" && test -s "$TRANSFORMER_CKPT"
-          python scripts/evaluate_lumen_wise_x5_holdout.py             --holdout eval_inputs/eval/holdout_multiple_choice.jsonl             --tokenizer eval_inputs/artifacts/tokenizer.json             --lumen "$LUMEN_CKPT" --transformer "$TRANSFORMER_CKPT"             --lumen-config config/lumen_wise_x5.json             --transformer-model-dim 488 --transformer-heads 8 --transformer-ff-width 1464             --expected-lumen-step 25000 --expected-transformer-step 25000             --out results/lumen-wise-x5-holdout.json
+          python scripts/evaluate_lumen_wise_x5_holdout.py             --holdout eval_inputs/eval/holdout_multiple_choice.jsonl             --tokenizer eval_inputs/artifacts/tokenizer.json             --lumen "$LUMEN_CKPT" --transformer "$TRANSFORMER_CKPT"             --lumen-config config/lumen_wise_x5.json             --transformer-model-dim 488 --transformer-heads 8 --transformer-ff-width 1464             --expected-lumen-step 25000 --expected-transformer-step 25000             --expected-holdout-sha256 e21ae7e292d603f1b8073d8114572c92fb0c6448bfaed9066413ddce09e5a359             --out results/lumen-wise-x5-holdout.json
           python scripts/audit_paired_holdout.py             --input results/lumen-wise-x5-holdout.json             --output results/lumen-wise-x5-holdout-audit.json
       - name: Upload paired holdout report
         if: always()

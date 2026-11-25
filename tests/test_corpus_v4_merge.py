@@ -127,6 +127,7 @@ def test_m_personas_turns_share_parent_persona_rejection_key(tmp_path):
     _denylist, patterns = load_denylist(__import__("pathlib").Path("data/corpus_v4_attractor_denylist.json"))
     blocked = find_blocked_base_documents(path, patterns)
     assert "BSC-LT/m-personas::persona-42" in blocked
+    assert "BSC-LT/m-personas::persona-42.turn-b" not in blocked
     assert "BSC-LT/m-personas::persona-43" not in blocked
 
 

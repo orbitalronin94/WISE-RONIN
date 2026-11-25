@@ -83,7 +83,7 @@ def main():
             sys.executable, "-m", "train.transformer_baseline", "--steps", "1",
             "--model-dim", "488", "--heads", "8", "--ff-width", "1464",
             "--data", str(data), "--tokenizer", str(tokenizer), "--batch", "8",
-            "--max-len", "8", "--seed", "42", "--threads", "4", "--interop-threads", "2",
+            "--max-len", "128", "--seed", "42", "--threads", "4", "--interop-threads", "2",
             "--disable-mkldnn", "--disable-foreach", "--cpu-affinity",
             "--lr", "1.5e-4", "--warmup", "100", "--total-steps", "25000",
             "--parameter-check-every", "1", "--checkpoint-every", "1",

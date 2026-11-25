@@ -17,6 +17,7 @@ La documentación distingue entre arquitectura implementada, configuración real
 - [Auditoría de la especificación](SPEC_AUDIT.md) — contradicciones, decisiones pendientes y estado de implementación.
 - [Auditoría del bucle de entrenamiento](TRAIN_LOOP_REFERENCE_AUDIT.md) — qué ejecuta el trainer y qué exige validación.
 - [Glucosa, dolor y placer](PAIN_PLEASURE_ORGANS_ES.md) — diseño e integración histórica de los reguladores afectivos.
+- [Torneo de mecanismos pendientes vs main](TORNEO_MECANISMOS_PENDIENTES_VS_MAIN_ES.md) — 20 hipótesis limitadas a mecanismos aún no integrados, con gate simultáneo de loss y pasos/segundo.
 
 ## Datos y evaluación
 

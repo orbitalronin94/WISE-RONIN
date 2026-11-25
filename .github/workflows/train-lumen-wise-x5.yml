@@ -248,7 +248,7 @@ jobs:
               --steps 5000
               --model-dim 488 --heads 8 --ff-width 1464
               --data corpus --tokenizer corpus/tokenizer.json
-              --batch 8 --max-len 128 --seed 42 --threads 4 --interop-threads 2
+              --batch 8 --max-len 128 --seed 42 --threads 4 --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity
               --lr 1.5e-4 --warmup 100 --total-steps 25000
               --parameter-check-every 100 --checkpoint-every 1000
               --ckpt-dir checkpoints/transformer

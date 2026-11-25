@@ -144,6 +144,8 @@ def main():
                    help="Number of additional steps in this block (maximum 1000)")
     p.add_argument("--threads", type=int, default=2,
                    help="PyTorch intra-op CPU threads; benchmark 1/2/4 on the target runner")
+    p.add_argument("--interop-threads", type=int, default=1,
+                   help="PyTorch inter-op CPU threads")
     p.add_argument("--resume", help="Previous global-step checkpoint")
     p.add_argument("--batch", type=int, default=8)
     p.add_argument("--max-len", type=int, default=128)
@@ -175,15 +177,16 @@ def main():
     args = p.parse_args()
     if not 1 <= args.steps <= 10000:
         p.error("--steps must be between 1 and 10000")
-    if args.threads < 1 or args.parameter_check_every < 1 or args.checkpoint_every < 1:
-        p.error("--threads, --parameter-check-every and --checkpoint-every must be at least 1")
+    if args.threads < 1 or args.interop_threads < 1 or args.parameter_check_every < 1 or args.checkpoint_every < 1:
+        p.error("--threads, --interop-threads, --parameter-check-every and --checkpoint-every must be at least 1")
     if getattr(args, 'scheduler_transition', False) and not args.resume:
         p.error("--scheduler-transition requires an exact resumable parent checkpoint")
     if args.restart_scheduler_transition and not args.scheduler_transition:
         p.error("--restart-scheduler-transition requires --scheduler-transition")
 
     torch.set_num_threads(args.threads)
-    LOG.info("cpu_runtime: intraop_threads=%d", args.threads)
+    torch.set_num_interop_threads(args.interop_threads)
+    LOG.info("cpu_runtime: intraop_threads=%d interop_threads=%d", args.threads, args.interop_threads)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     rows, data_hash = load_jsonl(args.data)

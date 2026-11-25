@@ -167,3 +167,15 @@ def test_candidate_provenance_requires_revision_document_license_and_attribution
     assert missing_candidate_provenance(row) == []
     del row["attribution"]
     assert missing_candidate_provenance(row) == ["attribution"]
+
+
+def test_license_admission_is_strict():
+    from scripts.merge_corpus_v4 import is_license_admissible
+
+    assert is_license_admissible("public_domain")
+    assert is_license_admissible("Apache-2.0")
+    assert is_license_admissible("CC-BY-4.0")
+    assert not is_license_admissible("CC-BY-SA-3.0+GFDL")
+    assert not is_license_admissible("CC-BY-NC-SA-4.0")
+    assert not is_license_admissible("Apache-2.0 (internal)")
+    assert not is_license_admissible("")

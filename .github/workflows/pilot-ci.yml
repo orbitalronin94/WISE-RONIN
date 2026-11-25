@@ -96,3 +96,6 @@ jobs:
         run: |
           python -m compileall -q model train data scripts
           PYTHONPATH=. pytest -q tests
+
+      - name: Validate isolated LUMEN-WISE x5 pair (synthetic CPU only)
+        run: PYTHONPATH=. python scripts/validate_lumen_wise_x5.py

@@ -56,6 +56,10 @@ class SmallTransformerLM(nn.Module):
         self.blocks = nn.ModuleList([CausalBlock(width, heads, ff_width) for _ in range(4)])
         self.norm = nn.LayerNorm(width)
         self.lm_head = nn.Linear(width, vocab_size, bias=False)
+        # GPT-style small embedding initialization is essential with tied output
+        # weights; the nn.Embedding default N(0,1) makes initial logits explode.
+        nn.init.normal_(self.token_emb.weight, mean=0.0, std=0.02)
+        nn.init.normal_(self.position_emb.weight, mean=0.0, std=0.02)
         self.lm_head.weight = self.token_emb.weight
         self.max_seq = max_seq
 

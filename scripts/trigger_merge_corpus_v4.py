@@ -14,3 +14,5 @@ if __name__ == "__main__":
 # Re-run after distinguishing inherited v3.2 provenance from newly admitted v4 provenance.
 
 # Re-trigger only after the freeze workflow is corrected for the 180K quota and guarded concurrency.
+
+# Freeze after both strict 1.8M documentary and 180K personality artifacts passed independent shard audits.

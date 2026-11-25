@@ -1,0 +1,99 @@
+name: Publish frozen corpus V4 as a public release asset
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-corpus-v4-public-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-corpus-v4-public-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      PYTHONUNBUFFERED: "1"
+      SOURCE_RUN_ID: "45618840019"
+      SOURCE_ARTIFACT: "official-paired-x5-rebuild-inputs-45618840019"
+      EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+    steps:
+      - name: Download the frozen V4 artifact from this repository
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SOURCE_ARTIFACT }}
+          path: corpus
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Verify V4 manifest, tokenizer and every shard
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path("corpus")
+          manifest_path=root/"manifest.json"
+          tokenizer=root/"tokenizer.json"
+          assert manifest_path.is_file(), "manifest.json missing"
+          assert tokenizer.is_file(), "tokenizer.json missing"
+          m=json.loads(manifest_path.read_text(encoding="utf-8"))
+          expected="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          assert m.get("version")=="v4.0.0", m.get("version")
+          assert m.get("status")=="FROZEN_TRAINABLE", m.get("status")
+          assert m.get("training_authorized") is True
+          assert m.get("tokenizer_sha256")==expected
+          assert hashlib.sha256(tokenizer.read_bytes()).hexdigest()==expected
+          shards=m.get("shards",[])
+          assert len(shards)==24, len(shards)
+          rows=0
+          for shard in shards:
+              p=root/shard["file"]
+              assert p.is_file(), shard["file"]
+              assert p.stat().st_size==int(shard["bytes"]), shard["file"]
+              h=hashlib.sha256()
+              with p.open("rb") as f:
+                  for block in iter(lambda:f.read(1024*1024),b""):
+                      h.update(block)
+              assert h.hexdigest()==shard["sha256"], shard["file"]
+              rows+=int(shard["rows"])
+          assert rows==int(m["total_rows"])==2293883, rows
+          print(f"V4_VERIFIED rows={rows} shards={len(shards)} tokenizer={expected}")
+          print(f"FILES={len(list(root.rglob('*')))}")
+          PY
+
+      - name: Create a downloadable ZIP release asset
+        run: |
+          set -euo pipefail
+          zip -1 -r wise-ronin-corpus-v4.0.0.zip corpus
+          test -s wise-ronin-corpus-v4.0.0.zip
+          ls -lh wise-ronin-corpus-v4.0.0.zip
+          sha256sum wise-ronin-corpus-v4.0.0.zip | tee wise-ronin-corpus-v4.0.0.zip.sha256
+
+      - name: Publish public GitHub Release and attach corpus
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: corpus-v4.0.0-public-20261125
+          name: WISE-RONIN corpus V4.0.0 — public training inputs
+          body: |
+            Frozen and independently verified WISE-RONIN corpus V4.0.0.
+
+            - 2,293,883 rows
+            - 24 immutable shards
+            - Original tokenizer SHA-256: d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe
+            - Includes manifest and tokenizer.
+            - Each shard is checked against its manifest SHA-256 before publication.
+
+            Public asset for use by LUMEN-WISE without cross-repository Actions artifact access.
+          files: |
+            wise-ronin-corpus-v4.0.0.zip
+            wise-ronin-corpus-v4.0.0.zip.sha256
+          fail_on_unmatched_files: true
+          make_latest: false

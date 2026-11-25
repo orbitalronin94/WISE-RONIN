@@ -1,0 +1,167 @@
+name: Reusable WISE x5 — exact 500-step checkpoint
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        required: true
+        type: string
+      start_step:
+        required: true
+        type: number
+      freeze_run_id:
+        required: true
+        type: string
+      previous_artifact:
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  train-chunk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      OMP_DYNAMIC: "FALSE"
+      MKL_DYNAMIC: "FALSE"
+      OMP_WAIT_POLICY: "PASSIVE"
+      PYTHONUNBUFFERED: "1"
+      EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+      START_STEP: ${{ inputs.start_step }}
+      MODEL_NAME: ${{ inputs.model }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore immutable V4 corpus cache
+        id: corpus-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: corpus
+          key: wise-v4-corpus-${{ inputs.freeze_run_id }}
+      - name: Download verified V4 corpus if cache is unavailable
+        if: steps.corpus-cache.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: v4-corpus-inputs
+          path: corpus
+      - name: Verify corpus identity and tokenizer
+        run: |
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path("corpus")
+          m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          assert m.get("version")=="v4.0.0"
+          assert m.get("status")=="FROZEN_TRAINABLE"
+          assert m.get("training_authorized") is True
+          assert m.get("tokenizer_sha256")==os.environ["EXPECTED_TOKENIZER_SHA256"]
+          assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest()==m["tokenizer_sha256"]
+          assert int(m["total_rows"])>0 and len(m.get("shards",[]))>0
+          print("V4 identity verified",m["total_rows"],len(m["shards"]),m["tokenizer_sha256"])
+          PY
+      - name: Restore exact parent checkpoint
+        if: ${{ inputs.previous_artifact != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.previous_artifact }}
+          path: checkpoints/${{ inputs.model }}
+      - name: Train one exact 500-step segment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "checkpoints/$MODEL_NAME" logs
+          START="$START_STEP"
+          TARGET=$((START + 500))
+          if [ "$TARGET" -gt 25000 ]; then
+            echo "Target step exceeds the frozen 25000-step budget" >&2
+            exit 2
+          fi
+          RESUME_ARGS=()
+          if [ "$START" -gt 0 ]; then
+            RESUME="checkpoints/$MODEL_NAME/step_${START}.pt"
+            test -s "$RESUME"
+            RESUME_ARGS+=(--resume "$RESUME")
+          fi
+
+          COMMON=(--data corpus --tokenizer corpus/tokenizer.json
+                  --batch 8 --max-len 128 --seed 42
+                  --lr 1.5e-4 --warmup 100 --total-steps 25000
+                  --checkpoint-every 500 --parameter-check-every 100
+                  --threads 4 --interop-threads 2
+                  --ckpt-dir "checkpoints/$MODEL_NAME")
+
+          if [ "$MODEL_NAME" = "lumen" ]; then
+            python -m train.train --steps 500 --log-every 100 "${COMMON[@]}" "${RESUME_ARGS[@]}" \
+              --phase 1 --pilot-all-rows --v32-ze \
+              --model-config config/lumen_wise_x5.json \
+              --runtime-profile config/lumen_cpu_profile.json \
+              2>&1 | tee "logs/lumen-${START}-${TARGET}.log"
+            EXPECTED_PARAMS=12022016
+            EXPECTED_ARCH="ronin_lumen_v3_3_neuroplasticity"
+          elif [ "$MODEL_NAME" = "transformer" ]; then
+            python -m train.transformer_baseline --steps 500 "${COMMON[@]}" "${RESUME_ARGS[@]}" \
+              --model-dim 488 --heads 8 --ff-width 1464 \
+              --disable-mkldnn --disable-foreach --cpu-affinity \
+              2>&1 | tee "logs/transformer-${START}-${TARGET}.log"
+            EXPECTED_PARAMS=11611472
+            EXPECTED_ARCH="decoder_transformer_4l_d488_h8_ff1464_tied_v1"
+          else
+            echo "Unknown model: $MODEL_NAME" >&2
+            exit 2
+          fi
+
+          CURRENT="checkpoints/$MODEL_NAME/step_${TARGET}.pt"
+          test -s "$CURRENT"
+          python - "$CURRENT" "$TARGET" "$EXPECTED_PARAMS" "$EXPECTED_ARCH" "$EXPECTED_TOKENIZER_SHA256" <<'PY'
+          import sys,torch
+          path,target,params,architecture,tokenizer_sha=sys.argv[1],int(sys.argv[2]),int(sys.argv[3]),sys.argv[4],sys.argv[5]
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          assert int(s["step"])==target,(s.get("step"),target)
+          assert int(s["params"])==params,(s.get("params"),params)
+          assert s["architecture_id"]==architecture,(s.get("architecture_id"),architecture)
+          assert all(k in s and s[k] is not None for k in ("model","optimizer","scheduler","rng","data_sha256","tokenizer_sha256"))
+          assert s["tokenizer_sha256"]==tokenizer_sha
+          assert int(s["seed"])==42
+          assert int(s["training_config"]["total_steps"])==25000
+          if architecture=="ronin_lumen_v3_3_neuroplasticity":
+              assert s.get("v32_ze") is True
+              assert s.get("pilot_all_rows") is True
+          print(f"CHECKPOINT_VERIFIED model={architecture} step={target} params={params} data={s['data_sha256']} tokenizer={tokenizer_sha}")
+          PY
+          echo "TARGET_STEP=$TARGET" >> "$GITHUB_ENV"
+      - name: Publish verified checkpoint before proceeding
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.model }}-x5-step-${{ env.TARGET_STEP }}
+          path: checkpoints/${{ inputs.model }}/step_${{ env.TARGET_STEP }}.pt
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+      - name: Remove superseded checkpoint only after new checkpoint is durable
+        if: ${{ inputs.previous_artifact != '' }}
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          PREVIOUS_ARTIFACT: ${{ inputs.previous_artifact }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const artifacts = await github.paginate(
+              github.rest.actions.listWorkflowRunArtifacts,
+              { owner, repo, run_id: context.runId, per_page: 100 }
+            );
+            const old = artifacts.find(a => a.name === process.env.PREVIOUS_ARTIFACT && !a.expired);
+            if (old) {
+              await github.rest.actions.deleteArtifact({ owner, repo, artifact_id: old.id });
+              core.info(`Deleted superseded artifact ${old.name}; new checkpoint is already uploaded.`);
+            } else {
+              core.info(`Previous artifact ${process.env.PREVIOUS_ARTIFACT} was not present; nothing to delete.`);
+            }

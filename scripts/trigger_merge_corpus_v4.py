@@ -16,3 +16,5 @@ if __name__ == "__main__":
 # Re-trigger only after the freeze workflow is corrected for the 180K quota and guarded concurrency.
 
 # Freeze after both strict 1.8M documentary and 180K personality artifacts passed independent shard audits.
+
+# Re-run freeze with the corrected local-only lazy-loader smoke authorization gate.

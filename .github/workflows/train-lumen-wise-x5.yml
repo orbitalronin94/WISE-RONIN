@@ -116,7 +116,7 @@ jobs:
               "transformer_config_sha256":hashlib.sha256(Path("config/transformer_wise_x5.json").read_bytes()).hexdigest(),
               "lumen_runtime_profile_sha256":hashlib.sha256(Path("config/lumen_cpu_profile.json").read_bytes()).hexdigest(),
               "steps":25000,"blocks":[5000]*5,"batch":8,"sequence_length":128,"seed":42,
-              "learning_rate":0.00015,"warmup_steps":100,"optimizer":"AdamW","scheduler":"cosine","weight_decay":0.01,"grad_clip":1.0,"vocab_size":4096,"holdout_sha256":"e21ae7e292d603f1b8073d8114572c92fb0c6448bfaed9066413ddce09e5a359","threads":4,"interop_threads":2,"mkldnn_enabled":False,"foreach":False,"cpu_affinity":true,"device":"cpu"
+              "learning_rate":0.00015,"warmup_steps":100,"optimizer":"AdamW","scheduler":"cosine","weight_decay":0.01,"grad_clip":1.0,"vocab_size":4096,"holdout_sha256":"e21ae7e292d603f1b8073d8114572c92fb0c6448bfaed9066413ddce09e5a359","threads":4,"interop_threads":2,"mkldnn_enabled":False,"foreach":False,"cpu_affinity":True,"device":"cpu"
           }
           Path("experiment_manifest.json").write_text(json.dumps(experiment,indent=2)+"\n",encoding="utf-8")
           print(json.dumps({"version":m["version"],"rows":total,"tokens":m["token_count_without_special_tokens"],"personality_share":m["personality_dialogue_share"],"shards":len(m["shards"]),"corpus_data_sha256":experiment["corpus_data_sha256"],"tokenizer_sha256":m["tokenizer_sha256"]},indent=2))
@@ -454,7 +454,7 @@ jobs:
               "transformer_config_sha256":hashlib.sha256(Path("config/transformer_wise_x5.json").read_bytes()).hexdigest(),
               "lumen_runtime_profile_sha256":hashlib.sha256(Path("config/lumen_cpu_profile.json").read_bytes()).hexdigest(),
               "steps":25000,"blocks":[5000]*5,"batch":8,"sequence_length":128,"seed":42,
-              "learning_rate":0.00015,"warmup_steps":100,"optimizer":"AdamW","scheduler":"cosine","weight_decay":0.01,"grad_clip":1.0,"vocab_size":4096,"holdout_sha256":"e21ae7e292d603f1b8073d8114572c92fb0c6448bfaed9066413ddce09e5a359","threads":4,"interop_threads":2,"mkldnn_enabled":False,"foreach":False,"cpu_affinity":true,"device":"cpu"
+              "learning_rate":0.00015,"warmup_steps":100,"optimizer":"AdamW","scheduler":"cosine","weight_decay":0.01,"grad_clip":1.0,"vocab_size":4096,"holdout_sha256":"e21ae7e292d603f1b8073d8114572c92fb0c6448bfaed9066413ddce09e5a359","threads":4,"interop_threads":2,"mkldnn_enabled":False,"foreach":False,"cpu_affinity":True,"device":"cpu"
           }
           Path("experiment_manifest.json").write_text(json.dumps(experiment,indent=2)+"\n",encoding="utf-8")
           print(f"Verified authorized V4: {total} rows; {len(m['shards'])} shards; data SHA {experiment['corpus_data_sha256']}")

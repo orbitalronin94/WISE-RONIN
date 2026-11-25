@@ -1,7 +1,7 @@
 name: WISE-RONIN official paired x5 — LUMEN vs Transformer, 1000 steps
 on:
   push:
-    branches: [main, fix/paired-x5-use-750k-training-profile]
+    branches: [main]
     paths:
       - .github/workflows/official-paired-x5-1000.yml
   workflow_dispatch:
@@ -104,11 +104,34 @@ jobs:
           test -s config/lumen_cpu_profile.json
           mkdir -p checkpoints/lumen logs
           { date -u; nproc; free -h; df -h .; } | tee logs/runner-baseline.txt
+      - name: Materialize x5 architecture with the exact 750k training hyperparameters
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          source=Path("config/lumen_wise_x5.json")
+          config=json.loads(source.read_text(encoding="utf-8"))
+          config.update({
+              "learning_rate": 3e-5,
+              "warmup_steps": 100,
+              "batch_size": 8,
+              "total_steps": 1000,
+              "seed": 42,
+          })
+          target=Path("config/lumen_wise_x5_train1000.json")
+          target.write_text(json.dumps(config, indent=2)+"\n", encoding="utf-8")
+          check=json.loads(target.read_text(encoding="utf-8"))
+          assert check["model_dim"]==672 and check["vocab_size"]==4096
+          assert check["learning_rate"]==3e-5 and check["batch_size"]==8
+          assert check["warmup_steps"]==100
+          assert check["total_steps"]==1000 and check["seed"]==42
+          print("LUMEN_X5_CONFIG_OK architecture preserved; lr=3e-5 batch=8 len=128 warmup=100 total=1000 seed=42")
+          PY
       - name: Train official LUMEN-WISE x5 from step 0 to 1000 with 750k profile
         shell: bash
         run: |
           set -euo pipefail
-          python -m train.train --steps 1000 --log-every 100 --checkpoint-every 1000 --recovery-checkpoint-every 100 --parameter-check-every 100 --threads 4 --interop-threads 2 --data corpus --tokenizer corpus/tokenizer.json --batch 8 --max-len 128 --seed 42 --lr 3e-5 --warmup 100 --total-steps 1000 --ckpt-dir checkpoints/lumen --phase 1 --pilot-all-rows --v32-ze --model-config config/lumen_wise_x5.json --runtime-profile config/lumen_cpu_profile.json --lazy-backward --surprise-gate-loss 1.8 2>&1 | tee logs/lumen.log
+          python -m train.train --steps 1000 --log-every 100 --checkpoint-every 1000 --recovery-checkpoint-every 100 --parameter-check-every 100 --threads 4 --interop-threads 2 --data corpus --tokenizer corpus/tokenizer.json --batch 8 --max-len 128 --seed 42 --lr 3e-5 --warmup 100 --total-steps 1000 --ckpt-dir checkpoints/lumen --phase 1 --pilot-all-rows --v32-ze --model-config config/lumen_wise_x5_train1000.json --runtime-profile config/lumen_cpu_profile.json --lazy-backward --surprise-gate-loss 1.8 2>&1 | tee logs/lumen.log
       - name: Verify official LUMEN checkpoint
         run: |
           python - <<'PY'
@@ -118,6 +141,8 @@ jobs:
           assert s["architecture_id"]=="ronin_lumen_v3_3_neuroplasticity"
           assert s["v32_ze"] is True and s["pilot_all_rows"] is True
           assert int(s["seed"])==42 and int(s["training_config"]["total_steps"])==1000
+          assert abs(float(s["training_config"]["lr"])-3e-5)<1e-12
+          assert int(s["training_config"]["batch"])==8 and int(s["training_config"]["max_len"])==128
           assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
           assert all(s.get(k) is not None for k in ("model","optimizer","scheduler","rng","data_sha256"))
           print("OFFICIAL_LUMEN_CHECKPOINT_OK step=1000 params=12022016")
@@ -162,7 +187,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m train.transformer_baseline --steps 1000 --data corpus --tokenizer corpus/tokenizer.json --batch 8 --max-len 128 --seed 42 --threads 4 --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity --lr 3e-5 --warmup 100 --total-steps 1000 --checkpoint-every 1000 --parameter-check-every 100 --ckpt-dir checkpoints/transformer --model-dim 488 --heads 8 --ff-width 1464 2>&1 | tee logs/transformer.log
+          python -m train.transformer_baseline --steps 1000 --data corpus --tokenizer corpus/tokenizer.json --batch 8 --max-len 128 --seed 42 --threads 4 --lr 3e-5 --warmup 100 --total-steps 1000 --checkpoint-every 1000 --parameter-check-every 100 --ckpt-dir checkpoints/transformer --model-dim 488 --heads 8 --ff-width 1464 2>&1 | tee logs/transformer.log
       - name: Verify official Transformer checkpoint
         run: |
           python - <<'PY'
@@ -171,6 +196,8 @@ jobs:
           assert int(s["step"])==1000 and int(s["params"])==11611472
           assert s["architecture_id"]=="decoder_transformer_4l_d488_h8_ff1464_tied_v1"
           assert int(s["seed"])==42 and int(s["training_config"]["total_steps"])==1000
+          assert abs(float(s["training_config"]["lr"])-3e-5)<1e-12
+          assert int(s["training_config"]["batch"])==8 and int(s["training_config"]["max_len"])==128
           assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
           assert all(s.get(k) is not None for k in ("model","optimizer","scheduler","rng","data_sha256"))
           print("OFFICIAL_TRANSFORMER_CHECKPOINT_OK step=1000 params=11611472")

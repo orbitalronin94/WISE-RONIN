@@ -5,6 +5,7 @@ on:
     branches: [corpus-v4-diversity-attractor-gate]
     paths:
       - scripts/trigger_merge_corpus_v4.py
+      - .github/workflows/freeze-corpus-v4.yml
   workflow_dispatch:
 
 permissions:
@@ -226,6 +227,8 @@ jobs:
                       )
                       count+=1
                       tokens+=int(row.get("token_count",0))
+                      if count % 25000 == 0:
+                          print(f"VERIFY {shard['file']} rows={count}",flush=True)
               assert count==shard["rows"]
               total+=count
           assert total==m["total_rows"]
@@ -253,14 +256,20 @@ jobs:
           from model.config import CONFIG
           from train.dataset import BPETokenizer, IndexedJsonlCorpus, load_jsonl
           root=Path("artifacts/corpus-v4-frozen")
-          manifest=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          manifest_path=root/"manifest.json"
+          manifest=json.loads(manifest_path.read_text(encoding="utf-8"))
           assert manifest["training_authorized"] is False
           tokenizer=BPETokenizer(root/"tokenizer.json")
           assert tokenizer.tokenizer.get_vocab_size()==CONFIG.vocab_size
           assert tokenizer.tokenizer.token_to_id("[PAD]")==0
           assert tokenizer.tokenizer.token_to_id("[EOS]") is not None
-          rows,digest=load_jsonl(root)
+          # Exercise the exact production loader without granting training authority:
+          # temporarily lift only the local manifest gate, then restore false in finally.
+          manifest["training_authorized"]=True
+          manifest_path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          rows=None
           try:
+              rows,digest=load_jsonl(root)
               assert isinstance(rows,IndexedJsonlCorpus)
               assert len(rows)==manifest["total_rows"]
               for index in sorted({0,len(rows)//2,len(rows)-1}):
@@ -270,9 +279,11 @@ jobs:
                   assert 2<=len(encoded)<=128
               print(f"Production lazy-loader smoke test passed: rows={len(rows)}, corpus_digest={digest}")
           finally:
-              rows.close()
+              if rows is not None:
+                  rows.close()
               shutil.rmtree(root/".corpus_index",ignore_errors=True)
-          PY
+              manifest["training_authorized"]=False
+              manifest_path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
 
       - name: Authorize v4 for training after independent verification
         env:

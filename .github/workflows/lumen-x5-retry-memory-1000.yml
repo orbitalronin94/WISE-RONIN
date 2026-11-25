@@ -1,0 +1,229 @@
+name: LUMEN-WISE x5 fresh 1000-step retry with memory headroom and paired holdout
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/lumen-x5-retry-memory-1000.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: wise-ronin-lumen-x5-memory-retry-1000
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+  SOURCE_RUN_ID: "45618840019"
+  EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+  EXPECTED_HOLDOUT_SHA256: "e21ae7e292d603f1b8073d8114572c92fb0c6448bfaed9066413ddce09e5a359"
+  EXPECTED_PARAMS: "12022016"
+
+jobs:
+  train-lumen:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download the already verified V4 training and holdout inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: official-paired-x5-rebuild-inputs-45618840019
+          path: corpus
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install CPU runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "numpy>=1.26,<3" "tokenizers>=0.20,<1.0" "tqdm>=4.66,<5"
+      - name: Add temporary swap headroom without changing model or batch configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo fallocate -l 16G /swapfile-lumen
+          sudo chmod 600 /swapfile-lumen
+          sudo mkswap /swapfile-lumen
+          sudo swapon /swapfile-lumen
+          sudo sysctl vm.swappiness=80
+          free -h
+          swapon --show
+          df -h /
+      - name: Verify exact LUMEN x5 architecture and matched CPU profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m train.train --help >/dev/null
+          python - <<'PY'
+          import json,hashlib
+          from pathlib import Path
+          from model.config import LumenConfig
+          from model.lumen import RoninLumen
+          root=Path("corpus")
+          manifest=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          assert manifest.get("training_authorized") is True
+          assert manifest.get("tokenizer_sha256")=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest()==manifest["tokenizer_sha256"]
+          cfg=json.loads(Path("config/lumen_wise_x5.json").read_text(encoding="utf-8"))
+          cfg.update({"learning_rate":3e-5,"warmup_steps":100,"batch_size":8,
+                      "sequence_length":128,"total_steps":1000,"seed":42})
+          typed=LumenConfig(**cfg)
+          model=RoninLumen(config=typed,v32_ze=True).cpu()
+          params=sum(p.numel() for p in model.parameters())
+          assert params==12022016,params
+          profile=json.loads(Path("config/lumen_cpu_profile.json").read_text(encoding="utf-8"))
+          expected={"threads":4,"interop_threads":2,"mkldnn_enabled":False,
+                    "foreach":False,"cpu_affinity":True}
+          for key,value in expected.items(): assert profile.get(key)==value,(key,profile.get(key),value)
+          Path("config/lumen_wise_x5_train1000.json").write_text(json.dumps(cfg,indent=2)+"\n",encoding="utf-8")
+          print(f"LUMEN_X5_PREFLIGHT_OK params={params} V32-ZE=on all_rows=on")
+          print("CPU_PROFILE_OK intra=4 interop=2 mkldnn=off foreach=off affinity=on")
+          PY
+          mkdir -p checkpoints/lumen logs
+          { date -u; nproc; free -h; swapon --show; df -h .; } | tee logs/runner-baseline.txt
+      - name: Train fresh LUMEN-WISE x5 from step 0 to 1000
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m train.train --steps 1000 --log-every 100 --checkpoint-every 1000 \
+            --recovery-checkpoint-every 100 --parameter-check-every 100 \
+            --threads 4 --interop-threads 2 --data corpus --tokenizer corpus/tokenizer.json \
+            --batch 8 --max-len 128 --seed 42 --lr 3e-5 --warmup 100 --total-steps 1000 \
+            --ckpt-dir checkpoints/lumen --phase 1 --pilot-all-rows --v32-ze \
+            --model-config config/lumen_wise_x5_train1000.json \
+            --runtime-profile config/lumen_cpu_profile.json --lazy-backward \
+            --surprise-gate-loss 1.8 2>&1 | tee logs/lumen.log
+      - name: Verify exact fresh LUMEN checkpoint
+        run: |
+          python - <<'PY'
+          import torch
+          s=torch.load("checkpoints/lumen/step_1000.pt",map_location="cpu",weights_only=False)
+          assert int(s["step"])==1000 and int(s["params"])==12022016
+          assert s["architecture_id"]=="ronin_lumen_v3_3_neuroplasticity"
+          assert s["v32_ze"] is True and s["pilot_all_rows"] is True
+          assert int(s["seed"])==42 and int(s["training_config"]["total_steps"])==1000
+          assert int(s["training_config"]["batch"])==8 and int(s["training_config"]["max_len"])==128
+          assert abs(float(s["training_config"]["lr"])-3e-5)<1e-12
+          assert s["config"]["model_dim"]==672
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          assert all(s.get(k) is not None for k in ("model","optimizer","scheduler","rng","data_sha256"))
+          print("OFFICIAL_LUMEN_CHECKPOINT_OK step=1000 params=12022016")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: official-lumen-x5-step1000-retry-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/
+            logs/
+            config/lumen_wise_x5_train1000.json
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 1
+
+  evaluate-identical-holdouts:
+    needs: [train-lumen]
+    if: needs.train-lumen.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU evaluation runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "numpy>=1.26,<3" "tokenizers>=0.20,<1.0" "tqdm>=4.66,<5" "scipy>=1.11,<2"
+      - name: Download the exact same inputs and the fresh Transformer checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: official-paired-x5-rebuild-inputs-45618840019
+          path: inputs
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download the fresh LUMEN checkpoint from this retry
+        uses: actions/download-artifact@v4
+        with:
+          name: official-lumen-x5-step1000-retry-${{ github.run_id }}
+          path: lumen
+      - name: Download the fresh Transformer checkpoint from the paired run
+        uses: actions/download-artifact@v4
+        with:
+          name: official-transformer-x5-step1000-45618840019
+          path: transformer
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify the fresh equal-parameter pair and frozen holdouts
+        run: |
+          set -euo pipefail
+          test -s lumen/step_1000.pt
+          test -s transformer/step_1000.pt
+          python - <<'PY'
+          import hashlib,json,torch
+          from pathlib import Path
+          l=torch.load("lumen/step_1000.pt",map_location="cpu",weights_only=False)
+          t=torch.load("transformer/step_1000.pt",map_location="cpu",weights_only=False)
+          assert l["step"]==t["step"]==1000 and l["params"]==t["params"]==12022016
+          hold=Path("inputs/holdout_multiple_choice.jsonl").read_bytes()
+          assert hashlib.sha256(hold).hexdigest()=="e21ae7e292d603f1b8073d8114572c92fb0c6448bfaed9066413ddce09e5a359"
+          assert len([x for x in hold.decode("utf-8").splitlines() if x.strip()])==2431
+          assert len([x for x in Path("inputs/freeform_identity_general_100.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()])==100
+          print("PAIR_OK step=1000 params_each=12022016; holdout=2431 + freeform=100")
+          PY
+      - name: Score both models on the same official 2431-question holdout
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          OMP_NUM_THREADS: "4"
+          MKL_NUM_THREADS: "4"
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          python scripts/evaluate_multiple_choice_holdout.py \
+            --holdout inputs/holdout_multiple_choice.jsonl --tokenizer inputs/tokenizer.json \
+            --lumen lumen/step_1000.pt --transformer transformer/step_1000.pt \
+            --expected-lumen-step 1000 --expected-transformer-step 1000 \
+            --out results/paired_step1000_official_2431.json --threads 4 --max-len 128
+          python scripts/audit_paired_holdout.py --input results/paired_step1000_official_2431.json \
+            --output results/paired_step1000_official_2431_audit.json --bootstrap 5000
+      - name: Generate the same fixed 100 open-ended questions for both models
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          OMP_NUM_THREADS: "4"
+          MKL_NUM_THREADS: "4"
+        run: |
+          set -euo pipefail
+          python scripts/freeform_identity_general_holdout.py \
+            --holdout inputs/freeform_identity_general_100.jsonl --tokenizer inputs/tokenizer.json \
+            --lumen lumen/step_1000.pt --transformer transformer/step_1000.pt \
+            --expected-step 1000 --sample-size 100 --seed 1000 --max-new-tokens 96 \
+            --out-dir results/freeform-step1000 --threads 4 --max-len 128
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: official-paired-x5-holdouts-step1000-retry-${{ github.run_id }}
+          path: results/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 1
+      - name: Require complete paired holdout reports
+        run: |
+          test -s results/paired_step1000_official_2431.json
+          test -s results/paired_step1000_official_2431_audit.json
+          test -s results/freeform-step1000/step1000_freeform_100.json
+          test -s results/freeform-step1000/step1000_freeform_100.md

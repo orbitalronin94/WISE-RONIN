@@ -46,9 +46,11 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
+          import json
+          from pathlib import Path
           from model.config import LumenConfig
           from model.lumen import RoninLumen
-          cfg=LumenConfig.from_json("config/lumen_wise_x5.json")
+          cfg=LumenConfig(**json.loads(Path("config/lumen_wise_x5.json").read_text()))
           model=RoninLumen(config=cfg,v32_ze=True)
           params=sum(p.numel() for p in model.parameters())
           assert params == 12022016, f"unexpected parameter count: {params}"

@@ -10,7 +10,8 @@
     "stretch_new_raw_text_rows": 18000000,
     "minimum_total_10x_if_applied_to_all_current_rows": 2796130,
     "personality_share_target_min": 0.1,
-    "personality_share_target_max": 0.15
+    "personality_share_target_max": 0.15,
+    "personality_dialogue_rows": 180000
   },
   "admission_requirements": [
     "Spanish language verified at document or chunk level",
@@ -147,7 +148,7 @@
       "candidate_license": "Apache-2.0",
       "admission": "candidate_for_turn_level_expansion",
       "notes": "Spanish split only; source_text seed field excluded. Preserve synthetic status and parent persona ID. The dataset card notes synthetic personas and potential gender/occupation bias.",
-      "target_rows": 105000,
+      "target_rows": 114545,
       "share": 0.6363636364
     },
     {
@@ -165,7 +166,7 @@
       "candidate_license": "CC-BY-4.0",
       "admission": "candidate_for_dialogue_style_expansion",
       "notes": "Train split only (48.4k rows). Original synthetic editorial conversations; retain source attribution and task-family metadata. Validation/test splits excluded.",
-      "target_rows": 60000,
+      "target_rows": 65455,
       "share": 0.3636363636
     },
     {

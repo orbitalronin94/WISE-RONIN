@@ -266,7 +266,7 @@ jobs:
           # Exercise the exact production loader without granting training authority:
           # temporarily lift only the local manifest gate, then restore false in finally.
           manifest["training_authorized"]=True
-          manifest_path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\\n",encoding="utf-8")
+          manifest_path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
           rows=None
           try:
               rows,digest=load_jsonl(root)
@@ -275,7 +275,7 @@ jobs:
               for index in sorted({0,len(rows)//2,len(rows)-1}):
                   row=rows[index]
                   assert row["language"]=="es"
-                  encoded=tokenizer.encode((str(row.get("prompt") or "")+"\\n"+str(row["completion"])).strip(),128)
+                  encoded=tokenizer.encode((str(row.get("prompt") or "")+"\n"+str(row["completion"])).strip(),128)
                   assert 2<=len(encoded)<=128
               print(f"Production lazy-loader smoke test passed: rows={len(rows)}, corpus_digest={digest}")
           finally:
@@ -283,7 +283,7 @@ jobs:
                   rows.close()
               shutil.rmtree(root/".corpus_index",ignore_errors=True)
               manifest["training_authorized"]=False
-              manifest_path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\\n",encoding="utf-8")
+              manifest_path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
 
       - name: Authorize v4 for training after independent verification
         env:

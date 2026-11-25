@@ -36,7 +36,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
       - name: Download authorized frozen V4 corpus
         uses: actions/download-artifact@v4
         with:
@@ -91,7 +90,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
       - uses: actions/download-artifact@v4
         with:
           name: official-paired-v4-inputs
@@ -168,7 +166,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
       - uses: actions/download-artifact@v4
         with:
           name: official-paired-v4-inputs

@@ -131,24 +131,24 @@ jobs:
         run: |
           set -euo pipefail
           I=resume-smoke/inputs
-          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.train \\
-            --steps 1 --resume resume-smoke/lumen-parent/checkpoint/step_750000.pt \\
-            --phase 1 --pilot-all-rows --data "$I/data/spanish-v3-2.005-train.jsonl" \\
-            --tokenizer "$I/artifacts/tokenizer.json" --token-cache "$I/data/spanish-v3-2.005-token-cache.pt" \\
-            --batch 8 --max-len 128 --seed 42 --runtime-profile "$I/config/lumen-runtime-profile.json" \\
-            --lr 3e-5 --warmup 100 --total-steps 1000000 --scheduler-transition --restart-scheduler-transition \\
-            --transition-start 750000 --transition-end 1000000 --warmup-transition 100 \\
-            --transition-plateau-steps 0 --transition-min-lr-ratio 0.5 \\
-            --log-every 1 --checkpoint-every 1 --recovery-checkpoint-every 1 --parameter-check-every 1 \\
-            --threads 4 --interop-threads 2 --lazy-backward --surprise-gate-loss 1.8 \\
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.train \
+            --steps 1 --resume resume-smoke/lumen-parent/checkpoint/step_750000.pt \
+            --phase 1 --pilot-all-rows --data "$I/data/spanish-v3-2.005-train.jsonl" \
+            --tokenizer "$I/artifacts/tokenizer.json" --token-cache "$I/data/spanish-v3-2.005-token-cache.pt" \
+            --batch 8 --max-len 128 --seed 42 --runtime-profile "$I/config/lumen-runtime-profile.json" \
+            --lr 3e-5 --warmup 100 --total-steps 1000000 --scheduler-transition --restart-scheduler-transition \
+            --transition-start 750000 --transition-end 1000000 --warmup-transition 100 \
+            --transition-plateau-steps 0 --transition-min-lr-ratio 0.5 \
+            --log-every 1 --checkpoint-every 1 --recovery-checkpoint-every 1 --parameter-check-every 1 \
+            --threads 4 --interop-threads 2 --lazy-backward --surprise-gate-loss 1.8 \
             --ckpt-dir resume-smoke/lumen-output
-          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.transformer_baseline \\
-            --steps 1 --resume resume-smoke/transformer-parent/checkpoint/step_750000.pt \\
-            --data "$I/data/spanish-v3-2.005-train.jsonl" --tokenizer "$I/artifacts/tokenizer.json" \\
-            --token-cache "$I/data/spanish-v3-2.005-token-cache.pt" --batch 8 --max-len 128 --seed 42 --threads 4 \\
-            --lr 3e-5 --warmup 100 --total-steps 1000000 --scheduler-transition --restart-scheduler-transition \\
-            --transition-start 750000 --transition-end 1000000 --warmup-transition 100 \\
-            --transition-plateau-steps 0 --transition-min-lr-ratio 0.5 \\
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.transformer_baseline \
+            --steps 1 --resume resume-smoke/transformer-parent/checkpoint/step_750000.pt \
+            --data "$I/data/spanish-v3-2.005-train.jsonl" --tokenizer "$I/artifacts/tokenizer.json" \
+            --token-cache "$I/data/spanish-v3-2.005-token-cache.pt" --batch 8 --max-len 128 --seed 42 --threads 4 \
+            --lr 3e-5 --warmup 100 --total-steps 1000000 --scheduler-transition --restart-scheduler-transition \
+            --transition-start 750000 --transition-end 1000000 --warmup-transition 100 \
+            --transition-plateau-steps 0 --transition-min-lr-ratio 0.5 \
             --parameter-check-every 1 --checkpoint-every 1 --ckpt-dir resume-smoke/transformer-output
           python - <<'PY'
           import hashlib, torch

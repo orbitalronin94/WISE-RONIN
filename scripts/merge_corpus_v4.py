@@ -104,6 +104,7 @@ def find_blocked_base_documents(path: Path, patterns):
         if source_name == "BSC-LT/m-personas" and source_row:
             source_row = source_row.split(".", 1)[0]
         document_id = (
+            source_row if source_name == "BSC-LT/m-personas" and source_row else
             row.get("source_document_id")
             or row.get("document_id")
             or row.get("source_url")
@@ -330,6 +331,7 @@ def main():
             if source_name == "BSC-LT/m-personas" and source_row:
                 source_row = source_row.split(".", 1)[0]
             document_id = (
+                source_row if source_name == "BSC-LT/m-personas" and source_row else
                 normalized_row.get("source_document_id")
                 or normalized_row.get("document_id")
                 or normalized_row.get("source_url")

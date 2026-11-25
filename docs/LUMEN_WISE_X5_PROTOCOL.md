@@ -25,9 +25,9 @@ El script `scripts/validate_lumen_wise_x5.py` instancia los dos modelos y sus re
 - AdamW, LR inicial 1,5e-4, warmup 100, weight decay 0,01 y clipping 1,0.
 - Scheduler cosine con horizonte de 25.000 pasos.
 - Mismo holdout sellado, mismo conjunto de prompts, misma política de generación y misma frecuencia de evaluación.
-- CPU, 2 hilos intra-op y 1 inter-op en ambos; sin GPU ni cambios automáticos de perfil a mitad de la pareja.
+- CPU, 4 hilos intra-op y 2 inter-op en ambos; sin GPU ni cambios automáticos de perfil a mitad de la pareja.
 - Checkpoint cada 250 pasos; métricas cada 100; auditoría de finitud y salud numérica.
-- Los entrenamientos se ejecutarán en bloques reanudables de 10.000 + 10.000 + 5.000 pasos. Los checkpoints intermedios solo continúan su propio modelo; nunca se comparten entre arquitecturas.
+- Los entrenamientos se ejecutarán en **cinco bloques reanudables de 5.000 pasos**: 0→5k→10k→15k→20k→25k. Cada bloque conserva checkpoint, estado de AdamW, scheduler y RNG del bloque anterior del mismo modelo. LUMEN y Transformer no comparten pesos ni checkpoints. Los checkpoints de bloque se publican por separado y permiten reanudar sin perder bloques ya completados.
 
 ## Qué se compara
 
@@ -40,10 +40,11 @@ Las diferencias propias de cada arquitectura (JEPA, memoria, ZE y sueño en LUME
 1. Corpus V4 debe estar congelado, auditado y marcado como entrenable solo después del smoke test del cargador de producción.
 2. Rebasar esta preparación sobre el commit de arquitectura que se congele para el experimento y registrar su SHA.
 3. Ejecutar `python scripts/validate_lumen_wise_x5.py` y toda la suite de tests.
-4. Ejecutar un smoke test de forward/backward y checkpoint/resume de ambos modelos con datos sintéticos, sin tocar el corpus real.
-5. Construir una sola caché de tokens a partir del corpus autorizado; verificar hash de corpus, tokenizer y caché antes de cada ejecución.
-6. Congelar manifiesto de holdout y prompts antes del step 0.
-7. Solo entonces habilitar el workflow de entrenamiento pareado.
+4. Lanzar el workflow pareado en cinco bloques de 5.000 pasos por arquitectura; exige un `freeze_run_id` cuyo artefacto incluya `training_authorized=true`.
+5. Evaluar los dos checkpoints finales contra el mismo holdout congelado y auditar el emparejamiento de resultados.
+6. Ejecutar un smoke test de forward/backward y checkpoint/resume de ambos modelos con datos sintéticos, sin tocar el corpus real.
+7. Congelar manifiesto de holdout y prompts antes del step 0.
+8. V4 usa el cargador lazy indexado: no se genera una caché tokenizada monolítica. Cada job verifica el manifiesto, los hashes de shards y tokenizer antes de entrenar.
 
 **No se inicia ninguno de los dos entrenamientos mientras Corpus V4 no supere todas sus puertas.**
 

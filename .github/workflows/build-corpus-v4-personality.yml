@@ -1,5 +1,5 @@
 name: Build corpus v4 personality and dialogue — 180K rows
-# Use quota_share allocation: 114.5K m-personas + 65.5K SFT-General Spanish.
+# Measured-capacity allocation: 118,565 m-personas + 61,435 SFT-General Spanish.
 
 on:
   push:

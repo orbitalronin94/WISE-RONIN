@@ -26,6 +26,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: corpus-v4-diversity-attractor-gate
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -70,8 +71,6 @@ jobs:
                       r for r in runs
                       if r.get("name")==name
                       and r.get("head_branch")=="corpus-v4-diversity-attractor-gate"
-                      and r.get("status")=="completed"
-                      and r.get("conclusion")=="success"
                   ]
                   if candidates:
                       found[key]=max(candidates,key=lambda r:r["created_at"])
@@ -79,8 +78,13 @@ jobs:
                   break
           for key,name in names.items():
               if key not in found:
-                  raise SystemExit(f"No successful candidate workflow found after pagination: {name}")
+                  raise SystemExit(f"No candidate workflow run found after pagination: {name}")
               run=found[key]
+              if run.get("status")!="completed" or run.get("conclusion")!="success":
+                  raise SystemExit(
+                      f"Latest {key} candidate run {run['id']} is "
+                      f"{run.get('status')}/{run.get('conclusion')}; refusing to fall back to an older artifact."
+                  )
               artifact_name=(
                   f"wise-ronin-corpus-v4-openculture-{run['id']}"
                   if key=="openculture"
@@ -88,6 +92,7 @@ jobs:
               )
               print(f"{key}_run_id={run['id']}")
               print(f"{key}_artifact={artifact_name}")
+              print(f"{key}_head_sha={run['head_sha']}")
           PY
 
       - name: Download exact v3.2.005 base and tokenizer
@@ -116,6 +121,23 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ steps.runs.outputs.personality_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify candidate build revisions are current
+        env:
+          OPENCULTURE_HEAD_SHA: ${{ steps.runs.outputs.openculture_head_sha }}
+          PERSONALITY_HEAD_SHA: ${{ steps.runs.outputs.personality_head_sha }}
+        run: |
+          set -euo pipefail
+          for sha in "$OPENCULTURE_HEAD_SHA" "$PERSONALITY_HEAD_SHA"; do
+            git merge-base --is-ancestor "$sha" HEAD
+          done
+          git diff --quiet "$OPENCULTURE_HEAD_SHA" HEAD -- \
+            scripts/build_corpus_v4_openculture.py \
+            data/corpus_v4_attractor_denylist.json
+          git diff --quiet "$PERSONALITY_HEAD_SHA" HEAD -- \
+            scripts/build_corpus_v4_personality.py \
+            data/corpus_v4_attractor_denylist.json
+          echo "Candidate builders and denylist match the code frozen by this run."
 
       - name: Verify original corpus and exact tokenizer hashes
         run: |
@@ -227,6 +249,8 @@ jobs:
         env:
           OPENCULTURE_RUN_ID: ${{ steps.runs.outputs.openculture_run_id }}
           PERSONALITY_RUN_ID: ${{ steps.runs.outputs.personality_run_id }}
+          OPENCULTURE_HEAD_SHA: ${{ steps.runs.outputs.openculture_head_sha }}
+          PERSONALITY_HEAD_SHA: ${{ steps.runs.outputs.personality_head_sha }}
         run: |
           python - <<'PY'
           import json, os
@@ -243,6 +267,10 @@ jobs:
           manifest["candidate_workflow_runs"]={
               "openculture":int(os.environ["OPENCULTURE_RUN_ID"]),
               "personality":int(os.environ["PERSONALITY_RUN_ID"]),
+          }
+          manifest["candidate_workflow_head_shas"]={
+              "openculture":os.environ["OPENCULTURE_HEAD_SHA"],
+              "personality":os.environ["PERSONALITY_HEAD_SHA"],
           }
           path.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
           print("Corpus v4.0.0 is authorized for training.")

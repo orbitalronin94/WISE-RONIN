@@ -1,0 +1,209 @@
+name: LUMEN-WISE x5 — fresh 10-step throughput benchmark
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/benchmark-lumen-x5-speed-10-fresh.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lumen-x5-speed-fresh-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+
+jobs:
+  benchmark:
+    name: "LUMEN x5 — ${{ matrix.name }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix:
+        include:
+          - {name: baseline-fastcpu, threads: 4, interop: 2, mkldnn: true, foreach: false, affinity: true, refinements: 6, pre_norm: false, fused_scatter: false, reuse_update: true, share_masks: true}
+          - {name: intra-threads-1, threads: 1, interop: 1, mkldnn: true, foreach: false, affinity: true, refinements: 6, pre_norm: false, fused_scatter: false, reuse_update: true, share_masks: true}
+          - {name: intra-threads-2, threads: 2, interop: 1, mkldnn: true, foreach: false, affinity: true, refinements: 6, pre_norm: false, fused_scatter: false, reuse_update: true, share_masks: true}
+          - {name: intra-threads-8, threads: 8, interop: 2, mkldnn: true, foreach: false, affinity: true, refinements: 6, pre_norm: false, fused_scatter: false, reuse_update: true, share_masks: true}
+          - {name: interop-threads-1, threads: 4, interop: 1, mkldnn: true, foreach: false, affinity: true, refinements: 6, pre_norm: false, fused_scatter: false, reuse_update: true, share_masks: true}
+          - {name: interop-threads-4, threads: 4, interop: 4, mkldnn: true, foreach: false, affinity: true, refinements: 6, pre_norm: false, fused_scatter: false, reuse_update: true, share_masks: true}
+          - {name: mkldnn-off, threads: 4, interop: 2, mkldnn: false, foreach: false, affinity: true, refinements: 6, pre_norm: false, fused_scatter: false, reuse_update: true, share_masks: true}
+          - {name: foreach-on, threads: 4, interop: 2, mkldnn: true, foreach: true, affinity: true, refinements: 6, pre_norm: false, fused_scatter: false, reuse_update: true, share_masks: true}
+          - {name: affinity-off, threads: 4, interop: 2, mkldnn: true, foreach: false, affinity: false, refinements: 6, pre_norm: false, fused_scatter: false, reuse_update: true, share_masks: true}
+          - {name: delta-refinements-4, threads: 4, interop: 2, mkldnn: true, foreach: false, affinity: true, refinements: 4, pre_norm: false, fused_scatter: false, reuse_update: true, share_masks: true}
+          - {name: delta-refinements-2, threads: 4, interop: 2, mkldnn: true, foreach: false, affinity: true, refinements: 2, pre_norm: false, fused_scatter: false, reuse_update: true, share_masks: true}
+          - {name: delta-refinements-1, threads: 4, interop: 2, mkldnn: true, foreach: false, affinity: true, refinements: 1, pre_norm: false, fused_scatter: false, reuse_update: true, share_masks: true}
+          - {name: homeostasis-fused-scatter, threads: 4, interop: 2, mkldnn: true, foreach: false, affinity: true, refinements: 6, pre_norm: false, fused_scatter: true, reuse_update: true, share_masks: true}
+          - {name: delta-pre-normalize, threads: 4, interop: 2, mkldnn: true, foreach: false, affinity: true, refinements: 6, pre_norm: true, fused_scatter: false, reuse_update: true, share_masks: true}
+          - {name: delta-reuse-update-off, threads: 4, interop: 2, mkldnn: true, foreach: false, affinity: true, refinements: 6, pre_norm: false, fused_scatter: false, reuse_update: false, share_masks: true}
+          - {name: causal-mask-sharing-off, threads: 4, interop: 2, mkldnn: true, foreach: false, affinity: true, refinements: 6, pre_norm: false, fused_scatter: false, reuse_update: true, share_masks: false}
+    env:
+      OMP_NUM_THREADS: ${{ matrix.threads }}
+      MKL_NUM_THREADS: ${{ matrix.threads }}
+      BENCH_NAME: ${{ matrix.name }}
+      BENCH_THREADS: ${{ matrix.threads }}
+      BENCH_INTEROP: ${{ matrix.interop }}
+      BENCH_MKLDNN: ${{ matrix.mkldnn }}
+      BENCH_FOREACH: ${{ matrix.foreach }}
+      BENCH_AFFINITY: ${{ matrix.affinity }}
+      BENCH_REFINEMENTS: ${{ matrix.refinements }}
+      BENCH_PRE_NORM: ${{ matrix.pre_norm }}
+      BENCH_FUSED_SCATTER: ${{ matrix.fused_scatter }}
+      BENCH_REUSE_UPDATE: ${{ matrix.reuse_update }}
+      BENCH_SHARE_MASKS: ${{ matrix.share_masks }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "numpy>=1.26,<3" "tokenizers>=0.20,<1.0" "tqdm>=4.66,<5"
+      - name: Preflight exact LUMEN x5 architecture and profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "benchmark-output/${BENCH_NAME}" "checkpoints/${BENCH_NAME}"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          name=os.environ["BENCH_NAME"]
+          cfg=json.loads(Path("config/lumen_wise_x5.json").read_text())
+          cfg.update({"learning_rate":3e-5,"warmup_steps":100,"batch_size":8,
+                      "sequence_length":128,"total_steps":1000,"seed":42})
+          Path(f"benchmark-output/{name}/lumen_config.json").write_text(json.dumps(cfg,indent=2)+"\n")
+          profile=json.loads(Path("config/lumen_cpu_profile.json").read_text())
+          truth=lambda key: os.environ[key].lower()=="true"
+          profile.update({
+              "threads":int(os.environ["BENCH_THREADS"]),
+              "interop_threads":int(os.environ["BENCH_INTEROP"]),
+              "mkldnn_enabled":truth("BENCH_MKLDNN"),
+              "foreach":truth("BENCH_FOREACH"),
+              "cpu_affinity":truth("BENCH_AFFINITY"),
+              "delta_parallel_refinements":int(os.environ["BENCH_REFINEMENTS"]),
+              "delta_pre_normalize":truth("BENCH_PRE_NORM"),
+              "homeostasis_fused_scatter":truth("BENCH_FUSED_SCATTER"),
+              "delta_reuse_write_update":truth("BENCH_REUSE_UPDATE"),
+              "delta_share_causal_masks":truth("BENCH_SHARE_MASKS"),
+              "profile_id":"fresh-speedbench-"+name,
+              "benchmark_note":"10-step synthetic compute microbenchmark; no training-quality claim"
+          })
+          Path(f"benchmark-output/{name}/runtime-profile.json").write_text(json.dumps(profile,indent=2)+"\n")
+          from model.config import LumenConfig
+          from model.lumen import RoninLumen
+          model=RoninLumen(config=LumenConfig(**cfg),v32_ze=True)
+          params=sum(p.numel() for p in model.parameters())
+          assert params==12022016, params
+          print(f"MODEL_PREFLIGHT_OK name={name} params={params} V32-ZE=on vocab=4096 dim=672")
+          PY
+      - name: Execute 10 training steps with per-step logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m train.train \
+            --steps 10 --log-every 1 --checkpoint-every 1000 \
+            --parameter-check-every 10 \
+            --threads "${BENCH_THREADS}" --interop-threads "${BENCH_INTEROP}" \
+            --batch 8 --max-len 128 --seed 42 --lr 3e-5 --warmup 100 --total-steps 1000 \
+            --ckpt-dir "checkpoints/${BENCH_NAME}" --phase 1 \
+            --model-config "benchmark-output/${BENCH_NAME}/lumen_config.json" \
+            --runtime-profile "benchmark-output/${BENCH_NAME}/runtime-profile.json" \
+            --v32-ze --lazy-backward --surprise-gate-loss 1.8 --dummy-m1 \
+            --wall-clock-file "benchmark-output/${BENCH_NAME}/wall-clock.json" \
+            2>&1 | tee "benchmark-output/${BENCH_NAME}/train.log"
+      - name: Extract verified timing (wall-clock file + final step log)
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, platform, re
+          from pathlib import Path
+          root=Path("benchmark-output")/os.environ["BENCH_NAME"]
+          log=(root/"train.log").read_text(errors="replace") if (root/"train.log").exists() else ""
+          steps=[int(x) for x in re.findall(r"completed step=(\d+)",log)]
+          wall_path=root/"wall-clock.json"
+          elapsed=None
+          if wall_path.exists():
+              try: elapsed=float(json.loads(wall_path.read_text())["elapsed_seconds"])
+              except Exception: pass
+          final_step=steps[-1] if steps else None
+          result={
+              "hypothesis":os.environ["BENCH_NAME"],
+              "steps_completed":final_step,
+              "profiled_seconds":elapsed,
+              "steps_per_second":(10.0/elapsed if final_step==10 and elapsed and elapsed>0 else None),
+              "runner_cpu_count":os.cpu_count(),
+              "platform":platform.platform(),
+              "return_status":"completed" if final_step==10 and elapsed is not None else "incomplete"
+          }
+          (root/"result.json").write_text(json.dumps(result,indent=2)+"\n")
+          print("BENCHMARK_RESULT="+json.dumps(result,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lumen-x5-fresh-speedbench-${{ matrix.name }}-${{ github.run_id }}
+          path: benchmark-output/${{ matrix.name }}/
+          if-no-files-found: warn
+          retention-days: 30
+          compression-level: 1
+
+  summarize:
+    if: always()
+    needs: [benchmark]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lumen-x5-fresh-speedbench-*-${{ github.run_id }}
+          path: benchmark-results
+          merge-multiple: true
+      - name: Rank only complete measurements
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          rows=[]
+          for p in Path("benchmark-results").glob("*/result.json"):
+              try: rows.append(json.loads(p.read_text()))
+              except Exception: pass
+          rows.sort(key=lambda x:x.get("steps_per_second") or 0,reverse=True)
+          lines=["# LUMEN-WISE x5 — fresh 10-step speed benchmark","",
+                 "Same 12,022,016-parameter model, V32-ZE, batch 8, sequence 128 and seed 42. Synthetic compute only; each hypothesis has an independent runner. Only runs with 10 completed steps and a wall-clock measurement are ranked.","",
+                 "| Rank | Hypothesis | Steps/s | Seconds | Status |",
+                 "|---:|---|---:|---:|---|"]
+          for i,r in enumerate(rows,1):
+              s=r.get("steps_per_second"); sec=r.get("profiled_seconds")
+              if s is not None and sec is not None:
+                  lines.append(f"| {i} | {r['hypothesis']} | {s:.4f} | {sec:.3f} | {r['return_status']} |")
+              else:
+                  lines.append(f"| — | {r['hypothesis']} | — | — | {r['return_status']} |")
+          if not rows: lines.append("No result artifacts were recovered.")
+          Path("LUMEN_X5_FRESH_SPEEDBENCH.md").write_text("\n".join(lines)+"\n")
+          Path("LUMEN_X5_FRESH_SPEEDBENCH.json").write_text(json.dumps(rows,indent=2)+"\n")
+          print("\n".join(lines))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lumen-x5-fresh-speedbench-report-${{ github.run_id }}
+          path: |
+            LUMEN_X5_FRESH_SPEEDBENCH.md
+            LUMEN_X5_FRESH_SPEEDBENCH.json
+          if-no-files-found: warn
+          retention-days: 90

@@ -132,3 +132,17 @@ Se inspeccionaron las 279.613 filas del fichero de entrenamiento, no solo el man
 | CC-BY-4.0 (internal) | 61 | Rechazar |
 
 El gate estricto retira **3.842 filas** con etiquetas internas no equivalentes a una licencia pública estándar. Las 275.771 filas restantes siguen sujetas a los filtros de atractores por documento, idioma, PII, longitud y deduplicación; esta tabla no equivale a afirmar que todas superan los demás controles.
+
+## Integridad de la congelación y trazabilidad de candidatos (25-11-2026)
+
+La congelación no debe tomar silenciosamente un artefacto antiguo cuando existe una compilación más reciente en curso o fallida. El workflow se endurece para:
+
+- Seleccionar el último run de cada builder, no el último run exitoso histórico.
+- Detener la congelación si ese último run no ha terminado correctamente; no retroceder a un candidato antiguo.
+- Registrar tanto el ID del run como su commit de origen en el manifiesto final.
+- Verificar que los commits candidatos pertenecen a la historia de la rama y que los scripts de construcción y la denylist no han cambiado desde la compilación.
+- Mantener separados los artefactos candidatos (siempre `training_authorized=false`) del corpus final congelado.
+
+La modificación del workflow está en la rama de la PR #97. La compilación OpenCulture iniciada el 25-11-2026 (run [45559446972](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45559446972)) sigue siendo la candidata documental más reciente; no se considera válida hasta que termine y sus shards y manifiesto superen el merge. La personalidad/diálogo tiene un artefacto candidato verificado de 165.000 filas, 105.000 de m-personas y 60.000 de SFT-General-Spanish; conserva `training_authorized=false`.
+
+**Estado de esta auditoría:** corpus todavía no entrenable. La cifra de filas candidatas, por sí sola, no cambia este estado. Solo el artefacto final con hashes verificados, objetivos cumplidos, proporción de personalidad dentro del 10–15%, procedencia/licencias comprobadas, ausencia de atractores/PII/holdout y smoke test del cargador real puede recibir autorización.

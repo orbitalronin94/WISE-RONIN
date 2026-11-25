@@ -18,7 +18,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: wise-x5-from-zero-v4
+  group: wise-x5-from-zero-v4-1000
   cancel-in-progress: true
 
 jobs:

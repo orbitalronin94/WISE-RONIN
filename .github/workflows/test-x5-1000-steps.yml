@@ -1,0 +1,240 @@
+name: WISE-RONIN x5 — paired 1000-step smoke train
+
+on:
+  push:
+    branches:
+      - wise-x5-1000-step-blocks-fixed
+    paths:
+      - .github/workflows/test-x5-1000-steps.yml
+  workflow_dispatch:
+    inputs:
+      freeze_run_id:
+        description: "Successful frozen V4 corpus workflow run"
+        required: true
+        default: "45580013610"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: wise-x5-paired-1000-smoke
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+  EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+
+jobs:
+  prepare-v4:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      FREEZE_RUN_ID: ${{ inputs.freeze_run_id || '45580013610' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download frozen V4 corpus
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-corpus-v4-frozen-${{ env.FREEZE_RUN_ID }}
+          path: corpus
+          repository: ${{ github.repository }}
+          run-id: ${{ env.FREEZE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify authorization, tokenizer and every V4 shard
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path("corpus")
+          m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          expected="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          assert m.get("version")=="v4.0.0",m.get("version")
+          assert m.get("status")=="FROZEN_TRAINABLE",m.get("status")
+          assert m.get("training_authorized") is True
+          assert m.get("tokenizer_sha256")==expected,m.get("tokenizer_sha256")
+          assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest()==expected
+          assert len(m.get("shards",[]))==24
+          total=0
+          for shard in m["shards"]:
+              p=root/shard["file"]
+              assert p.is_file() and p.stat().st_size==shard["bytes"],shard["file"]
+              h=hashlib.sha256()
+              with p.open("rb") as f:
+                  for block in iter(lambda:f.read(1024*1024),b""): h.update(block)
+              assert h.hexdigest()==shard["sha256"],shard["file"]
+              total+=int(shard["rows"])
+          assert total==int(m["total_rows"])
+          print(f"V4_OK rows={total} shards=24 tokenizer={expected}")
+          PY
+      - name: Publish verified corpus for the two isolated train jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: x5-smoke-v4-inputs
+          path: corpus/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
+
+  lumen-1000:
+    needs: prepare-v4
+    runs-on: ubuntu-24.04
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download verified V4
+        uses: actions/download-artifact@v4
+        with:
+          name: x5-smoke-v4-inputs
+          path: corpus
+      - name: Install CPU training dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "numpy>=1.26,<3" "tokenizers>=0.20,<1.0" "tqdm>=4.66,<5"
+      - name: Verify actual trainer CLI and frozen corpus loader
+        run: |
+          python -m train.train --help >/dev/null
+          python - <<'PY'
+          import json
+          from train.dataset import load_jsonl, BPETokenizer
+          from pathlib import Path
+          root=Path("corpus")
+          m=json.loads((root/"manifest.json").read_text())
+          rows,digest=load_jsonl(root)
+          assert len(rows)==m["total_rows"]
+          tok=BPETokenizer(root/"tokenizer.json")
+          assert tok.tokenizer.get_vocab_size()==4096
+          assert tok.tokenizer.token_to_id("[PAD]")==0
+          assert tok.tokenizer.token_to_id("[EOS]") is not None
+          print(f"LUMEN_INPUT_OK rows={len(rows)} data_sha256={digest}")
+          rows.close()
+          PY
+      - name: Train LUMEN for exactly 1000 steps
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/lumen logs
+          python -m train.train --steps 1000 --log-every 100 \
+            --data corpus --tokenizer corpus/tokenizer.json \
+            --batch 8 --max-len 128 --seed 42 --lr 1.5e-4 \
+            --warmup 100 --total-steps 25000 --checkpoint-every 1000 \
+            --parameter-check-every 100 --threads 4 --interop-threads 2 \
+            --ckpt-dir checkpoints/lumen --phase 1 --pilot-all-rows --v32-ze \
+            --model-config config/lumen_wise_x5.json \
+            --runtime-profile config/lumen_cpu_profile.json \
+            --recovery-checkpoint-every 100 \
+            2>&1 | tee logs/lumen-0-1000.log
+      - name: Verify LUMEN step-1000 checkpoint
+        run: |
+          python - <<'PY'
+          import torch
+          p="checkpoints/lumen/step_1000.pt"
+          s=torch.load(p,map_location="cpu",weights_only=False)
+          assert int(s["step"])==1000
+          assert s["architecture_id"]=="ronin_lumen_v3_3_neuroplasticity"
+          assert int(s["params"])==12022016
+          assert s["v32_ze"] is True and s["pilot_all_rows"] is True
+          assert int(s["seed"])==42 and int(s["training_config"]["total_steps"])==25000
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          for k in ("model","optimizer","scheduler","rng","data_sha256"): assert s.get(k) is not None,k
+          print("LUMEN_CHECKPOINT_OK step=1000 params=12022016")
+          PY
+      - name: Publish LUMEN test checkpoint and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: x5-smoke-lumen-step-1000
+          path: |
+            checkpoints/lumen/
+            logs/
+          if-no-files-found: warn
+          retention-days: 30
+          compression-level: 1
+
+  transformer-1000:
+    needs: prepare-v4
+    runs-on: ubuntu-24.04
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download verified V4
+        uses: actions/download-artifact@v4
+        with:
+          name: x5-smoke-v4-inputs
+          path: corpus
+      - name: Install CPU training dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "numpy>=1.26,<3" "tokenizers>=0.20,<1.0" "tqdm>=4.66,<5"
+      - name: Verify actual trainer CLI and frozen corpus loader
+        run: |
+          python -m train.transformer_baseline --help >/dev/null
+          python - <<'PY'
+          import json
+          from train.dataset import load_jsonl, BPETokenizer
+          root="corpus"
+          m=json.load(open(root+"/manifest.json",encoding="utf-8"))
+          rows,digest=load_jsonl(root)
+          assert len(rows)==m["total_rows"]
+          tok=BPETokenizer(root+"/tokenizer.json")
+          assert tok.tokenizer.get_vocab_size()==4096
+          assert tok.tokenizer.token_to_id("[PAD]")==0
+          assert tok.tokenizer.token_to_id("[EOS]") is not None
+          print(f"TRANSFORMER_INPUT_OK rows={len(rows)} data_sha256={digest}")
+          rows.close()
+          PY
+      - name: Train Transformer for exactly 1000 steps
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/transformer logs
+          python -m train.transformer_baseline --steps 1000 \
+            --data corpus --tokenizer corpus/tokenizer.json \
+            --batch 8 --max-len 128 --seed 42 --lr 1.5e-4 \
+            --warmup 100 --total-steps 25000 --checkpoint-every 1000 \
+            --parameter-check-every 100 --threads 4 --interop-threads 2 \
+            --disable-mkldnn --disable-foreach --cpu-affinity \
+            --ckpt-dir checkpoints/transformer \
+            --model-dim 488 --heads 8 --ff-width 1464 \
+            2>&1 | tee logs/transformer-0-1000.log
+      - name: Verify Transformer step-1000 checkpoint
+        run: |
+          python - <<'PY'
+          import torch
+          p="checkpoints/transformer/step_1000.pt"
+          s=torch.load(p,map_location="cpu",weights_only=False)
+          assert int(s["step"])==1000
+          assert s["architecture_id"]=="decoder_transformer_4l_d488_h8_ff1464_tied_v1"
+          assert int(s["params"])==11611472
+          assert int(s["seed"])==42 and int(s["training_config"]["total_steps"])==25000
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          for k in ("model","optimizer","scheduler","rng","data_sha256"): assert s.get(k) is not None,k
+          print("TRANSFORMER_CHECKPOINT_OK step=1000 params=11611472")
+          PY
+      - name: Publish Transformer test checkpoint and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: x5-smoke-transformer-step-1000
+          path: |
+            checkpoints/transformer/
+            logs/
+          if-no-files-found: warn
+          retention-days: 30
+          compression-level: 1

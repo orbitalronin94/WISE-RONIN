@@ -219,7 +219,7 @@ jobs:
           assert int(s["step"])==target
           assert int(s["params"])==11611472
           assert s["architecture_id"]=="decoder_transformer_4l_d488_h8_ff1464_tied_v1"
-          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26d3fefe"
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
           if previous:
               p=torch.load(previous,map_location="cpu",weights_only=False)
               assert s["data_sha256"]==p["data_sha256"]

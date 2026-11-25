@@ -266,6 +266,7 @@ def main():
             final_row["completion"] = piece
             final_row["task"] = task
             final_row["language"] = str(row.get("language") or "es")
+            final_row["admission_origin"] = origin
             if len(pieces) > 1:
                 final_row["id"] = hashlib.sha256(
                     f"{row.get('id','')}|v4-chunk|{chunk_index}".encode()

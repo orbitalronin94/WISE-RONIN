@@ -248,6 +248,7 @@ jobs:
           },ensure_ascii=False,indent=2))
           PY
 
+# Re-run after correcting the local-only authorization gate in the production-loader smoke test.
       - name: Smoke-test the actual frozen corpus with the production lazy loader
         run: |
           python - <<'PY'

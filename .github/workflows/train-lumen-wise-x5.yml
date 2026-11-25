@@ -133,7 +133,7 @@ jobs:
               --runtime-profile config/lumen_cpu_profile.json
               --threads 4 --interop-threads 2
               --log-every 100 --checkpoint-every 1000
-              --recovery-checkpoint-every 100 --parameter-check-every 100
+              --parameter-check-every 100
               --ckpt-dir checkpoints/lumen
             )
             if [ -n "$PREVIOUS" ]; then ARGS+=(--resume "$PREVIOUS"); fi
@@ -250,7 +250,7 @@ jobs:
               --data corpus --tokenizer corpus/tokenizer.json
               --batch 8 --max-len 128 --seed 42 --threads 4
               --lr 1.5e-4 --warmup 100 --total-steps 25000
-              --parameter-check-every 100
+              --parameter-check-every 100 --checkpoint-every 1000
               --ckpt-dir checkpoints/transformer
             )
             if [ -n "$PREVIOUS" ]; then ARGS+=(--resume "$PREVIOUS"); fi

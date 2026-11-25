@@ -1,0 +1,30 @@
+{
+  "schema": "wise-ronin-attractor-denylist-v1",
+  "policy": "hard_reject_entire_document_if_any_term_or_phrase_occurs_in_body_or_document_metadata",
+  "normalization": "Unicode NFKD, casefold, combining marks removed; whole-word matching for single tokens",
+  "terms": [
+    "contexto documental",
+    "democracia",
+    "democrático",
+    "democrática",
+    "democráticos",
+    "democráticas",
+    "música",
+    "músicas",
+    "deformación",
+    "deformaciones",
+    "latinoamericana",
+    "latinoamericano",
+    "latinoamericanas",
+    "latinoamericanos",
+    "estados miembros",
+    "unión europea",
+    "contextos documentales",
+    "democracias",
+    "democráticamente",
+    "estado miembro",
+    "latinoamérica"
+  ],
+  "rationale": "Observed recurrent LUMEN free-form holdout attractors at step 417500. This is a conservative corpus-admission blocklist, not a claim that the terms are intrinsically low quality.",
+  "review_required_before_relaxation": true
+}

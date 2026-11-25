@@ -20,10 +20,10 @@ class SplineKAN(nn.Module):
         return self.proj_out(p0 * (1.0 - frac) + p1 * frac)
 
 class Heads(nn.Module):
-    def __init__(self, dim=256, hidden=512):
+    def __init__(self, dim=256, hidden=512, n_splines=32, n_puntos=8):
         super().__init__()
         self.router = nn.Linear(dim, 2)
-        self.kan = SplineKAN(dim)
+        self.kan = SplineKAN(dim, n_splines=n_splines, n_puntos=n_puntos)
         self.mlp = nn.Sequential(nn.Linear(dim, hidden), nn.GELU(), nn.Linear(hidden, dim))
 
     def forward(self, x, e_head):

@@ -1,0 +1,16 @@
+{
+  "architecture": "decoder-only Transformer",
+  "layers": 4,
+  "model_dim": 488,
+  "heads": 8,
+  "ff_width": 1464,
+  "vocab_size": 4096,
+  "max_sequence_length": 128,
+  "tied_embeddings": true,
+  "batch_size": 8,
+  "total_steps": 25000,
+  "learning_rate": 0.00015,
+  "warmup_steps": 100,
+  "seed": 42,
+  "weight_decay": 0.01
+}

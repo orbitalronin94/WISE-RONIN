@@ -10,3 +10,5 @@ if __name__ == "__main__":
 # Re-run freeze after both immutable candidate builders reached their exact quotas.
 
 # Trigger freeze again after correcting the v3.2.005 manifest's optional tokenizer field.
+
+# Re-run after distinguishing inherited v3.2 provenance from newly admitted v4 provenance.

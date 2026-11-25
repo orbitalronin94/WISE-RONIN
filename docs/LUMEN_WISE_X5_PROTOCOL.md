@@ -61,3 +61,8 @@ En CI, el validador de esta rama instanció ambos modelos, contó sus parámetro
 ### Corrección de inicialización del Transformer
 
 La primera pasada sintética detectó que la inicialización por defecto de `nn.Embedding` con pesos ligados producía logits excesivos y loss inicial ≈319,5. Se corrigió la inicialización de embeddings de token y posición a normal(0, 0,02), conservando el weight tying. La nueva CI arroja loss sintética ≈8,07 para Transformer y ≈8,32 para WISE-LUMEN; ambos pasan forward/backward finito y la guarda de escala. No se ha iniciado entrenamiento real.
+
+
+### Validación actualizada de bloques y reanudación
+
+La CI [45578786832](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45578786832) terminó correctamente: YAML y Bash del workflow, suite completa de tests, validación de parámetros y smoke test real de ambos entrenadores. Cada bloque de 5.000 pasos publica inmediatamente su checkpoint y log como artefacto independiente con retención de 90 días; el artefacto final conserva además todos los checkpoints y manifiestos. Esto permite recuperar desde el último bloque publicado sin depender de que el job completo de 25.000 pasos termine.

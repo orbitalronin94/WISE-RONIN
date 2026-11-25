@@ -1,6 +1,10 @@
 name: V3.2.005 pilot — LUMEN × Transformer, 5k each
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/pilot-v32-paired-5k.yml"
   workflow_dispatch:
     inputs:
       corpus_run_id:
@@ -202,16 +206,26 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p checkpoints/transformer logs
-          python -m train.transformer_baseline \
-            --steps 5000 --data inputs/data/spanish-v3-2.005-train.jsonl \
-            --tokenizer inputs/artifacts/tokenizer.json \
-            --model-dim 488 --heads 8 --ff-width 1464 \
-            --batch 8 --max-len 128 --seed 42 \
-            --lr 1.5e-4 --warmup 100 --total-steps 25000 \
-            --threads 4 --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity \
-            --log-every 100 --checkpoint-every 1000 --parameter-check-every 100 \
-            --ckpt-dir checkpoints/transformer 2>&1 | tee logs/transformer-0-5000.log
-          test -s checkpoints/transformer/step_5000.pt
+          for block in 1 2 3 4 5; do
+            start=$(( (block - 1) * 1000 ))
+            end=$(( block * 1000 ))
+            if [ "$block" -eq 1 ]; then
+              resume_args=()
+            else
+              resume_args=(--resume "checkpoints/transformer/step_${start}.pt")
+            fi
+            python -m train.transformer_baseline \
+              --steps 1000 "${resume_args[@]}" \
+              --data inputs/data/spanish-v3-2.005-train.jsonl \
+              --tokenizer inputs/artifacts/tokenizer.json \
+              --model-dim 488 --heads 8 --ff-width 1464 \
+              --batch 8 --max-len 128 --seed 42 \
+              --lr 1.5e-4 --warmup 100 --total-steps 25000 \
+              --threads 4 --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity \
+              --checkpoint-every 1000 --parameter-check-every 100 \
+              --ckpt-dir checkpoints/transformer 2>&1 | tee -a logs/transformer-0-5000.log
+            test -s "checkpoints/transformer/step_${end}.pt"
+          done
           python - <<'PY'
           import torch,os
           s=torch.load("checkpoints/transformer/step_5000.pt",map_location="cpu",weights_only=False)

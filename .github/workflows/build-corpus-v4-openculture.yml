@@ -71,7 +71,7 @@ jobs:
         run: |
           python -m py_compile scripts/build_corpus_v4_openculture.py scripts/filter_corpus_attractors.py
           python -m pip install pytest
-          PYTHONPATH=. pytest -q tests/test_corpus_attractor_filter.py
+          PYTHONPATH=. pytest -q tests/test_corpus_attractor_filter.py tests/test_corpus_v4_openculture.py
 
       - name: Stream and build 100 MiB OpenCulture shards
         run: |

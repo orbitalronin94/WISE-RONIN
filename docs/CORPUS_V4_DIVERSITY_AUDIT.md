@@ -119,3 +119,16 @@ Para esta compilación se endurece la admisión: solo entran registros con licen
 - **Fuera:** SQAC mientras persista la discrepancia de licencia; AQuAS/RagQuAS por licencia NC; SIQA_es/openbookqa-es/EsBBQ por holdout o split no admisible.
 
 El filtro de licencia se aplica antes de tokenización, deduplicación y escritura. El manifiesto debe contar rechazos por licencia. Esta versión sigue siendo candidata y no autoriza entrenamiento.
+
+### Recuento de licencias heredadas verificado en el JSONL real
+
+Se inspeccionaron las 279.613 filas del fichero de entrenamiento, no solo el manifiesto:
+
+| Licencia declarada | Filas | Decisión |
+|---|---:|---|
+| CC-BY-4.0 | 191.805 | Admitir |
+| Apache-2.0 | 83.966 | Admitir |
+| Apache-2.0 (internal) | 3.781 | Rechazar |
+| CC-BY-4.0 (internal) | 61 | Rechazar |
+
+El gate estricto retira **3.842 filas** con etiquetas internas no equivalentes a una licencia pública estándar. Las 275.771 filas restantes siguen sujetas a los filtros de atractores por documento, idioma, PII, longitud y deduplicación; esta tabla no equivale a afirmar que todas superan los demás controles.

@@ -91,7 +91,7 @@ jobs:
               assert hashlib.sha256(p.read_bytes()).hexdigest()==shard["sha256"]
               total+=shard["rows"]
           assert total==m["total_rows"]
-          print(json.dumps({"version":m["version"],"rows":total,"tokens":m["token_count_without_special_tokens"],"personality_share":m["personality_dialogue_share"],"shards":len(m["shards"]),"corpus_sha256":m["corpus_sha256"],"tokenizer_sha256":m["tokenizer_sha256"]},indent=2))
+          print(json.dumps({"version":m["version"],"rows":total,"tokens":m["token_count_without_special_tokens"],"personality_share":m["personality_dialogue_share"],"shards":len(m["shards"]),"tokenizer_sha256":m["tokenizer_sha256"]},indent=2))
           PY
       - name: Train WISE-LUMEN from step 0 in five 5k blocks
         shell: bash
@@ -219,7 +219,7 @@ jobs:
           assert int(s["step"])==target
           assert int(s["params"])==11611472
           assert s["architecture_id"]=="decoder_transformer_4l_d488_h8_ff1464_tied_v1"
-          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26e26d3fefe" or s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26d3fefe"
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26d3fefe"
           if previous:
               p=torch.load(previous,map_location="cpu",weights_only=False)
               assert s["data_sha256"]==p["data_sha256"]

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       corpus_run_id:
-        description: "Successful run that published the immutable v3.2.005 input artifact"
+        description: "Run ID that published the immutable v3.2.005 input artifact"
         required: true
         default: "45405758303"
         type: string

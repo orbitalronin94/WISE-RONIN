@@ -49,3 +49,5 @@ La documentación distingue entre arquitectura implementada, configuración real
 Una implementación que compila no equivale a una hipótesis validada. Un smoke test no equivale a entrenamiento. Un microbenchmark no equivale a holdout. Un checkpoint guardado tras un workflow fallido debe verificarse y evaluarse por separado. Los mecanismos opcionales solo se atribuyen a un entrenamiento si su workflow los habilitó.
 
 - [Holdout emparejado de 500k y continuación 500k→750k](RESULTADOS_HOLDOUT_500K_ES.md) — métricas, análisis pareado, linaje y protocolo del siguiente tramo.
+
+- [Holdout doble de step 710k](RESULTADOS_HOLDOUT_710K_ES.md) — comparación oficial de 2.431 preguntas y evaluación abierta informal de 100 prompts; incluye análisis emparejado y límites estadísticos.

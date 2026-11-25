@@ -2,7 +2,7 @@ name: WISE-RONIN official paired x5 — LUMEN vs Transformer, 1000 steps
 
 on:
   push:
-    branches: [official-paired-x5-1000]
+    branches: [main, official-paired-x5-1000]
     paths:
       - .github/workflows/official-paired-x5-1000.yml
   workflow_dispatch:

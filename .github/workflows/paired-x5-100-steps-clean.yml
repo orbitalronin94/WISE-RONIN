@@ -1,0 +1,209 @@
+name: WISE-RONIN — paired LUMEN x5 + Transformer x5 (100 steps)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/paired-x5-100-steps-clean.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: wise-ronin-paired-x5-100-clean
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+  CORPUS_RUN_ID: "45618840019"
+  TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+
+jobs:
+  paired-train:
+    name: Train both models — 100 steps each
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Download the already-frozen V4 corpus artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: official-paired-x5-rebuild-inputs-45618840019
+          path: inputs
+          repository: ${{ github.repository }}
+          run-id: ${{ env.CORPUS_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate existing corpus and tokenizer — no rebuilding or retokenizing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+
+          root = Path("inputs")
+          manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+          assert manifest.get("version") == "v4.0.0", manifest.get("version")
+          assert manifest.get("status") == "FROZEN_TRAINABLE", manifest.get("status")
+          assert manifest.get("training_authorized") is True
+          expected = "${{ env.TOKENIZER_SHA256 }}"
+          tokenizer = root / "tokenizer.json"
+          assert hashlib.sha256(tokenizer.read_bytes()).hexdigest() == expected
+          assert manifest.get("tokenizer_sha256") == expected
+          shards = manifest.get("shards", [])
+          assert len(shards) == 24, len(shards)
+          rows = 0
+          for shard in shards:
+              path = root / shard["file"]
+              assert path.is_file() and path.stat().st_size == int(shard["bytes"]), shard["file"]
+              hasher = hashlib.sha256()
+              with path.open("rb") as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      hasher.update(chunk)
+              assert hasher.hexdigest() == shard["sha256"], shard["file"]
+              rows += int(shard["rows"])
+          assert rows == 2_293_883, rows
+          print(f"FROZEN_V4_OK rows={rows} shards={len(shards)} tokenizer_sha256={expected}")
+          PY
+
+      - name: Install CPU training runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "numpy>=1.26,<3" "tokenizers>=0.20,<1.0" "tqdm>=4.66,<5"
+
+      - name: Prepare the small-LUMEN CPU profile for the current x5 trainer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          profile = json.loads(Path("config/lumen_cpu_profile.json").read_text(encoding="utf-8"))
+          profile.update({
+              "threads": 4,
+              "interop_threads": 2,
+              "mkldnn_enabled": True,
+              "foreach": False,
+              "cpu_affinity": True,
+              "profile_id": "small-lumen-fastest-cpu-for-100-step-x5-pilot",
+          })
+          Path("config/lumen_cpu_profile_100step.json").write_text(
+              json.dumps(profile, indent=2) + "\n", encoding="utf-8"
+          )
+          print("LUMEN_CPU_PROFILE_OK intra=4 interop=2 mkldnn=on foreach=off affinity=on")
+          PY
+          python -m train.train --help >/dev/null
+          python -m train.transformer_baseline --help >/dev/null
+
+      - name: Preflight both x5 architectures and exact parameter count
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from model.config import LumenConfig
+          from model.lumen import RoninLumen
+          from train.transformer_baseline import SmallTransformerLM
+
+          cfg = json.loads(Path("config/lumen_wise_x5.json").read_text(encoding="utf-8"))
+          cfg.update({"learning_rate": 3e-5, "warmup_steps": 10, "batch_size": 8,
+                      "sequence_length": 128, "total_steps": 100, "seed": 42})
+          lumen = RoninLumen(config=LumenConfig(**cfg), v32_ze=True).cpu()
+          lumen_params = sum(p.numel() for p in lumen.parameters())
+          del lumen
+          transformer = SmallTransformerLM(
+              4096, 128, width=488, heads=8, ff_width=1569, residual_groups=51
+          )
+          transformer_params = sum(p.numel() for p in transformer.parameters())
+          assert lumen_params == 12_022_016, lumen_params
+          assert transformer_params == 12_022_016, transformer_params
+          print(f"PAIRED_ARCHITECTURES_OK lumen={lumen_params} transformer={transformer_params}")
+          PY
+
+      - name: Train LUMEN x5 for exactly 100 steps
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/lumen logs
+          python -m train.train \
+            --steps 100 --log-every 1 --checkpoint-every 100 \
+            --recovery-checkpoint-every 25 --parameter-check-every 25 \
+            --threads 4 --interop-threads 2 \
+            --data inputs --tokenizer inputs/tokenizer.json \
+            --batch 8 --max-len 128 --seed 42 \
+            --lr 3e-5 --warmup 10 --total-steps 100 \
+            --ckpt-dir checkpoints/lumen --phase 1 --pilot-all-rows --v32-ze \
+            --model-config config/lumen_wise_x5.json \
+            --runtime-profile config/lumen_cpu_profile_100step.json \
+            --lazy-backward --surprise-gate-loss 1.8 \
+            2>&1 | tee logs/lumen.log
+          python - <<'PY'
+          import torch
+          path = "checkpoints/lumen/step_100.pt"
+          state = torch.load(path, map_location="cpu", weights_only=False)
+          assert int(state["step"]) == 100, state.get("step")
+          assert int(state["params"]) == 12_022_016, state.get("params")
+          assert state["architecture_id"] == "ronin_lumen_v3_3_neuroplasticity"
+          assert state["v32_ze"] is True and state["pilot_all_rows"] is True
+          assert state["tokenizer_sha256"] == "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          print("LUMEN_X5_STEP100_CHECKPOINT_OK")
+          PY
+
+      - name: Train Transformer x5 for exactly 100 steps
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/transformer logs
+          python -m train.transformer_baseline \
+            --steps 100 --checkpoint-every 100 \
+            --parameter-check-every 25 \
+            --data inputs --tokenizer inputs/tokenizer.json \
+            --batch 8 --max-len 128 --seed 42 --threads 4 --interop-threads 2 \
+            --disable-foreach --cpu-affinity \
+            --lr 3e-5 --warmup 10 --total-steps 100 \
+            --ckpt-dir checkpoints/transformer \
+            --model-dim 488 --heads 8 --ff-width 1569 --residual-groups 51 \
+            2>&1 | tee logs/transformer.log
+          python - <<'PY'
+          import torch
+          path = "checkpoints/transformer/step_100.pt"
+          state = torch.load(path, map_location="cpu", weights_only=False)
+          assert int(state["step"]) == 100, state.get("step")
+          assert int(state["params"]) == 12_022_016, state.get("params")
+          assert state["model_spec"] == {
+              "model_dim": 488, "heads": 8, "ff_width": 1569,
+              "residual_groups": 51, "layers": 4, "tied_embeddings": True
+          }, state.get("model_spec")
+          assert state["tokenizer_sha256"] == "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          print("TRANSFORMER_X5_STEP100_CHECKPOINT_OK")
+          PY
+
+      - name: Upload both checkpoints and per-step logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: paired-x5-100-steps-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/
+            checkpoints/transformer/
+            logs/
+            config/lumen_cpu_profile_100step.json
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 1

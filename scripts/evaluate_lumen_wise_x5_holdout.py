@@ -1,4 +1,4 @@
-"""Matched multiple-choice holdout evaluation for the fresh step-1000 pair."""
+"""Matched multiple-choice holdout evaluation for the fresh step-25000 pair."""
 from __future__ import annotations
 import argparse, json, math, hashlib
 from pathlib import Path
@@ -56,6 +56,7 @@ def main():
     p.add_argument("--transformer-heads", type=int, default=8)
     p.add_argument("--transformer-ff-width", type=int, default=1464)
     p.add_argument("--out", required=True); p.add_argument("--limit", type=int, default=0)
+    p.add_argument("--expected-holdout-sha256", default=None)
     p.add_argument("--threads", type=int, default=4); p.add_argument("--max-len", type=int, default=128)
     p.add_argument("--expected-step", type=int, default=None, help="Legacy shared expected step")
     p.add_argument("--expected-lumen-step", type=int, default=None)
@@ -63,6 +64,9 @@ def main():
     a=p.parse_args()
     torch.set_num_threads(a.threads); torch.set_num_interop_threads(2)
     tokenizer_sha=hashlib.sha256(Path(a.tokenizer).read_bytes()).hexdigest()
+    holdout_sha=hashlib.sha256(Path(a.holdout).read_bytes()).hexdigest()
+    if a.expected_holdout_sha256 and holdout_sha != a.expected_holdout_sha256:
+        raise ValueError(f"Holdout SHA-256 mismatch: {holdout_sha}")
     tok=Tokenizer.from_file(a.tokenizer)
     data=rows(a.holdout)
     if a.limit: data=data[:a.limit]
@@ -107,7 +111,7 @@ def main():
     for name,r in results.items():
         r["accuracy"]=r["correct"]/max(1,r["total"])
         r["mean_answer_nll"]=sums[name]/max(1,r["total"])
-    out={"holdout_rows":len(data),"method":"mean conditional token NLL over each answer choice; same frozen tokenizer/context; no updates","results":results}
+    out={"holdout_rows":len(data),"holdout_sha256":holdout_sha,"tokenizer_sha256":tokenizer_sha,"method":"mean conditional token NLL over each answer choice; same frozen tokenizer/context; no updates","results":results}
     Path(a.out).parent.mkdir(parents=True,exist_ok=True)
     Path(a.out).write_text(json.dumps(out,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
     print(json.dumps({k:{x:v for x,v in r.items() if x!="predictions"} for k,r in results.items()},indent=2),flush=True)

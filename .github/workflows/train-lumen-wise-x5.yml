@@ -5,19 +5,15 @@ on:
     inputs:
       freeze_run_id:
         description: "Successful freeze-corpus-v4 workflow run ID"
-        required: false
+        required: true
         type: string
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/train-lumen-wise-x5.yml
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: lumen-wise-x5-paired-${{ github.event.inputs.freeze_run_id || 'SET_FREEZE_RUN_ID_AFTER_V4' }}
+  group: lumen-wise-x5-paired-${{ inputs.freeze_run_id }}
   cancel-in-progress: false
 
 env:
@@ -26,7 +22,7 @@ env:
   OMP_DYNAMIC: "FALSE"
   MKL_DYNAMIC: "FALSE"
   OMP_WAIT_POLICY: "PASSIVE"
-  FREEZE_RUN_ID: ${{ github.event.inputs.freeze_run_id || 'SET_FREEZE_RUN_ID_AFTER_V4' }}
+  FREEZE_RUN_ID: ${{ inputs.freeze_run_id }}
   PYTHONUNBUFFERED: "1"
   EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
 
@@ -43,7 +39,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install numpy tokenizers tqdm pytest
+          python -m pip install numpy tokenizers tqdm pytest "datasets>=3,<4" "langid>=1.1.6" pyarrow
+      - name: Require an explicitly supplied authorized V4 freeze run
+        run: test -n "$FREEZE_RUN_ID" && test "$FREEZE_RUN_ID" != "SET_FREEZE_RUN_ID_AFTER_V4"
       - name: Compile, run all tests and verify x5 parity
         run: |
           python -m compileall -q model train scripts
@@ -124,6 +122,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p checkpoints/lumen logs
           ARGS=(
               --steps 5000
               --phase 1 --pilot-all-rows --v32-ze
@@ -175,6 +174,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p checkpoints/lumen logs
           ARGS=(
               --steps 5000
               --phase 1 --pilot-all-rows --v32-ze
@@ -227,6 +227,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p checkpoints/lumen logs
           ARGS=(
               --steps 5000
               --phase 1 --pilot-all-rows --v32-ze
@@ -279,6 +280,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p checkpoints/lumen logs
           ARGS=(
               --steps 5000
               --phase 1 --pilot-all-rows --v32-ze
@@ -331,6 +333,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p checkpoints/lumen logs
           ARGS=(
               --steps 5000
               --phase 1 --pilot-all-rows --v32-ze
@@ -457,6 +460,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p checkpoints/transformer logs
           ARGS=(
               --steps 5000
               --model-dim 488 --heads 8 --ff-width 1464
@@ -503,6 +507,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p checkpoints/transformer logs
           ARGS=(
               --steps 5000
               --model-dim 488 --heads 8 --ff-width 1464
@@ -550,6 +555,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p checkpoints/transformer logs
           ARGS=(
               --steps 5000
               --model-dim 488 --heads 8 --ff-width 1464
@@ -597,6 +603,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p checkpoints/transformer logs
           ARGS=(
               --steps 5000
               --model-dim 488 --heads 8 --ff-width 1464
@@ -644,6 +651,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p checkpoints/transformer logs
           ARGS=(
               --steps 5000
               --model-dim 488 --heads 8 --ff-width 1464

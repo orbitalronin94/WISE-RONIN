@@ -99,3 +99,6 @@ jobs:
 
       - name: Validate isolated LUMEN-WISE x5 pair (synthetic CPU only)
         run: PYTHONPATH=. python scripts/validate_lumen_wise_x5.py
+
+      - name: Smoke-test both x5 trainers with synthetic checkpoint/resume
+        run: PYTHONPATH=. python scripts/smoke_test_lumen_wise_x5_resume.py

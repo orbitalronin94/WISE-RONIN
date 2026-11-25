@@ -1,0 +1,675 @@
+name: LUMEN vs Transformer — v3.2.005 continuation 750000 to 1000000 (10k blocks, LR 3e-5)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: ronin-v32-paired-750000-1000000-lr3e5
+  cancel-in-progress: false
+env:
+  SOURCE_RUN_ID: "45480785478"
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install checkpoint inspection runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch
+      - name: Download exact frozen v3.2.005 inputs
+        uses: actions/download-artifact@v7
+        with:
+          name: paired-v32-inputs-500000-45480785478
+          path: prepared
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact LUMEN step-750000 checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-step-750000-v32-750k-45480785478
+          path: source-lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact Transformer step-750000 checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: transformer-step-750000-v32-750k-45480785478
+          path: source-transformer
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify exact parent lineage, optimizer state, corpus and holdout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s prepared/data/spanish-v3-2.005-train.jsonl
+          test -s prepared/data/spanish-v3-2.005-token-cache.pt
+          test -s prepared/artifacts/tokenizer.json
+          test -s prepared/config/lumen-runtime-profile.json
+          test -s prepared/eval/holdout_multiple_choice.jsonl
+          test -s source-lumen/checkpoint/step_750000.pt
+          test -s source-transformer/checkpoint/step_750000.pt
+          python - <<'PY'
+          import hashlib, json, torch
+          from pathlib import Path
+          root=Path('prepared')
+          sha=lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
+          manifest=json.loads((root/'data/spanish-v3-2.005-manifest.json').read_text())
+          data_sha=sha(root/'data/spanish-v3-2.005-train.jsonl')
+          tok_sha=sha(root/'artifacts/tokenizer.json')
+          holdout_sha=sha(root/'eval/holdout_multiple_choice.jsonl')
+          assert manifest['total_train_rows']==279613 and manifest['user_training_authorized'] is True
+          assert data_sha=='0f7db9d6c4264f68fd6a12a9fe5bfa708e4fc30c1df176de5a4f53081bfe79aa'
+          assert tok_sha=='d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe'
+          assert holdout_sha=='e21ae7e292d603f1b8073d8114572c92fb0c6448bfaed9066413ddce09e5a359'
+          assert sum(1 for x in (root/'eval/holdout_multiple_choice.jsonl').open() if x.strip())==2431
+          arches={'lumen':'ronin_lumen_v3_3_neuroplasticity','transformer':'decoder_transformer_4l_d192_h4_ff576_tied_v1'}
+          paths={'lumen':Path('source-lumen/checkpoint/step_750000.pt'),'transformer':Path('source-transformer/checkpoint/step_750000.pt')}
+          expected_params={'lumen':2281841,'transformer':2295168}
+          for model,p in paths.items():
+            s=torch.load(p,map_location='cpu',weights_only=False)
+            t=s['scheduler_transition']
+            assert int(s['step'])==750000 and s['architecture_id']==arches[model]
+            assert int(s['params'])==expected_params[model]
+            assert s.get('optimizer') and s.get('scheduler') and s.get('rng')
+            assert s.get('data_sha256')==data_sha and s.get('tokenizer_sha256')==tok_sha
+            assert abs(float(s['training_config']['lr'])-3e-5)<1e-12
+            assert int(t['start_step'])==500000 and int(t['end_step'])==750000 and int(t['current_step']) in (750000,750001),t
+            if model=='lumen':
+              assert s.get('runtime_profile',{}).get('profile_id')=='check0_selected_H02_H03_H04_H05_H06_H09_H18'
+              assert s.get('compute_policy',{}).get('lazy_backward') is True
+            print(model,'step 750000: parent, optimizer, scheduler, RNG, corpus and tokenizer verified')
+          print(json.dumps({'source_run':45480785478,'train_rows':manifest['total_train_rows'],'data_sha256':data_sha,'tokenizer_sha256':tok_sha,'holdout_rows':2431,'holdout_sha256':holdout_sha,'parent_step':750000,'target_step':1000000,'block_size':10000,'blocks_per_model':25},indent=2))
+          PY
+          mkdir -p parents/lumen/checkpoint parents/transformer/checkpoint
+          cp source-lumen/checkpoint/step_750000.pt parents/lumen/checkpoint/step_750000.pt
+          cp source-transformer/checkpoint/step_750000.pt parents/transformer/checkpoint/step_750000.pt
+          if [ -s source-lumen/lumen-wall.json ]; then cp source-lumen/lumen-wall.json parents/lumen/lumen-wall.json; fi
+          if [ -s source-transformer/transformer-wall.json ]; then cp source-transformer/transformer-wall.json parents/transformer/transformer-wall.json; fi
+      - name: Publish frozen v3.2.005 inputs for this run
+        uses: actions/upload-artifact@v7
+        with:
+          name: paired-v32-inputs-750000-${{ github.run_id }}
+          path: prepared/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+      - name: Publish lumen parent step-750000
+        uses: actions/upload-artifact@v7
+        with:
+          name: lumen-step-750000-v32-1m-${{ github.run_id }}
+          path: parents/lumen/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+      - name: Publish transformer parent step-750000
+        uses: actions/upload-artifact@v7
+        with:
+          name: transformer-step-750000-v32-1m-${{ github.run_id }}
+          path: parents/transformer/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+  lumen-760000:
+    needs: prepare
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 750000
+      target_step: 760000
+      steps: 10000
+      parent_artifact: lumen-step-750000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: true
+  lumen-770000:
+    needs: lumen-760000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 760000
+      target_step: 770000
+      steps: 10000
+      parent_artifact: lumen-step-760000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-780000:
+    needs: lumen-770000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 770000
+      target_step: 780000
+      steps: 10000
+      parent_artifact: lumen-step-770000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-790000:
+    needs: lumen-780000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 780000
+      target_step: 790000
+      steps: 10000
+      parent_artifact: lumen-step-780000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-800000:
+    needs: lumen-790000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 790000
+      target_step: 800000
+      steps: 10000
+      parent_artifact: lumen-step-790000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-810000:
+    needs: lumen-800000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 800000
+      target_step: 810000
+      steps: 10000
+      parent_artifact: lumen-step-800000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-820000:
+    needs: lumen-810000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 810000
+      target_step: 820000
+      steps: 10000
+      parent_artifact: lumen-step-810000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-830000:
+    needs: lumen-820000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 820000
+      target_step: 830000
+      steps: 10000
+      parent_artifact: lumen-step-820000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-840000:
+    needs: lumen-830000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 830000
+      target_step: 840000
+      steps: 10000
+      parent_artifact: lumen-step-830000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-850000:
+    needs: lumen-840000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 840000
+      target_step: 850000
+      steps: 10000
+      parent_artifact: lumen-step-840000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-860000:
+    needs: lumen-850000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 850000
+      target_step: 860000
+      steps: 10000
+      parent_artifact: lumen-step-850000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-870000:
+    needs: lumen-860000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 860000
+      target_step: 870000
+      steps: 10000
+      parent_artifact: lumen-step-860000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-880000:
+    needs: lumen-870000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 870000
+      target_step: 880000
+      steps: 10000
+      parent_artifact: lumen-step-870000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-890000:
+    needs: lumen-880000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 880000
+      target_step: 890000
+      steps: 10000
+      parent_artifact: lumen-step-880000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-900000:
+    needs: lumen-890000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 890000
+      target_step: 900000
+      steps: 10000
+      parent_artifact: lumen-step-890000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-910000:
+    needs: lumen-900000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 900000
+      target_step: 910000
+      steps: 10000
+      parent_artifact: lumen-step-900000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-920000:
+    needs: lumen-910000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 910000
+      target_step: 920000
+      steps: 10000
+      parent_artifact: lumen-step-910000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-930000:
+    needs: lumen-920000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 920000
+      target_step: 930000
+      steps: 10000
+      parent_artifact: lumen-step-920000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-940000:
+    needs: lumen-930000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 930000
+      target_step: 940000
+      steps: 10000
+      parent_artifact: lumen-step-930000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-950000:
+    needs: lumen-940000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 940000
+      target_step: 950000
+      steps: 10000
+      parent_artifact: lumen-step-940000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-960000:
+    needs: lumen-950000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 950000
+      target_step: 960000
+      steps: 10000
+      parent_artifact: lumen-step-950000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-970000:
+    needs: lumen-960000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 960000
+      target_step: 970000
+      steps: 10000
+      parent_artifact: lumen-step-960000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-980000:
+    needs: lumen-970000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 970000
+      target_step: 980000
+      steps: 10000
+      parent_artifact: lumen-step-970000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-990000:
+    needs: lumen-980000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 980000
+      target_step: 990000
+      steps: 10000
+      parent_artifact: lumen-step-980000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  lumen-1000000:
+    needs: lumen-990000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: lumen
+      parent_step: 990000
+      target_step: 1000000
+      steps: 10000
+      parent_artifact: lumen-step-990000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-760000:
+    needs: prepare
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 750000
+      target_step: 760000
+      steps: 10000
+      parent_artifact: transformer-step-750000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: true
+  transformer-770000:
+    needs: transformer-760000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 760000
+      target_step: 770000
+      steps: 10000
+      parent_artifact: transformer-step-760000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-780000:
+    needs: transformer-770000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 770000
+      target_step: 780000
+      steps: 10000
+      parent_artifact: transformer-step-770000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-790000:
+    needs: transformer-780000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 780000
+      target_step: 790000
+      steps: 10000
+      parent_artifact: transformer-step-780000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-800000:
+    needs: transformer-790000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 790000
+      target_step: 800000
+      steps: 10000
+      parent_artifact: transformer-step-790000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-810000:
+    needs: transformer-800000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 800000
+      target_step: 810000
+      steps: 10000
+      parent_artifact: transformer-step-800000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-820000:
+    needs: transformer-810000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 810000
+      target_step: 820000
+      steps: 10000
+      parent_artifact: transformer-step-810000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-830000:
+    needs: transformer-820000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 820000
+      target_step: 830000
+      steps: 10000
+      parent_artifact: transformer-step-820000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-840000:
+    needs: transformer-830000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 830000
+      target_step: 840000
+      steps: 10000
+      parent_artifact: transformer-step-830000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-850000:
+    needs: transformer-840000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 840000
+      target_step: 850000
+      steps: 10000
+      parent_artifact: transformer-step-840000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-860000:
+    needs: transformer-850000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 850000
+      target_step: 860000
+      steps: 10000
+      parent_artifact: transformer-step-850000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-870000:
+    needs: transformer-860000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 860000
+      target_step: 870000
+      steps: 10000
+      parent_artifact: transformer-step-860000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-880000:
+    needs: transformer-870000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 870000
+      target_step: 880000
+      steps: 10000
+      parent_artifact: transformer-step-870000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-890000:
+    needs: transformer-880000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 880000
+      target_step: 890000
+      steps: 10000
+      parent_artifact: transformer-step-880000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-900000:
+    needs: transformer-890000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 890000
+      target_step: 900000
+      steps: 10000
+      parent_artifact: transformer-step-890000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-910000:
+    needs: transformer-900000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 900000
+      target_step: 910000
+      steps: 10000
+      parent_artifact: transformer-step-900000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-920000:
+    needs: transformer-910000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 910000
+      target_step: 920000
+      steps: 10000
+      parent_artifact: transformer-step-910000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-930000:
+    needs: transformer-920000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 920000
+      target_step: 930000
+      steps: 10000
+      parent_artifact: transformer-step-920000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-940000:
+    needs: transformer-930000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 930000
+      target_step: 940000
+      steps: 10000
+      parent_artifact: transformer-step-930000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-950000:
+    needs: transformer-940000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 940000
+      target_step: 950000
+      steps: 10000
+      parent_artifact: transformer-step-940000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-960000:
+    needs: transformer-950000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 950000
+      target_step: 960000
+      steps: 10000
+      parent_artifact: transformer-step-950000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-970000:
+    needs: transformer-960000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 960000
+      target_step: 970000
+      steps: 10000
+      parent_artifact: transformer-step-960000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-980000:
+    needs: transformer-970000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 970000
+      target_step: 980000
+      steps: 10000
+      parent_artifact: transformer-step-970000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-990000:
+    needs: transformer-980000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 980000
+      target_step: 990000
+      steps: 10000
+      parent_artifact: transformer-step-980000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  transformer-1000000:
+    needs: transformer-990000
+    uses: ./.github/workflows/train-paired-block-v32-lr3e5-1m.yml
+    with:
+      model: transformer
+      parent_step: 990000
+      target_step: 1000000
+      steps: 10000
+      parent_artifact: transformer-step-990000-v32-1m-${{ github.run_id }}
+      restart_scheduler_transition: false
+  final-holdout:
+    needs: [lumen-1000000, transformer-1000000]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU evaluation runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download frozen v3.2.005 evaluation inputs
+        uses: actions/download-artifact@v7
+        with:
+          name: paired-v32-inputs-750000-${{ github.run_id }}
+          path: inputs
+      - name: Download final lumen checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-step-1000000-v32-1m-${{ github.run_id }}
+          path: lumen
+      - name: Download final transformer checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: transformer-step-1000000-v32-1m-${{ github.run_id }}
+          path: transformer
+      - name: Evaluate both step-1000000 checkpoints on unchanged sealed holdout
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python scripts/evaluate_multiple_choice_holdout.py \\
+            --holdout inputs/eval/holdout_multiple_choice.jsonl \\
+            --tokenizer inputs/artifacts/tokenizer.json \\
+            --lumen lumen/checkpoint/step_1000000.pt \\
+            --transformer transformer/checkpoint/step_1000000.pt \\
+            --expected-lumen-step 1000000 --expected-transformer-step 1000000 \\
+            --out results/v32_step1000000_paired_holdout.json \\
+            --threads 4 --max-len 128
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ronin-v32-step1000000-paired-holdout-${{ github.run_id }}
+          path: results/v32_step1000000_paired_holdout.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6

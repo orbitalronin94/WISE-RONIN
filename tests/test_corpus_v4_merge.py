@@ -117,8 +117,10 @@ def test_m_personas_turns_share_parent_persona_rejection_key(tmp_path):
     path = tmp_path / "base.jsonl"
     rows = [
         {"source": "BSC-LT/m-personas", "source_row": "persona-42.turn-a",
+         "source_document_id": "persona-42.turn-a",
          "prompt": "", "completion": "Conversación neutral."},
         {"source": "BSC-LT/m-personas", "source_row": "persona-42.turn-b",
+         "source_document_id": "persona-42.turn-b",
          "prompt": "", "completion": "Conversación con contexto documental."},
         {"source": "BSC-LT/m-personas", "source_row": "persona-43.turn-a",
          "prompt": "", "completion": "Otra conversación neutral."},

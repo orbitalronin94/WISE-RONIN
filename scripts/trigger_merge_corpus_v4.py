@@ -12,3 +12,5 @@ if __name__ == "__main__":
 # Trigger freeze again after correcting the v3.2.005 manifest's optional tokenizer field.
 
 # Re-run after distinguishing inherited v3.2 provenance from newly admitted v4 provenance.
+
+# Re-trigger only after the freeze workflow is corrected for the 180K quota and guarded concurrency.

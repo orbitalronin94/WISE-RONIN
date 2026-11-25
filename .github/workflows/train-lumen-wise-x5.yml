@@ -22,6 +22,7 @@ env:
   OMP_DYNAMIC: "FALSE"
   MKL_DYNAMIC: "FALSE"
   OMP_WAIT_POLICY: "PASSIVE"
+  FREEZE_RUN_ID: ${{ inputs.freeze_run_id }}
   PYTHONUNBUFFERED: "1"
   EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
 
@@ -74,24 +75,44 @@ jobs:
       - name: Verify authorization, shard hashes and tokenizer
         run: |
           python - <<'PY'
-          import hashlib,json
+          import hashlib,json,os
           from pathlib import Path
           root=Path("corpus")
-          m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          manifest_path=root/"manifest.json"
+          m=json.loads(manifest_path.read_text(encoding="utf-8"))
           assert m.get("version")=="v4.0.0"
           assert m.get("status")=="FROZEN_TRAINABLE"
           assert m.get("training_authorized") is True
           assert m.get("raw_text_target_met") and m.get("personality_target_met")
-          assert m.get("tokenizer_sha256")==__import__("os").environ["EXPECTED_TOKENIZER_SHA256"]
+          assert m.get("tokenizer_sha256")==os.environ["EXPECTED_TOKENIZER_SHA256"]
           assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest()==m["tokenizer_sha256"]
           total=0
+          corpus_digest=hashlib.sha256()
           for shard in m["shards"]:
               p=root/shard["file"]
               assert p.is_file() and p.stat().st_size==shard["bytes"]<=104857600
-              assert hashlib.sha256(p.read_bytes()).hexdigest()==shard["sha256"]
+              shard_digest=hashlib.sha256()
+              with p.open("rb") as handle:
+                  for chunk in iter(lambda:handle.read(1024*1024),b""):
+                      shard_digest.update(chunk)
+                      corpus_digest.update(chunk)
+              assert shard_digest.hexdigest()==shard["sha256"]
               total+=shard["rows"]
           assert total==m["total_rows"]
-          print(json.dumps({"version":m["version"],"rows":total,"tokens":m["token_count_without_special_tokens"],"personality_share":m["personality_dialogue_share"],"shards":len(m["shards"]),"tokenizer_sha256":m["tokenizer_sha256"]},indent=2))
+          experiment={
+              "architecture_commit":os.environ["GITHUB_SHA"],
+              "freeze_run_id":os.environ["FREEZE_RUN_ID"],
+              "freeze_manifest_sha256":hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+              "corpus_data_sha256":corpus_digest.hexdigest(),
+              "tokenizer_sha256":m["tokenizer_sha256"],
+              "lumen_config_sha256":hashlib.sha256(Path("config/lumen_wise_x5.json").read_bytes()).hexdigest(),
+              "transformer_config_sha256":hashlib.sha256(Path("config/transformer_wise_x5.json").read_bytes()).hexdigest(),
+              "lumen_runtime_profile_sha256":hashlib.sha256(Path("config/lumen_cpu_profile.json").read_bytes()).hexdigest(),
+              "steps":25000,"blocks":[5000]*5,"batch":8,"sequence_length":128,"seed":42,
+              "learning_rate":0.00015,"warmup_steps":100,"device":"cpu"
+          }
+          Path("experiment_manifest.json").write_text(json.dumps(experiment,indent=2)+"\\n",encoding="utf-8")
+          print(json.dumps({"version":m["version"],"rows":total,"tokens":m["token_count_without_special_tokens"],"personality_share":m["personality_dialogue_share"],"shards":len(m["shards"]),"corpus_data_sha256":experiment["corpus_data_sha256"],"tokenizer_sha256":m["tokenizer_sha256"]},indent=2))
           PY
       - name: Train WISE-LUMEN from step 0 in five 5k blocks
         shell: bash
@@ -101,7 +122,7 @@ jobs:
           PREVIOUS=""
           for BLOCK in 1 2 3 4 5; do
             TARGET=$((BLOCK * 5000))
-            echo "===== WISE-LUMEN block ${BLOCK}/5: ${TARGET}->$((TARGET-5000)) ====="
+            echo "===== WISE-LUMEN block ${BLOCK}/5: $((TARGET-5000)) -> ${TARGET} ====="
             ARGS=(
               --steps 5000
               --phase 1 --pilot-all-rows --v32-ze
@@ -120,9 +141,13 @@ jobs:
             CURRENT="checkpoints/lumen/step_${TARGET}.pt"
             test -s "$CURRENT"
             python - "$CURRENT" "$TARGET" "$PREVIOUS" <<'PY'
-          import sys,torch
+          import sys,torch,json
+          from pathlib import Path
           path,target,previous=sys.argv[1],int(sys.argv[2]),sys.argv[3]
           s=torch.load(path,map_location="cpu",weights_only=False)
+          experiment=json.loads(Path("experiment_manifest.json").read_text())
+          assert s["data_sha256"]==experiment["corpus_data_sha256"]
+          assert s["tokenizer_sha256"]==experiment["tokenizer_sha256"]
           assert int(s["step"])==target
           assert int(s["params"])==12022016
           assert s["architecture_id"]=="ronin_lumen_v3_3_neuroplasticity"
@@ -143,6 +168,7 @@ jobs:
           name: lumen-wise-x5-checkpoints-${{ github.run_id }}
           path: |
             checkpoints/lumen/
+            experiment_manifest.json
             logs/
           if-no-files-found: warn
           retention-days: 90
@@ -176,19 +202,38 @@ jobs:
           import hashlib,json,os
           from pathlib import Path
           root=Path("corpus")
-          m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          manifest_path=root/"manifest.json"
+          m=json.loads(manifest_path.read_text(encoding="utf-8"))
           assert m.get("version")=="v4.0.0" and m.get("status")=="FROZEN_TRAINABLE"
           assert m.get("training_authorized") is True
           assert m.get("tokenizer_sha256")==os.environ["EXPECTED_TOKENIZER_SHA256"]
           assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest()==m["tokenizer_sha256"]
           total=0
+          corpus_digest=hashlib.sha256()
           for shard in m["shards"]:
               p=root/shard["file"]
               assert p.is_file() and p.stat().st_size==shard["bytes"]<=104857600
-              assert hashlib.sha256(p.read_bytes()).hexdigest()==shard["sha256"]
+              shard_digest=hashlib.sha256()
+              with p.open("rb") as handle:
+                  for chunk in iter(lambda:handle.read(1024*1024),b""):
+                      shard_digest.update(chunk); corpus_digest.update(chunk)
+              assert shard_digest.hexdigest()==shard["sha256"]
               total+=shard["rows"]
           assert total==m["total_rows"]
-          print(f"Verified authorized V4: {total} rows; {len(m['shards'])} shards")
+          experiment={
+              "architecture_commit":os.environ["GITHUB_SHA"],
+              "freeze_run_id":os.environ["FREEZE_RUN_ID"],
+              "freeze_manifest_sha256":hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+              "corpus_data_sha256":corpus_digest.hexdigest(),
+              "tokenizer_sha256":m["tokenizer_sha256"],
+              "lumen_config_sha256":hashlib.sha256(Path("config/lumen_wise_x5.json").read_bytes()).hexdigest(),
+              "transformer_config_sha256":hashlib.sha256(Path("config/transformer_wise_x5.json").read_bytes()).hexdigest(),
+              "lumen_runtime_profile_sha256":hashlib.sha256(Path("config/lumen_cpu_profile.json").read_bytes()).hexdigest(),
+              "steps":25000,"blocks":[5000]*5,"batch":8,"sequence_length":128,"seed":42,
+              "learning_rate":0.00015,"warmup_steps":100,"device":"cpu"
+          }
+          Path("experiment_manifest.json").write_text(json.dumps(experiment,indent=2)+"\\n",encoding="utf-8")
+          print(f"Verified authorized V4: {total} rows; {len(m['shards'])} shards; data SHA {experiment['corpus_data_sha256']}")
           PY
       - name: Train Transformer from step 0 in five 5k blocks
         shell: bash
@@ -213,9 +258,13 @@ jobs:
             CURRENT="checkpoints/transformer/step_${TARGET}.pt"
             test -s "$CURRENT"
             python - "$CURRENT" "$TARGET" "$PREVIOUS" <<'PY'
-          import sys,torch
+          import sys,torch,json
+          from pathlib import Path
           path,target,previous=sys.argv[1],int(sys.argv[2]),sys.argv[3]
           s=torch.load(path,map_location="cpu",weights_only=False)
+          experiment=json.loads(Path("experiment_manifest.json").read_text())
+          assert s["data_sha256"]==experiment["corpus_data_sha256"]
+          assert s["tokenizer_sha256"]==experiment["tokenizer_sha256"]
           assert int(s["step"])==target
           assert int(s["params"])==11611472
           assert s["architecture_id"]=="decoder_transformer_4l_d488_h8_ff1464_tied_v1"
@@ -235,6 +284,7 @@ jobs:
           name: transformer-wise-x5-checkpoints-${{ github.run_id }}
           path: |
             checkpoints/transformer/
+            experiment_manifest.json
             logs/
           if-no-files-found: warn
           retention-days: 90

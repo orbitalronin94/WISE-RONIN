@@ -191,6 +191,14 @@ def main():
     if tokenizer.tokenizer.get_vocab_size() != CONFIG.vocab_size or tokenizer.tokenizer.token_to_id("[PAD]") != 0:
         raise ValueError("Baseline requires the shared 4k pilot tokenizer with PAD=0")
     tokenizer_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
+    data_path = Path(args.data)
+    manifest_path = data_path / "manifest.json" if data_path.is_dir() else (
+        data_path if data_path.name == "manifest.json" else None
+    )
+    if manifest_path is not None:
+        corpus_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if corpus_manifest.get("tokenizer_sha256") != tokenizer_hash:
+            raise ValueError("Corpus manifest tokenizer SHA-256 does not match --tokenizer")
     tokenized_rows, row_indices = None, {}
     packed_token_rows, token_lengths = None, None
     if args.token_cache:

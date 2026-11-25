@@ -1,4 +1,5 @@
 name: Paired holdouts — LUMEN vs Transformer step 875000
+run-name: Paired holdout 875000 — LUMEN + Transformer
 
 on:
   workflow_dispatch:

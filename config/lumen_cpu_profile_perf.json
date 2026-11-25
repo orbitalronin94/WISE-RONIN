@@ -1,0 +1,48 @@
+{
+  "threads": 4,
+  "interop_threads": 2,
+  "mkldnn_enabled": true,
+  "foreach": true,
+  "cpu_affinity": false,
+  "delta_pre_normalize": false,
+  "delta_parallel_refinements": 2,
+  "delta_reuse_write_update": true,
+  "delta_always_apply_eligibility": true,
+  "delta_trace_norm_diagnostics_on_demand": true,
+  "delta_share_causal_masks": true,
+  "homeostasis_fused_scatter": false,
+  "organs": {
+    "pain": {
+      "response": 0.2
+    },
+    "pleasure": {
+      "response": 0.5
+    },
+    "pain_budget_gain": 0.15,
+    "pleasure_budget_gain": 0.15
+  },
+  "plasticity": {
+    "mode": "custom",
+    "threshold_scale": 0.85,
+    "eligibility_retention": 0.98
+  },
+  "sleep_downscale": 0.99,
+  "sleep_interval_steps": 50,
+  "profile_id": "lumen_x5_cpu_perf_trial_2026_11_25",
+  "benchmark_metadata": {
+    "source": "LUMEN x5 isolated run 45607691494 telemetry",
+    "reason": "Previous profile disabled MKLDNN and foreach; process exhausted nearly all runner RAM at batch 8 and sequence length 128 while V32-ZE sequential complexity path was active.",
+    "changes": [
+      "enable oneDNN/MKLDNN CPU kernels",
+      "enable foreach optimizer operations",
+      "do not pin process to first four CPUs"
+    ],
+    "preserved": [
+      "V32-ZE enabled",
+      "four Delta layers",
+      "model_dim 672",
+      "delta_parallel_refinements 2",
+      "selected plasticity and organ settings"
+    ]
+  }
+}

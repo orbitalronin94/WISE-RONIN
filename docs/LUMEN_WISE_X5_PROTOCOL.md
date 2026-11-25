@@ -29,6 +29,10 @@ El script `scripts/validate_lumen_wise_x5.py` instancia los dos modelos y sus re
 - Checkpoint nominal cada 1.000 pasos en ambos modelos; métricas y auditoría numérica cada 100 pasos; checkpoint exacto al final de cada bloque de 5.000.
 - Los entrenamientos se ejecutarán en **cinco bloques reanudables de 5.000 pasos**: 0→5k→10k→15k→20k→25k. Cada bloque conserva checkpoint, estado de AdamW, scheduler y RNG del bloque anterior del mismo modelo. LUMEN y Transformer no comparten pesos ni checkpoints. Los checkpoints de bloque se publican por separado y permiten reanudar sin perder bloques ya completados.
 
+## Holdout sellado
+
+El archivo pareado procede del artefacto de entradas V3.2.005 fijado en el protocolo: `eval/holdout_multiple_choice.jsonl`, 2.431 filas, 1.185.041 bytes, SHA-256 `e21ae7e292d603f1b8073d8114572c92fb0c6448bfaed9066413ddce09e5a359`. El evaluador comprueba esta huella antes de puntuar y registra las huellas del holdout y del tokenizer en el informe. No se permite sustituirlo silenciosamente por otra versión.
+
 ## Qué se compara
 
 La comparación principal es de sistemas completos: Transformer causal estándar frente a WISE-LUMEN con sus mecanismos arquitectónicos y de aprendizaje habilitados. Se publicarán por separado loss de entrenamiento y holdout, tokens vistos, tokens/segundo, tiempo de pared, memoria máxima, estabilidad numérica, calidad por categorías y degradación/repetición. No se proclamará ganador por loss aislada ni por velocidad.

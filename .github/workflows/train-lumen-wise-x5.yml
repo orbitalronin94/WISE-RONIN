@@ -5,15 +5,19 @@ on:
     inputs:
       freeze_run_id:
         description: "Successful freeze-corpus-v4 workflow run ID"
-        required: true
+        required: false
         type: string
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/train-lumen-wise-x5.yml
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: lumen-wise-x5-paired-${{ inputs.freeze_run_id }}
+  group: lumen-wise-x5-paired-${{ github.event.inputs.freeze_run_id || "SET_FREEZE_RUN_ID_AFTER_V4" }}
   cancel-in-progress: false
 
 env:
@@ -22,7 +26,7 @@ env:
   OMP_DYNAMIC: "FALSE"
   MKL_DYNAMIC: "FALSE"
   OMP_WAIT_POLICY: "PASSIVE"
-  FREEZE_RUN_ID: ${{ inputs.freeze_run_id }}
+  FREEZE_RUN_ID: ${{ github.event.inputs.freeze_run_id || "SET_FREEZE_RUN_ID_AFTER_V4" }}
   PYTHONUNBUFFERED: "1"
   EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
 
@@ -69,10 +73,10 @@ jobs:
       - name: Download the authorized frozen V4 artifact
         uses: actions/download-artifact@v4
         with:
-          name: wise-ronin-corpus-v4-frozen-${{ inputs.freeze_run_id }}
+          name: wise-ronin-corpus-v4-frozen-${{ env.FREEZE_RUN_ID }}
           path: corpus
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.freeze_run_id }}
+          run-id: ${{ env.FREEZE_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify authorization, shard hashes and tokenizer
         run: |
@@ -193,10 +197,10 @@ jobs:
       - name: Download the authorized frozen V4 artifact
         uses: actions/download-artifact@v4
         with:
-          name: wise-ronin-corpus-v4-frozen-${{ inputs.freeze_run_id }}
+          name: wise-ronin-corpus-v4-frozen-${{ env.FREEZE_RUN_ID }}
           path: corpus
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.freeze_run_id }}
+          run-id: ${{ env.FREEZE_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify authorization, shard hashes and tokenizer
         run: |
@@ -315,10 +319,10 @@ jobs:
       - name: Download the frozen paired holdout and tokenizer
         uses: actions/download-artifact@v4
         with:
-          name: paired-v32-inputs-45405758303
+          name: paired-v32-inputs-500000-45480785478
           path: eval_inputs
           repository: ${{ github.repository }}
-          run-id: 45405758303
+          run-id: 45480785478
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify both training manifests describe the same experiment
         run: |

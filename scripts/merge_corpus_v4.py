@@ -42,6 +42,15 @@ PERSONALITY_TASKS = {
     "persona_dialogue_lm", "dialogue_and_assistant_style_lm",
 }
 
+# Strict admission: only explicit public-domain, Apache-2.0 or CC-BY-4.0 records.
+# SA/GFDL, NC, internal/unclear and missing-license rows are held back for review.
+ALLOWED_LICENSES = {"public_domain", "Apache-2.0", "CC-BY-4.0"}
+
+
+def is_license_admissible(value: object) -> bool:
+    return str(value or "").strip() in ALLOWED_LICENSES
+
+
 
 def iter_jsonl_file(path: Path):
     with path.open(encoding="utf-8") as handle:
@@ -134,6 +143,10 @@ def normalize_base(row: dict, index: int):
     if not row.get("task"):
         row["task"] = row.get("task_type") or "unknown"
     row.setdefault("language", "es")
+    if not row.get("source_document_id"):
+        document_id = row.get("document_id") or row.get("source_id") or row.get("source_row")
+        if document_id is not None and str(document_id).strip():
+            row["source_document_id"] = str(document_id).strip()
     row.setdefault("id", hashlib.sha256(
         f"{row.get('source','base')}|{row.get('source_id',row.get('source_row',index))}".encode()
     ).hexdigest()[:24])
@@ -236,6 +249,9 @@ def main():
         task = str(row.get("task") or "unknown")
         source = str(row.get("source") or origin)
         license_name = str(row.get("license") or "unknown")
+        if not is_license_admissible(license_name):
+            reject(row, "license_unverified_restricted_or_complex")
+            return
 
         pieces = []
         if not prompt.strip() and task in CHUNKABLE_TASKS:
@@ -388,21 +404,7 @@ def main():
                         "001eaf13681f483069361dd82195ce279e12ed63",
                         "public_domain",
                         "https://huggingface.co/datasets/PleIAs/Spanish-PD-Books",
-                        500_000,
-                    ),
-                    "spanish_pd_newspapers": (
-                        "PleIAs/Spanish-PD-Newspapers",
-                        "17509f22d33a5f82def051e853899b8b65d7a9e2",
-                        "public_domain",
-                        "https://huggingface.co/datasets/PleIAs/Spanish-PD-Newspapers",
-                        200_000,
-                    ),
-                    "wikipedia_es": (
-                        "wikimedia/wikipedia",
-                        "cf584d1dc131caa92a5cb910f41a8b7591b12732",
-                        "CC-BY-SA-3.0+GFDL",
-                        "https://creativecommons.org/licenses/by-sa/3.0/;https://www.gnu.org/copyleft/fdl.html",
-                        200_000,
+                        1_800_000,
                     ),
                 }
                 stats = source_manifest.get("source_stats", {})

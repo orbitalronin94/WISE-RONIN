@@ -1,4 +1,4 @@
-name: Paired holdout — LUMEN vs Transformer step 710000
+name: Paired holdouts — LUMEN vs Transformer step 710000
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ concurrency:
 jobs:
   evaluate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 360
     env:
       SOURCE_RUN_ID: "45480785478"
       PYTHONUNBUFFERED: "1"
@@ -58,76 +58,99 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.SOURCE_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify frozen data and exact checkpoint lineage
+      - name: Verify frozen inputs, checkpoints and 100 open prompts
+        shell: bash
         run: |
           set -euo pipefail
           test -s inputs/eval/holdout_multiple_choice.jsonl
           test -s inputs/artifacts/tokenizer.json
-          test -s lumen/checkpoints/lumen/step_710000.pt
-          test -s transformer/checkpoints/transformer/step_710000.pt
+          test -s lumen/checkpoint/step_710000.pt
+          test -s transformer/checkpoint/step_710000.pt
+          test -s data/freeform_identity_general_100.jsonl
           python - <<'PY'
           import json
           from pathlib import Path
           import torch
-          rows=[x for x in Path("inputs/eval/holdout_multiple_choice.jsonl").read_text().splitlines() if x.strip()]
-          assert len(rows)==2431, len(rows)
+          choice_rows=[x for x in Path("inputs/eval/holdout_multiple_choice.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(choice_rows)==2431, len(choice_rows)
+          prompts=[json.loads(x) for x in Path("data/freeform_identity_general_100.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(prompts)==100, len(prompts)
+          assert len({x["id"] for x in prompts})==100
+          assert prompts[0]["prompt"]=="¿Quién eres?", prompts[0]
+          assert all(isinstance(x.get("prompt"),str) and x["prompt"].strip() for x in prompts)
+          assert all("choices" not in x and "answer" not in x for x in prompts)
           expected={"lumen":"ronin_lumen_v3_3_neuroplasticity","transformer":"decoder_transformer_4l_d192_h4_ff576_tied_v1"}
-          paths={"lumen":"lumen/checkpoints/lumen/step_710000.pt","transformer":"transformer/checkpoints/transformer/step_710000.pt"}
+          paths={"lumen":"lumen/checkpoint/step_710000.pt","transformer":"transformer/checkpoint/step_710000.pt"}
           for name,path in paths.items():
-              s=torch.load(path,map_location="cpu",weights_only=False)
-              assert int(s["step"])==710000, (name,s.get("step"))
-              assert s["architecture_id"]==expected[name], (name,s.get("architecture_id"))
-              print(f"{name}: verified step={s['step']} architecture={s['architecture_id']}")
-          print("Frozen multiple-choice holdout: 2431 rows; informal subset: first 100 rows.")
+              state=torch.load(path,map_location="cpu",weights_only=False)
+              assert int(state["step"])==710000, (name,state.get("step"))
+              assert state["architecture_id"]==expected[name], (name,state.get("architecture_id"))
+              assert state.get("model"), name
+              print(f"{name}: verified step={state['step']} architecture={state['architecture_id']}")
+          print("Verified: 2431 official choice questions + 100 unique open questions.")
+          print("First open question:",prompts[0]["prompt"])
           PY
       - name: Score both models on the full official choice holdout (2431)
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           set -euo pipefail
+          mkdir -p results
           python scripts/evaluate_multiple_choice_holdout.py \
             --holdout inputs/eval/holdout_multiple_choice.jsonl \
             --tokenizer inputs/artifacts/tokenizer.json \
-            --lumen lumen/checkpoints/lumen/step_710000.pt \
-            --transformer transformer/checkpoints/transformer/step_710000.pt \
+            --lumen lumen/checkpoint/step_710000.pt \
+            --transformer transformer/checkpoint/step_710000.pt \
             --expected-lumen-step 710000 --expected-transformer-step 710000 \
             --out results/paired_step710000_official_2431.json \
             --threads 4 --max-len 128
           python - <<'PY'
           import json
-          p=json.load(open("results/paired_step710000_official_2431.json"))
-          assert p["holdout_rows"]==2431, p["holdout_rows"]
+          p=json.load(open("results/paired_step710000_official_2431.json",encoding="utf-8"))
+          assert p["holdout_rows"]==2431, p.get("holdout_rows")
           for name,r in p["results"].items():
-              assert r["total"]==2431, (name,r["total"])
+              assert r["total"]==2431, (name,r.get("total"))
               print(f"{name}: {r['correct']}/2431 ({100*r['accuracy']:.2f}%), mean_answer_nll={r['mean_answer_nll']:.6f}")
           PY
-      - name: Score both models on the unofficial first-100 subset
+      - name: Generate paired answers to the fixed 100 open-ended questions
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          python scripts/evaluate_multiple_choice_holdout.py \
-            --holdout inputs/eval/holdout_multiple_choice.jsonl \
+          python scripts/freeform_identity_general_holdout.py \
+            --holdout data/freeform_identity_general_100.jsonl \
             --tokenizer inputs/artifacts/tokenizer.json \
-            --lumen lumen/checkpoints/lumen/step_710000.pt \
-            --transformer transformer/checkpoints/transformer/step_710000.pt \
-            --expected-lumen-step 710000 --expected-transformer-step 710000 \
-            --limit 100 \
-            --out results/paired_step710000_informal_first100.json \
-            --threads 4 --max-len 128
+            --lumen lumen/checkpoint/step_710000.pt \
+            --transformer transformer/checkpoint/step_710000.pt \
+            --expected-step 710000 \
+            --sample-size 100 --seed 710000 --max-new-tokens 96 \
+            --out-dir results/freeform-step710000 --threads 4 --max-len 128
           python - <<'PY'
           import json
-          p=json.load(open("results/paired_step710000_informal_first100.json"))
-          assert p["holdout_rows"]==100, p["holdout_rows"]
-          for name,r in p["results"].items():
-              assert r["total"]==100, (name,r["total"])
-              print(f"{name}: {r['correct']}/100 ({100*r['accuracy']:.1f}%), mean_answer_nll={r['mean_answer_nll']:.6f}")
-          print("INFORMAL SUBSET ONLY — not the official 2431-question result.")
+          from pathlib import Path
+          root=Path("results/freeform-step710000")
+          p=json.loads((root/"step710000_freeform_100.json").read_text(encoding="utf-8"))
+          assert p["step"]==710000 and p["sample_size"]==100
+          assert len(p["results"])==100
+          assert p["results"][0]["prompt"]=="¿Quién eres?", p["results"][0]
+          assert all(item["prompt"] and isinstance(item["lumen"]["text"],str) and isinstance(item["transformer"]["text"],str) for item in p["results"])
+          assert (root/"step710000_freeform_100.md").is_file()
+          print("Validated 100 paired open-ended generations.")
+          print("Question 1:",p["results"][0]["prompt"])
+          print("LUMEN:",p["results"][0]["lumen"]["text"])
+          print("Transformer:",p["results"][0]["transformer"]["text"])
           PY
-      - uses: actions/upload-artifact@v7
+      - name: Upload official choice scores and informal open-ended answers
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
-          name: ronin-paired-holdout-step710000-${{ github.run_id }}
-          path: results/paired_step710000_*.json
-          if-no-files-found: error
+          name: ronin-paired-holdouts-step710000-${{ github.run_id }}
+          path: results/
+          if-no-files-found: warn
           retention-days: 90
           compression-level: 6
+      - name: Require both evaluation reports
+        run: |
+          test -s results/paired_step710000_official_2431.json
+          test -s results/freeform-step710000/step710000_freeform_100.json
+          test -s results/freeform-step710000/step710000_freeform_100.md

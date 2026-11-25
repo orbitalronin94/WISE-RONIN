@@ -1,0 +1,134 @@
+name: Reusable x5 checkpoint chunk
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        required: true
+        type: string
+      start_step:
+        required: true
+        type: number
+      freeze_run_id:
+        required: true
+        type: string
+      previous_artifact:
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  train-chunk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      OMP_DYNAMIC: "FALSE"
+      MKL_DYNAMIC: "FALSE"
+      OMP_WAIT_POLICY: "PASSIVE"
+      PYTHONUNBUFFERED: "1"
+      EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+      START_STEP: ${{ inputs.start_step }}
+      TARGET_STEP: ${{ inputs.start_step + 1000 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download the verified V4 corpus artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: v4-corpus-inputs
+          path: corpus
+      - name: Verify frozen V4 manifest and tokenizer
+        run: |
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path("corpus")
+          m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          assert m.get("version")=="v4.0.0"
+          assert m.get("status")=="FROZEN_TRAINABLE"
+          assert m.get("training_authorized") is True
+          assert m.get("tokenizer_sha256")==os.environ["EXPECTED_TOKENIZER_SHA256"]
+          assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest()==m["tokenizer_sha256"]
+          assert len(m.get("shards",[]))>0 and int(m["total_rows"])>0
+          print(f"V4 authorized: rows={m['total_rows']} shards={len(m['shards'])} tokenizer={m['tokenizer_sha256']}")
+          PY
+      - name: Download previous durable checkpoint
+        if: ${{ inputs.previous_artifact != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.previous_artifact }}
+          path: checkpoints/${{ inputs.model }}
+      - name: Train exactly 1000 steps and write a resumable checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "checkpoints/${{ inputs.model }}" logs
+          START="$START_STEP"
+          TARGET="$TARGET_STEP"
+          ARGS=(--steps 1000 --data corpus --tokenizer corpus/tokenizer.json
+                --batch 8 --max-len 128 --seed 42
+                --lr 1.5e-4 --warmup 100 --total-steps 25000
+                --log-every 100 --checkpoint-every 1000
+                --parameter-check-every 100
+                --threads 4 --interop-threads 2
+                --ckpt-dir "checkpoints/${{ inputs.model }}")
+          if [ "$START" -gt 0 ]; then
+            RESUME="checkpoints/${{ inputs.model }}/step_${START}.pt"
+            test -s "$RESUME"
+            ARGS+=(--resume "$RESUME")
+          fi
+          if [ "${{ inputs.model }}" = "lumen" ]; then
+            ARGS+=(--phase 1 --pilot-all-rows --v32-ze
+                   --model-config config/lumen_wise_x5.json
+                   --runtime-profile config/lumen_cpu_profile.json)
+            python -m train.train "${ARGS[@]}" 2>&1 | tee "logs/lumen-${START}-${TARGET}.log"
+            EXPECTED_PARAMS=12022016
+            EXPECTED_ARCH="ronin_lumen_v3_3_neuroplasticity"
+          elif [ "${{ inputs.model }}" = "transformer" ]; then
+            ARGS+=(--model-dim 488 --heads 8 --ff-width 1464
+                   --disable-mkldnn --disable-foreach --cpu-affinity)
+            python -m train.transformer_baseline "${ARGS[@]}" 2>&1 | tee "logs/transformer-${START}-${TARGET}.log"
+            EXPECTED_PARAMS=11611472
+            EXPECTED_ARCH="decoder_transformer_4l_d488_h8_ff1464_tied_v1"
+          else
+            echo "Unknown model: ${{ inputs.model }}" >&2
+            exit 2
+          fi
+          CURRENT="checkpoints/${{ inputs.model }}/step_${TARGET}.pt"
+          test -s "$CURRENT"
+          python - "$CURRENT" "$TARGET" "$EXPECTED_PARAMS" "$EXPECTED_ARCH" <<'PY'
+          import sys,torch,os
+          path,target,params,architecture=sys.argv[1],int(sys.argv[2]),int(sys.argv[3]),sys.argv[4]
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          assert int(s["step"])==target, (s.get("step"),target)
+          assert int(s["params"])==params, (s.get("params"),params)
+          assert s["architecture_id"]==architecture, (s.get("architecture_id"),architecture)
+          assert s.get("optimizer") and s.get("scheduler") and s.get("rng")
+          assert s.get("data_sha256") and s.get("tokenizer_sha256")==os.environ["EXPECTED_TOKENIZER_SHA256"]
+          if architecture=="ronin_lumen_v3_3_neuroplasticity":
+              assert s.get("v32_ze") is True
+          print(f"CHECKPOINT_VERIFIED step={target} params={params} architecture={architecture} data={s['data_sha256']}")
+          PY
+      - name: Publish this 1000-step checkpoint immediately
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.model }}-x5-step-${{ env.TARGET_STEP }}
+          path: |
+            checkpoints/${{ inputs.model }}/step_${{ env.TARGET_STEP }}.pt
+            logs/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1

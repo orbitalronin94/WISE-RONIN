@@ -68,6 +68,8 @@ def main():
                                        token_ids[:, 1:].reshape(-1))
     transformer_loss.backward()
     assert torch.isfinite(transformer_loss)
+    assert 5.0 < float(transformer_loss.detach()) < 12.0, float(transformer_loss.detach())
+    assert 5.0 < float(lumen_loss.detach()) < 12.0, float(lumen_loss.detach())
     assert all(p.grad is None or torch.isfinite(p.grad).all() for p in transformer.parameters())
     print(json.dumps({"synthetic_forward_backward": {
         "lumen_loss": float(lumen_loss.detach()), "transformer_loss": float(transformer_loss.detach()),

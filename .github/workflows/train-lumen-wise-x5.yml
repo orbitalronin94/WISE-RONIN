@@ -327,9 +327,8 @@ jobs:
           from pathlib import Path
           manifests=[json.loads(p.read_text()) for p in Path("checkpoints").rglob("experiment_manifest.json")]
           assert len(manifests)==2, len(manifests)
-          keys=("architecture_commit","freeze_run_id","freeze_manifest_sha256","corpus_data_sha256","tokenizer_sha256","steps","blocks","batch","sequence_length","seed","learning_rate","warmup_steps","optimizer","scheduler","weight_decay","grad_clip","vocab_size","holdout_sha256","threads","interop_threads","mkldnn_enabled","foreach","cpu_affinity")
-          for key in keys: assert manifests[0][key]==manifests[1][key], (key,manifests[0][key],manifests[1][key])
-          print(json.dumps({key:manifests[0][key] for key in keys},indent=2))
+          assert manifests[0] == manifests[1], (manifests[0], manifests[1])
+          print(json.dumps(manifests[0], indent=2))
           PY
       - name: Evaluate both step-25k models on the same untouched holdout
         run: |

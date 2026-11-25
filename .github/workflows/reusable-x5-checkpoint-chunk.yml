@@ -34,7 +34,6 @@ jobs:
       PYTHONUNBUFFERED: "1"
       EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
       START_STEP: ${{ inputs.start_step }}
-      TARGET_STEP: ${{ inputs.start_step + 1000 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -77,7 +76,8 @@ jobs:
           set -euo pipefail
           mkdir -p "checkpoints/${{ inputs.model }}" logs
           START="$START_STEP"
-          TARGET="$TARGET_STEP"
+          TARGET=$((START + 1000))
+          echo "TARGET_STEP=$TARGET" >> "$GITHUB_ENV"
           ARGS=(--steps 1000 --data corpus --tokenizer corpus/tokenizer.json
                 --batch 8 --max-len 128 --seed 42
                 --lr 1.5e-4 --warmup 100 --total-steps 25000

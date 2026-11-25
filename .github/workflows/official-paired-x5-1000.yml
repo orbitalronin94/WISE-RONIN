@@ -7,6 +7,8 @@ on:
       - .github/workflows/official-paired-x5-1000.yml
   workflow_dispatch:
 
+# Paired official baseline: both models train concurrently from step zero.
+
 permissions:
   contents: read
   actions: read

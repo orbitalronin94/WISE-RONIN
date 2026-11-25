@@ -189,13 +189,14 @@ jobs:
                       assert row.get("language")=="es"
                       assert row.get("split")!="holdout"
                       assert row.get("source")!="holdout_500.jsonl"
-                      if row.get("source") in {
-                          "PleIAs/Spanish-PD-Books",
-                          "PleIAs/Spanish-PD-Newspapers",
-                          "wikimedia/wikipedia",
-                          "BSC-LT/m-personas",
-                          "OysterCoreAI/SFT-General-Spanish-50K",
-                      }:
+                      if row.get("admission_origin") in {"openculture","personality"}:
+                          assert row.get("source") in {
+                              "PleIAs/Spanish-PD-Books",
+                              "PleIAs/Spanish-PD-Newspapers",
+                              "wikimedia/wikipedia",
+                              "BSC-LT/m-personas",
+                              "OysterCoreAI/SFT-General-Spanish-50K",
+                          }, (row.get("id"),row.get("source"))
                           for field in ("source_revision","source_document_id","license","license_url","attribution"):
                               assert str(row.get(field) or "").strip(), (row.get("id"),field)
                       assert not has_personal_identifier(prompt+" "+completion)

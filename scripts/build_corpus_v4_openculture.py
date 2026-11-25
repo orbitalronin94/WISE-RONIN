@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stream Spanish public-domain books/newspapers into immutable 100 MiB JSONL shards.
+"""Stream Spanish public-domain books into immutable 100 MiB JSONL shards.
 
 Rows are emitted in the current trainer's prompt/completion schema. Each completion
 contains at most 126 tokenizer pieces so BOS/EOS can fit in max_len=128.
@@ -28,25 +28,7 @@ SOURCES = [
         "revision": "001eaf13681f483069361dd82195ce279e12ed63",
         "license": "public_domain",
         "license_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Books",
-        "share": 0.50,
-    },
-    {
-        "key": "spanish_pd_newspapers",
-        "repo": "PleIAs/Spanish-PD-Newspapers",
-        "revision": "17509f22d33a5f82def051e853899b8b65d7a9e2",
-        "license": "public_domain",
-        "license_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Newspapers",
-        "share": 0.25,
-    },
-    {
-        "key": "wikipedia_es",
-        "repo": "wikimedia/wikipedia",
-        "revision": "cf584d1dc131caa92a5cb910f41a8b7591b12732",
-        "path_prefix": "20231101.es/",
-        "license": "CC-BY-SA-3.0+GFDL",
-        "license_url": "https://creativecommons.org/licenses/by-sa/3.0/;https://www.gnu.org/copyleft/fdl.html",
-        "attribution": "Wikipedia contributors / Wikimedia Foundation; retain source article URL",
-        "share": 0.25,
+        "share": 1.0,
     },
 ]
 

@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      CORPUS_RUN_ID: ${{ inputs.corpus_run_id }}
+      CORPUS_RUN_ID: ${{ inputs.corpus_run_id || '45405758303' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,10 +48,10 @@ jobs:
       - name: Download immutable V3.2.005 corpus and tokenizer
         uses: actions/download-artifact@v4
         with:
-          name: paired-v32-inputs-${{ inputs.corpus_run_id }}
+          name: paired-v32-inputs-${{ env.CORPUS_RUN_ID }}
           path: inputs
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.corpus_run_id }}
+          run-id: ${{ env.CORPUS_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify corpus, tokenizer, row count and holdout separation
         run: |
@@ -126,10 +126,10 @@ jobs:
       - name: Download V3.2.005 inputs
         uses: actions/download-artifact@v4
         with:
-          name: paired-v32-inputs-${{ inputs.corpus_run_id }}
+          name: paired-v32-inputs-${{ env.CORPUS_RUN_ID }}
           path: inputs
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.corpus_run_id }}
+          run-id: ${{ env.CORPUS_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Recheck immutable inputs before training
         run: |
@@ -193,10 +193,10 @@ jobs:
       - name: Download V3.2.005 inputs
         uses: actions/download-artifact@v4
         with:
-          name: paired-v32-inputs-${{ inputs.corpus_run_id }}
+          name: paired-v32-inputs-${{ env.CORPUS_RUN_ID }}
           path: inputs
           repository: ${{ github.repository }}
-          run-id: ${{ inputs.corpus_run_id }}
+          run-id: ${{ env.CORPUS_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Recheck immutable inputs before training
         run: |

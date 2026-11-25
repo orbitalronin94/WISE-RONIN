@@ -1,6 +1,11 @@
 name: LUMEN vs Transformer — v3.2.005 continuation 750000 to 1000000 (10k blocks, LR 3e-5)
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/continue-paired-750000-1000000-v32-lr3e5.yml
+      - .github/workflows/train-paired-block-v32-lr3e5-1m.yml
 permissions:
   contents: read
   actions: read

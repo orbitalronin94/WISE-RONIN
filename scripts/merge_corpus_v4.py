@@ -144,7 +144,12 @@ def normalize_base(row: dict, index: int):
         row["task"] = row.get("task_type") or "unknown"
     row.setdefault("language", "es")
     if not row.get("source_document_id"):
-        document_id = row.get("document_id") or row.get("source_id") or row.get("source_row")
+        if str(row.get("source") or "") == "BSC-LT/m-personas":
+            source_row = str(row.get("source_row") or "").strip()
+            parent_persona_id = source_row.split(".", 1)[0] if source_row else ""
+            document_id = row.get("document_id") or row.get("source_id") or parent_persona_id
+        else:
+            document_id = row.get("document_id") or row.get("source_id") or row.get("source_row")
         if document_id is not None and str(document_id).strip():
             row["source_document_id"] = str(document_id).strip()
     row.setdefault("id", hashlib.sha256(

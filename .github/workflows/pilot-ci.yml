@@ -14,9 +14,15 @@ on:
       - ".github/workflows/lumen-2000-3000-compiled-holdout.yml"
       - ".github/workflows/lumen-3000-6000-compiled.yml"
       - ".github/workflows/lumen-stability-ab.yml"
+      - ".github/workflows/build-corpus-v4-openculture.yml"
+      - ".github/workflows/build-corpus-v4-personality.yml"
+      - ".github/workflows/freeze-corpus-v4.yml"
       - ".github/workflows/lumen-memory-sleep-3000-4000.yml"
       - ".github/workflows/ronin-longrun-3000-8000-parallel.yml"
       - ".github/workflows/benchmark-lumen-hotspots.yml"
+      - ".github/workflows/build-corpus-v4-openculture.yml"
+      - ".github/workflows/build-corpus-v4-personality.yml"
+      - ".github/workflows/freeze-corpus-v4.yml"
       - ".github/workflows/pilot.yml"
   pull_request:
     branches: [main]
@@ -73,6 +79,9 @@ jobs:
               Path(".github/workflows/lumen-memory-sleep-3000-4000.yml"),
               Path(".github/workflows/ronin-longrun-3000-8000-parallel.yml"),
               Path(".github/workflows/benchmark-lumen-hotspots.yml"),
+              Path(".github/workflows/build-corpus-v4-openculture.yml"),
+              Path(".github/workflows/build-corpus-v4-personality.yml"),
+              Path(".github/workflows/freeze-corpus-v4.yml"),
           ):
               workflow = yaml.safe_load(workflow_path.read_text())
               for job_name, job in workflow.get("jobs", {}).items():

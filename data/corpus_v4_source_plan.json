@@ -1,0 +1,219 @@
+{
+  "schema": "wise-ronin-corpus-v4-source-plan-v1",
+  "status": "strict_candidate_policy_books_only_for_documentary_ingestion",
+  "targets": {
+    "minimum_multiplier_on_current_raw_text_rows": 10,
+    "stretch_multiplier_on_current_raw_text_rows": 100,
+    "current_raw_text_rows": 178090,
+    "current_total_rows": 279613,
+    "minimum_new_raw_text_rows": 1800000,
+    "stretch_new_raw_text_rows": 18000000,
+    "minimum_total_10x_if_applied_to_all_current_rows": 2796130,
+    "personality_share_target_min": 0.1,
+    "personality_share_target_max": 0.15,
+    "personality_dialogue_rows": 180000
+  },
+  "admission_requirements": [
+    "Spanish language verified at document or chunk level",
+    "source revision pinned",
+    "underlying text license verified, not merely dataset-script license",
+    "provenance retained per document",
+    "attractor denylist applied before deduplication and admission",
+    "exact deduplication across all sources; near-duplicate detection is a separate follow-up audit and is not claimed as completed",
+    "OCR and encoding quality checks where applicable",
+    "PII and sensitive-data screening",
+    "train/validation/holdout leakage checks",
+    "100 MiB maximum immutable delta shard"
+  ],
+  "sources": [
+    {
+      "dataset": "PleIAs/Spanish-PD-Books",
+      "domain": [
+        "literature",
+        "history",
+        "philosophy",
+        "science",
+        "humanities"
+      ],
+      "candidate_license": "public_domain",
+      "admission": "accepted_candidate_only_after_document_quality_and_attractor_gates",
+      "notes": "Dataset card reports 302640 texts and 13.9 billion words; split into coherent context-sized chunks, inspect OCR and retain title/author/source metadata.",
+      "revision": "001eaf13681f483069361dd82195ce279e12ed63",
+      "license_evidence_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Books"
+    },
+    {
+      "dataset": "PleIAs/Spanish-PD-Newspapers",
+      "domain": [
+        "history",
+        "news",
+        "society",
+        "culture",
+        "economy",
+        "daily_life"
+      ],
+      "candidate_license": "public_domain_claimed_by_dataset_card",
+      "admission": "blocked_pending_per_publication_public_domain_evidence",
+      "notes": "Not admitted in this v4 build: dataset-level public-domain claim is insufficient without publication/date-level rights evidence.",
+      "revision": "17509f22d33a5f82def051e853899b8b65d7a9e2",
+      "license_evidence_url": "https://huggingface.co/datasets/PleIAs/Spanish-PD-Newspapers"
+    },
+    {
+      "dataset": "PleIAs/common_corpus",
+      "domain": [
+        "science",
+        "government",
+        "culture",
+        "web",
+        "code",
+        "semantic_knowledge"
+      ],
+      "candidate_license": "per_document",
+      "admission": "candidate",
+      "notes": "Filter language=Spanish and include only public-domain or explicitly approved permissive licenses. Never ingest the multilingual aggregate wholesale."
+    },
+    {
+      "dataset": "wikimedia/wikipedia (20231101.es)",
+      "domain": [
+        "encyclopedia",
+        "geography",
+        "science",
+        "history",
+        "factual_knowledge"
+      ],
+      "candidate_license": "CC-BY-SA-3.0+GFDL",
+      "admission": "blocked_pending_sharealike_gfdl_compatibility_review",
+      "notes": "Not admitted in this v4 build: explicit CC BY-SA/GFDL obligations require separate compatibility review; avoid legal ambiguity.",
+      "revision": "cf584d1dc131caa92a5cb910f41a8b7591b12732",
+      "license_evidence_url": "https://huggingface.co/datasets/wikimedia/wikipedia/tree/cf584d1dc131caa92a5cb910f41a8b7591b12732/20231101.es"
+    },
+    {
+      "dataset": "Stack Exchange Spanish content",
+      "domain": [
+        "technical_qa",
+        "programming",
+        "science",
+        "practical_problem_solving"
+      ],
+      "candidate_license": "CC-BY-SA_by_post_and_revision",
+      "admission": "candidate",
+      "notes": "Retain author/source attribution and license version; do not strip post-level metadata."
+    },
+    {
+      "dataset": "OpenAlex / SciELO / institutional open-access papers",
+      "domain": [
+        "science",
+        "medicine",
+        "engineering",
+        "environment",
+        "social_science"
+      ],
+      "candidate_license": "per_document",
+      "admission": "candidate",
+      "notes": "Only documents with explicit reuse permissions; do not assume open access means unrestricted training rights."
+    },
+    {
+      "dataset": "Permissively licensed technical manuals and code",
+      "domain": [
+        "programming",
+        "engineering",
+        "electronics",
+        "mathematics",
+        "operations"
+      ],
+      "candidate_license": "MIT_Apache_2_BSD_CC0_or_public_domain",
+      "admission": "candidate",
+      "notes": "Keep repository/file provenance and license; filter generated boilerplate, vendored code and repeated templates."
+    },
+    {
+      "dataset": "Spanish persona and dialogue sources",
+      "domain": [
+        "personality",
+        "conversation",
+        "register",
+        "pragmatics",
+        "role_adaptation"
+      ],
+      "candidate_license": "per_source",
+      "admission": "candidate",
+      "notes": "Target 10–15% final share. Prefer varied dialogue and voice samples; synthetic examples must be labeled and must not encode real personal biographies."
+    },
+    {
+      "dataset": "BSC-LT/m-personas",
+      "revision": "6fab205a86a9244c90a2782e28055027f45ddd03",
+      "domain": [
+        "persona_profiles",
+        "multi_turn_dialogue",
+        "voice_and_register"
+      ],
+      "candidate_license": "Apache-2.0",
+      "admission": "candidate_for_turn_level_expansion",
+      "notes": "Spanish split only; source_text seed field excluded. Preserve synthetic status and parent persona ID. The dataset card notes synthetic personas and potential gender/occupation bias.",
+      "target_rows": 118565,
+      "share": 0.6586944444
+    },
+    {
+      "dataset": "OysterCoreAI/SFT-General-Spanish-50K",
+      "revision": "25d2187",
+      "domain": [
+        "dialogue",
+        "explanation",
+        "planning",
+        "rewriting",
+        "summary",
+        "grammar",
+        "interpersonal_communication"
+      ],
+      "candidate_license": "CC-BY-4.0",
+      "admission": "candidate_for_dialogue_style_expansion",
+      "notes": "Train split only (48.4k rows). Original synthetic editorial conversations; retain source attribution and task-family metadata. Validation/test splits excluded.",
+      "target_rows": 61435,
+      "share": 0.3413055556
+    },
+    {
+      "dataset": "PlanTL-GOB-ES/SQAC",
+      "domain": [
+        "extractive_question_answering",
+        "encyclopedic_knowledge",
+        "news",
+        "general_factual_qa"
+      ],
+      "candidate_license": "conflicting_CC-BY-SA-4.0_metadata_vs_CC-BY-4.0_card_text",
+      "admission": "blocked_pending_license_reconciliation",
+      "notes": "15,036 train QA pairs, human-annotated. Source contexts from Wikipedia, Wikinews and AnCora. Do not ingest until the license discrepancy is resolved and source-specific attribution is preserved."
+    }
+  ],
+  "excluded_sources": [
+    {
+      "dataset": "BSC-LT/SIQA_es",
+      "reason": "Existing frozen evaluation/holdout source; never admit its validation rows to training."
+    },
+    {
+      "dataset": "BSC-LT/openbookqa-es",
+      "reason": "Existing frozen evaluation/holdout source; never admit its validation rows to training."
+    },
+    {
+      "dataset": "BSC-LT/EsBBQ",
+      "reason": "Dataset card exposes a test-only split; keep out of training."
+    },
+    {
+      "dataset": "IIC/AQuAS",
+      "reason": "CC BY-NC-SA 4.0 non-commercial license; excluded from this training corpus."
+    },
+    {
+      "dataset": "IIC/RagQuAS",
+      "reason": "CC BY-NC-SA 4.0 non-commercial license; excluded from this training corpus."
+    },
+    {
+      "dataset": "PleIAs/Spanish-PD-Newspapers",
+      "reason": "Excluded from this build until public-domain status is evidenced at publication/document level."
+    },
+    {
+      "dataset": "wikimedia/wikipedia (20231101.es)",
+      "reason": "Excluded from this build pending CC BY-SA 3.0/GFDL compatibility and attribution review."
+    },
+    {
+      "dataset": "Any base or candidate row with missing, non-commercial, internal, conflicting, or unapproved license",
+      "reason": "Strict v4 admission allowlist accepts only public_domain, Apache-2.0, and CC-BY-4.0."
+    }
+  ]
+}

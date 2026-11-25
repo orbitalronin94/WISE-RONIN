@@ -1,13 +1,10 @@
 name: WISE-RONIN official paired x5 — LUMEN vs Transformer, 1000 steps
-
 on:
   push:
-    branches: [main, official-paired-x5-1000]
+    branches: [main, fix/paired-x5-use-750k-training-profile]
     paths:
       - .github/workflows/official-paired-x5-1000.yml
   workflow_dispatch:
-
-# Paired official baseline: both models train concurrently from step zero.
 
 permissions:
   contents: read
@@ -83,8 +80,8 @@ jobs:
 
   train-lumen:
     needs: validate-corpus
-    runs-on: ubuntu-22.04
-    timeout-minutes: 360
+    runs-on: ubuntu-24.04
+    timeout-minutes: 720
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -103,35 +100,15 @@ jobs:
         run: |
           set -euo pipefail
           python -m train.train --help >/dev/null
+          test -s config/lumen_wise_x5.json
+          test -s config/lumen_cpu_profile.json
           mkdir -p checkpoints/lumen logs
           { date -u; nproc; free -h; df -h .; } | tee logs/runner-baseline.txt
-      - name: Create official 1000-step LUMEN config without changing architecture
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          c=json.loads(Path("config/lumen_wise_x5.json").read_text())
-          assert c["vocab_size"]==4096 and c["model_dim"]==672 and c["delta_layers"]==4
-          c["total_steps"]=1000
-          c["warmup_steps"]=100
-          c["batch_size"]=4
-          c["sequence_length"]=32
-          Path("config/lumen_wise_x5_official_1000.json").write_text(json.dumps(c,indent=2)+"\\n")
-          print("LUMEN_CONFIG_OK params=12022016 batch=4 seq=32 V32-ZE=on")
-          PY
-      - name: Train official LUMEN-WISE x5 from step 0 to 1000
+      - name: Train official LUMEN-WISE x5 from step 0 to 1000 with 750k profile
         shell: bash
         run: |
           set -euo pipefail
-          python -m train.train --steps 1000 --log-every 100 --affect-every 100 \\
-            --data corpus --tokenizer corpus/tokenizer.json \\
-            --batch 4 --max-len 32 --seed 42 --lr 1.5e-4 \\
-            --warmup 100 --total-steps 1000 --checkpoint-every 100 \\
-            --parameter-check-every 100 --threads 4 --interop-threads 2 \\
-            --ckpt-dir checkpoints/lumen --phase 1 --pilot-all-rows --v32-ze \\
-            --model-config config/lumen_wise_x5_official_1000.json \\
-            --runtime-profile config/lumen_cpu_profile_perf.json \\
-            --recovery-checkpoint-every 100 2>&1 | tee logs/lumen.log
+          python -m train.train --steps 1000 --log-every 100 --checkpoint-every 1000 --recovery-checkpoint-every 100 --parameter-check-every 100 --threads 4 --interop-threads 2 --data corpus --tokenizer corpus/tokenizer.json --batch 8 --max-len 128 --seed 42 --lr 3e-5 --warmup 100 --total-steps 1000 --ckpt-dir checkpoints/lumen --phase 1 --pilot-all-rows --v32-ze --model-config config/lumen_wise_x5.json --runtime-profile config/lumen_cpu_profile.json --lazy-backward --surprise-gate-loss 1.8 2>&1 | tee logs/lumen.log
       - name: Verify official LUMEN checkpoint
         run: |
           python - <<'PY'
@@ -152,15 +129,14 @@ jobs:
           path: |
             checkpoints/lumen/
             logs/
-            config/lumen_wise_x5_official_1000.json
           if-no-files-found: warn
           retention-days: 90
           compression-level: 1
 
   train-transformer:
     needs: validate-corpus
-    runs-on: ubuntu-22.04
-    timeout-minutes: 360
+    runs-on: ubuntu-24.04
+    timeout-minutes: 720
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -179,19 +155,14 @@ jobs:
         run: |
           set -euo pipefail
           python -m train.transformer_baseline --help >/dev/null
+          test -s config/transformer_wise_x5.json
           mkdir -p checkpoints/transformer logs
           { date -u; nproc; free -h; df -h .; } | tee logs/runner-baseline.txt
-      - name: Train official Transformer x5 from step 0 to 1000
+      - name: Train official Transformer x5 from step 0 to 1000 with 750k profile
         shell: bash
         run: |
           set -euo pipefail
-          python -m train.transformer_baseline --steps 1000 \\
-            --data corpus --tokenizer corpus/tokenizer.json \\
-            --batch 4 --max-len 32 --seed 42 --threads 4 --interop-threads 2 \\
-            --lr 1.5e-4 --warmup 100 --total-steps 1000 \\
-            --checkpoint-every 100 --parameter-check-every 100 \\
-            --ckpt-dir checkpoints/transformer \\
-            --model-dim 488 --heads 8 --ff-width 1464 2>&1 | tee logs/transformer.log
+          python -m train.transformer_baseline --steps 1000 --data corpus --tokenizer corpus/tokenizer.json --batch 8 --max-len 128 --seed 42 --threads 4 --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity --lr 3e-5 --warmup 100 --total-steps 1000 --checkpoint-every 1000 --parameter-check-every 100 --ckpt-dir checkpoints/transformer --model-dim 488 --heads 8 --ff-width 1464 2>&1 | tee logs/transformer.log
       - name: Verify official Transformer checkpoint
         run: |
           python - <<'PY'
@@ -218,7 +189,7 @@ jobs:
   paired-result:
     if: always()
     needs: [train-lumen, train-transformer]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Record paired outcome
         env:

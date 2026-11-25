@@ -267,6 +267,7 @@ def apply_organ_profile(model, profile):
     LOG.info("organ_profile applied: %s", json.dumps(profile, sort_keys=True))
 
 def main():
+    global CONFIG
     parser = argparse.ArgumentParser(description="RONIN-LUMEN CPU training")
     parser.add_argument("--steps", type=int, default=500)
     parser.add_argument("--log-every", type=int, default=100, help="Training metric log interval")
@@ -325,7 +326,6 @@ def main():
                         help="Explicit synthetic smoke test only; never a training dataset")
     args = parser.parse_args()
 
-    global CONFIG
     if args.model_config:
         model_config_data = json.loads(Path(args.model_config).read_text(encoding="utf-8"))
         CONFIG = LumenConfig(**model_config_data)

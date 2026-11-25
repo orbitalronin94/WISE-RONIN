@@ -1,0 +1,156 @@
+name: Paired holdouts — LUMEN vs Transformer step 875000
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/holdout-paired-step875k.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ronin-paired-holdout-step875k
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      SOURCE_RUN_ID: "45577355018"
+      PYTHONUNBUFFERED: "1"
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14.10"
+      - name: Install CPU evaluation runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download frozen v3.2.005 inputs
+        uses: actions/download-artifact@v7
+        with:
+          name: paired-v32-inputs-750000-45577355018
+          path: inputs
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact LUMEN 875k checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-step-875000-v32-1m-45577355018
+          path: lumen
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact Transformer 875k checkpoint
+        uses: actions/download-artifact@v7
+        with:
+          name: transformer-step-875000-v32-1m-45577355018
+          path: transformer
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify frozen inputs, checkpoints and 100 open prompts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s inputs/eval/holdout_multiple_choice.jsonl
+          test -s inputs/artifacts/tokenizer.json
+          test -s lumen/checkpoint/step_875000.pt
+          test -s transformer/checkpoint/step_875000.pt
+          test -s data/freeform_identity_general_100.jsonl
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import torch
+          choice_rows=[x for x in Path("inputs/eval/holdout_multiple_choice.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(choice_rows)==2431, len(choice_rows)
+          prompts=[json.loads(x) for x in Path("data/freeform_identity_general_100.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+          assert len(prompts)==100, len(prompts)
+          assert len({x["id"] for x in prompts})==100
+          assert prompts[0]["prompt"]=="¿Quién eres?", prompts[0]
+          assert all(isinstance(x.get("prompt"),str) and x["prompt"].strip() for x in prompts)
+          assert all("choices" not in x and "answer" not in x for x in prompts)
+          expected={"lumen":"ronin_lumen_v3_3_neuroplasticity","transformer":"decoder_transformer_4l_d192_h4_ff576_tied_v1"}
+          paths={"lumen":"lumen/checkpoint/step_875000.pt","transformer":"transformer/checkpoint/step_875000.pt"}
+          for name,path in paths.items():
+              state=torch.load(path,map_location="cpu",weights_only=False)
+              assert int(state["step"])==875000, (name,state.get("step"))
+              assert state["architecture_id"]==expected[name], (name,state.get("architecture_id"))
+              assert state.get("model"), name
+              print(f"{name}: verified step={state['step']} architecture={state['architecture_id']}")
+          print("Verified: 2431 official choice questions + 100 unique open questions.")
+          print("First open question:",prompts[0]["prompt"])
+          PY
+      - name: Score both models on the full official choice holdout (2431)
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          python scripts/evaluate_multiple_choice_holdout.py \
+            --holdout inputs/eval/holdout_multiple_choice.jsonl \
+            --tokenizer inputs/artifacts/tokenizer.json \
+            --lumen lumen/checkpoint/step_875000.pt \
+            --transformer transformer/checkpoint/step_875000.pt \
+            --expected-lumen-step 875000 --expected-transformer-step 875000 \
+            --out results/paired_step875000_official_2431.json \
+            --threads 4 --max-len 128
+          python - <<'PY'
+          import json
+          p=json.load(open("results/paired_step875000_official_2431.json",encoding="utf-8"))
+          assert p["holdout_rows"]==2431, p.get("holdout_rows")
+          for name,r in p["results"].items():
+              assert r["total"]==2431, (name,r.get("total"))
+              print(f"{name}: {r['correct']}/2431 ({100*r['accuracy']:.2f}%), mean_answer_nll={r['mean_answer_nll']:.6f}")
+          PY
+      - name: Generate paired answers to the fixed 100 open-ended questions
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          python scripts/freeform_identity_general_holdout.py \
+            --holdout data/freeform_identity_general_100.jsonl \
+            --tokenizer inputs/artifacts/tokenizer.json \
+            --lumen lumen/checkpoint/step_875000.pt \
+            --transformer transformer/checkpoint/step_875000.pt \
+            --expected-step 875000 \
+            --sample-size 100 --seed 875000 --max-new-tokens 96 \
+            --out-dir results/freeform-step875000 --threads 4 --max-len 128
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path("results/freeform-step875000")
+          p=json.loads((root/"step875000_freeform_100.json").read_text(encoding="utf-8"))
+          assert p["step"]==875000 and p["sample_size"]==100
+          assert len(p["results"])==100
+          assert p["results"][0]["prompt"]=="¿Quién eres?", p["results"][0]
+          assert all(item["prompt"] and isinstance(item["lumen"]["text"],str) and isinstance(item["transformer"]["text"],str) for item in p["results"])
+          assert (root/"step875000_freeform_100.md").is_file()
+          print("Validated 100 paired open-ended generations.")
+          print("Question 1:",p["results"][0]["prompt"])
+          print("LUMEN:",p["results"][0]["lumen"]["text"])
+          print("Transformer:",p["results"][0]["transformer"]["text"])
+          PY
+      - name: Upload official choice scores and informal open-ended answers
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ronin-paired-holdouts-step875000-${{ github.run_id }}
+          path: results/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6
+      - name: Require both evaluation reports
+        run: |
+          test -s results/paired_step875000_official_2431.json
+          test -s results/freeform-step875000/step875000_freeform_100.json
+          test -s results/freeform-step875000/step875000_freeform_100.md

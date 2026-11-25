@@ -106,3 +106,16 @@ Esta sección sustituye las estimaciones preliminares anteriores sobre el alcanc
 Con el rechazo documental completo, el candidato inicial de 160.000 filas dejaría el bloque de personalidad por debajo del mínimo del 10% después de la deduplicación y la mezcla. La cuota se elevó a **165.000 filas** (100.000 m-personas + 65.000 SFT-General Spanish). Con las cifras de auditoría anteriores, el margen teórico es aproximadamente 10,06%; el manifiesto final debe confirmar la proporción real después de deduplicar.
 
 Este cálculo no autoriza el entrenamiento. La compilación documental de 1,8 M, el merge final y la auditoría independiente de los shards siguen siendo requisitos.
+
+
+## Política estricta de admisión aplicada a la construcción v4 (25-11-2026)
+
+Para esta compilación se endurece la admisión: solo entran registros con licencia explícita exactamente identificada como dominio público, Apache-2.0 o CC-BY-4.0. Se rechazan licencias ausentes, no comerciales, internas, contradictorias o con obligaciones adicionales pendientes de revisión.
+
+- **Documental admitido:** PleIAs/Spanish-PD-Books, revisión fijada, con filtro de idioma, OCR/calidad, PII, atractores y deduplicación.
+- **En espera:** prensa histórica PleIAs, hasta acreditar dominio público por publicación/documento; Wikipedia española, hasta revisar la compatibilidad CC BY-SA 3.0/GFDL y sus obligaciones.
+- **Personalidad:** BSC-LT/m-personas (Apache-2.0) y SFT-General-Spanish-50K (CC-BY-4.0), train únicamente, con procedencia por registro.
+- **Base v3.2.005:** se conservan solo filas con licencia exacta admitida; los registros «Apache-2.0 (internal)» y «CC-BY-4.0 (internal)» se rechazan. Los registros heredados conservan su identificador estable de origen; no se inventan revisiones de fuente que no estén documentadas.
+- **Fuera:** SQAC mientras persista la discrepancia de licencia; AQuAS/RagQuAS por licencia NC; SIQA_es/openbookqa-es/EsBBQ por holdout o split no admisible.
+
+El filtro de licencia se aplica antes de tokenización, deduplicación y escritura. El manifiesto debe contar rechazos por licencia. Esta versión sigue siendo candidata y no autoriza entrenamiento.

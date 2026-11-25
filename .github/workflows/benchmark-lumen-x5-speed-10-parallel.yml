@@ -85,7 +85,7 @@ jobs:
           cfg=json.loads(Path("config/lumen_wise_x5.json").read_text())
           cfg.update({"learning_rate":3e-5,"warmup_steps":100,"batch_size":8,
                       "sequence_length":128,"total_steps":1000,"seed":42})
-          Path(f"benchmark-output/{name}/lumen_config.json").write_text(json.dumps(cfg,indent=2)+"\\n")
+          Path(f"benchmark-output/{name}/lumen_config.json").write_text(json.dumps(cfg,indent=2)+"\n")
           profile=json.loads(Path("config/lumen_cpu_profile.json").read_text())
           truth=lambda key: os.environ[key].lower()=="true"
           profile.update({
@@ -104,7 +104,7 @@ jobs:
               "profile_id":"parallel-speedbench-"+name,
               "benchmark_note":"10-step synthetic compute microbenchmark only; not a training-quality result"
           })
-          Path(f"benchmark-output/{name}/runtime-profile.json").write_text(json.dumps(profile,indent=2)+"\\n")
+          Path(f"benchmark-output/{name}/runtime-profile.json").write_text(json.dumps(profile,indent=2)+"\n")
           from model.config import LumenConfig
           from model.lumen import RoninLumen
           model=RoninLumen(config=LumenConfig(**cfg),v32_ze=True)
@@ -152,7 +152,7 @@ jobs:
             import torch
             result["torch_version"]=torch.__version__
           except Exception as e: result["torch_import_error"]=str(e)
-          (root/"result.json").write_text(json.dumps(result,indent=2)+"\\n")
+          (root/"result.json").write_text(json.dumps(result,indent=2)+"\n")
           print("BENCHMARK_RESULT="+json.dumps(result,sort_keys=True))
           PY
       - uses: actions/upload-artifact@v4
@@ -197,9 +197,9 @@ jobs:
               sec=r.get("profiled_seconds")
               lines.append(f"| {i} | {r['hypothesis']} | {s:.4f} | {sec:.3f} | {r['return_status']} |" if s is not None and sec is not None else f"| {i} | {r['hypothesis']} | — | — | {r['return_status']} |")
           if not rows: lines += ["No completed result.json files were recovered."]
-          Path("LUMEN_X5_SPEEDBENCH.md").write_text("\\n".join(lines)+"\\n")
-          Path("LUMEN_X5_SPEEDBENCH.json").write_text(json.dumps(rows,indent=2)+"\\n")
-          print("\\n".join(lines))
+          Path("LUMEN_X5_SPEEDBENCH.md").write_text("\n".join(lines)+"\n")
+          Path("LUMEN_X5_SPEEDBENCH.json").write_text(json.dumps(rows,indent=2)+"\n")
+          print("\n".join(lines))
           PY
       - uses: actions/upload-artifact@v4
         if: always()

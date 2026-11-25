@@ -153,6 +153,8 @@ def main():
     p.add_argument("--grad-clip", type=float, default=1.0)
     p.add_argument("--parameter-check-every", type=int, default=25,
                    help="Full parameter and AdamW-state finite scan interval")
+    p.add_argument("--checkpoint-every", type=int, default=250,
+                   help="Named checkpoint interval; final block checkpoint is always saved")
     p.add_argument("--allow-data-change-on-resume", action="store_true",
                    help="Allow an explicitly declared corpus expansion while preserving optimizer/model state")
     p.add_argument("--parent-data-sha256", default=None)
@@ -169,8 +171,8 @@ def main():
     args = p.parse_args()
     if not 1 <= args.steps <= 10000:
         p.error("--steps must be between 1 and 10000")
-    if args.threads < 1 or args.parameter_check_every < 1:
-        p.error("--threads and --parameter-check-every must be at least 1")
+    if args.threads < 1 or args.parameter_check_every < 1 or args.checkpoint_every < 1:
+        p.error("--threads, --parameter-check-every and --checkpoint-every must be at least 1")
     if getattr(args, 'scheduler_transition', False) and not args.resume:
         p.error("--scheduler-transition requires an exact resumable parent checkpoint")
     if args.restart_scheduler_transition and not args.scheduler_transition:
@@ -399,7 +401,7 @@ def main():
         if step == start + 1 or step % 100 == 0 or step == start + args.steps:
             LOG.info("baseline=transformer step=%d loss=%.5f tokens_seen=%d lr=%.3e",
                      step, loss.item(), tokens_seen, scheduler.get_last_lr()[0])
-        if step % 250 == 0:
+        if step % args.checkpoint_every == 0:
             save_checkpoint(Path(args.ckpt_dir) / f"step_{step}.pt",
                             model, optimizer, scheduler, step, args, data_hash,
                             tokenizer_hash, local_rng, tokens_seen, params)
@@ -418,7 +420,7 @@ def main():
                 profile[key] = 0.0
 
     final_step = start + args.steps
-    if final_step % 250:
+    if final_step % args.checkpoint_every:
         save_checkpoint(Path(args.ckpt_dir) / f"step_{final_step}.pt",
                         model, optimizer, scheduler, final_step, args, data_hash,
                         tokenizer_hash, local_rng, tokens_seen, params)

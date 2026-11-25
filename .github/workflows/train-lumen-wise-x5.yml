@@ -111,7 +111,7 @@ jobs:
               "steps":25000,"blocks":[5000]*5,"batch":8,"sequence_length":128,"seed":42,
               "learning_rate":0.00015,"warmup_steps":100,"device":"cpu"
           }
-          Path("experiment_manifest.json").write_text(json.dumps(experiment,indent=2)+"\\n",encoding="utf-8")
+          Path("experiment_manifest.json").write_text(json.dumps(experiment,indent=2)+"\n",encoding="utf-8")
           print(json.dumps({"version":m["version"],"rows":total,"tokens":m["token_count_without_special_tokens"],"personality_share":m["personality_dialogue_share"],"shards":len(m["shards"]),"corpus_data_sha256":experiment["corpus_data_sha256"],"tokenizer_sha256":m["tokenizer_sha256"]},indent=2))
           PY
       - name: Train WISE-LUMEN from step 0 in five 5k blocks
@@ -232,7 +232,7 @@ jobs:
               "steps":25000,"blocks":[5000]*5,"batch":8,"sequence_length":128,"seed":42,
               "learning_rate":0.00015,"warmup_steps":100,"device":"cpu"
           }
-          Path("experiment_manifest.json").write_text(json.dumps(experiment,indent=2)+"\\n",encoding="utf-8")
+          Path("experiment_manifest.json").write_text(json.dumps(experiment,indent=2)+"\n",encoding="utf-8")
           print(f"Verified authorized V4: {total} rows; {len(m['shards'])} shards; data SHA {experiment['corpus_data_sha256']}")
           PY
       - name: Train Transformer from step 0 in five 5k blocks

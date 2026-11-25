@@ -1,6 +1,6 @@
 """Matched multiple-choice holdout evaluation for the fresh step-1000 pair."""
 from __future__ import annotations
-import argparse, json, math
+import argparse, json, math, hashlib
 from pathlib import Path
 import torch
 import torch.nn.functional as F
@@ -62,6 +62,7 @@ def main():
     p.add_argument("--expected-transformer-step", type=int, default=None)
     a=p.parse_args()
     torch.set_num_threads(a.threads); torch.set_num_interop_threads(2)
+    tokenizer_sha=hashlib.sha256(Path(a.tokenizer).read_bytes()).hexdigest()
     tok=Tokenizer.from_file(a.tokenizer)
     data=rows(a.holdout)
     if a.limit: data=data[:a.limit]
@@ -72,6 +73,8 @@ def main():
     expected_lumen = a.expected_lumen_step if a.expected_lumen_step is not None else a.expected_step
     if expected_lumen is not None and int(ls.get("step",-1)) != expected_lumen: raise ValueError(f"Lumen checkpoint is not step {expected_lumen}")
     if ls.get("v32_ze") is not True: raise ValueError("Lumen checkpoint lacks V3.2 ZE")
+    if ls.get("architecture_id") != "ronin_lumen_v3_3_neuroplasticity": raise ValueError("Unexpected Lumen architecture ID")
+    if ls.get("tokenizer_sha256") != tokenizer_sha: raise ValueError("Lumen tokenizer SHA mismatch")
     if int(ls.get("params",-1)) != sum(p.numel() for p in lm.parameters()): raise ValueError("Lumen checkpoint parameter count mismatch")
     lm.load_state_dict(ls["model"]); lm.eval(); models["lumen"]=(lm,True)
     if a.transformer:
@@ -80,6 +83,9 @@ def main():
         expected_transformer = a.expected_transformer_step if a.expected_transformer_step is not None else a.expected_step
         if expected_transformer is not None and int(ts.get("step",-1)) != expected_transformer: raise ValueError(f"Transformer checkpoint is not step {expected_transformer}")
         if int(ts.get("params",-1)) != sum(p.numel() for p in tm.parameters()): raise ValueError("Transformer checkpoint parameter count mismatch")
+        if ts.get("architecture_id") != f"decoder_transformer_4l_d{a.transformer_model_dim}_h{a.transformer_heads}_ff{a.transformer_ff_width}_tied_v1": raise ValueError("Unexpected Transformer architecture ID")
+        if ts.get("tokenizer_sha256") != tokenizer_sha: raise ValueError("Transformer tokenizer SHA mismatch")
+        if ts.get("data_sha256") != ls.get("data_sha256"): raise ValueError("Model checkpoints were not trained on the same corpus")
         tm.load_state_dict(ts["model"]); tm.eval(); models["transformer"]=(tm,False)
     results={k:{"correct":0,"total":0,"mean_answer_nll":0.0,"predictions":[]} for k in models}
     sums={k:0.0 for k in models}

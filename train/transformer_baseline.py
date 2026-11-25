@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import random
 import time
 from pathlib import Path
@@ -146,6 +147,9 @@ def main():
                    help="PyTorch intra-op CPU threads; benchmark 1/2/4 on the target runner")
     p.add_argument("--interop-threads", type=int, default=1,
                    help="PyTorch inter-op CPU threads")
+    p.add_argument("--disable-mkldnn", action="store_true")
+    p.add_argument("--disable-foreach", action="store_true")
+    p.add_argument("--cpu-affinity", action="store_true")
     p.add_argument("--resume", help="Previous global-step checkpoint")
     p.add_argument("--batch", type=int, default=8)
     p.add_argument("--max-len", type=int, default=128)
@@ -186,7 +190,15 @@ def main():
 
     torch.set_num_threads(args.threads)
     torch.set_num_interop_threads(args.interop_threads)
-    LOG.info("cpu_runtime: intraop_threads=%d interop_threads=%d", args.threads, args.interop_threads)
+    torch.backends.mkldnn.enabled = not args.disable_mkldnn
+    affinity_cpus = None
+    if args.cpu_affinity and hasattr(os, "sched_getaffinity"):
+        available = sorted(os.sched_getaffinity(0))
+        affinity_cpus = available[:args.threads]
+        os.sched_setaffinity(0, set(affinity_cpus))
+    LOG.info("cpu_runtime: intraop_threads=%d interop_threads=%d mkldnn=%s foreach=%s affinity=%s",
+             args.threads, args.interop_threads, torch.backends.mkldnn.enabled,
+             not args.disable_foreach, affinity_cpus)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     rows, data_hash = load_jsonl(args.data)
@@ -222,7 +234,7 @@ def main():
     params = sum(x.numel() for x in model.parameters())
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay,
-        foreach=True,
+        foreach=not args.disable_foreach,
     )
     scheduler = None if getattr(args, 'scheduler_transition', False) else make_scheduler(optimizer, args.warmup, args.total_steps)
     local_rng = random.Random(args.seed)
@@ -296,7 +308,7 @@ def main():
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
         for group in optimizer.param_groups:
-            group["foreach"] = True
+            group["foreach"] = not args.disable_foreach
         start = int(state["step"])
         if getattr(args, 'scheduler_transition', False):
             saved_transition = state.get("scheduler_transition")

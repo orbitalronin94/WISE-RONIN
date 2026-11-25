@@ -149,7 +149,7 @@ jobs:
             --lr 3e-5 --warmup 100 --total-steps 1000000 --scheduler-transition --restart-scheduler-transition \
             --transition-start 750000 --transition-end 1000000 --warmup-transition 100 \
             --transition-plateau-steps 0 --transition-min-lr-ratio 0.5 \
-            --parameter-check-every 1 --checkpoint-every 1 --ckpt-dir resume-smoke/transformer-output
+            --parameter-check-every 1 --ckpt-dir resume-smoke/transformer-output
           python - <<'PY'
           import hashlib, torch
           expected_data="0f7db9d6c4264f68fd6a12a9fe5bfa708e4fc30c1df176de5a4f53081bfe79aa"

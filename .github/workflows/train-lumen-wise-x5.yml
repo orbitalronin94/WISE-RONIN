@@ -460,7 +460,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p checkpoints/lumen logs
+          mkdir -p checkpoints/transformer logs
           ARGS=(
               --steps 5000
               --model-dim 488 --heads 8 --ff-width 1464
@@ -507,7 +507,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p checkpoints/lumen logs
+          mkdir -p checkpoints/transformer logs
           ARGS=(
               --steps 5000
               --model-dim 488 --heads 8 --ff-width 1464
@@ -555,7 +555,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p checkpoints/lumen logs
+          mkdir -p checkpoints/transformer logs
           ARGS=(
               --steps 5000
               --model-dim 488 --heads 8 --ff-width 1464
@@ -603,7 +603,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p checkpoints/lumen logs
+          mkdir -p checkpoints/transformer logs
           ARGS=(
               --steps 5000
               --model-dim 488 --heads 8 --ff-width 1464
@@ -651,7 +651,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p checkpoints/lumen logs
+          mkdir -p checkpoints/transformer logs
           ARGS=(
               --steps 5000
               --model-dim 488 --heads 8 --ff-width 1464

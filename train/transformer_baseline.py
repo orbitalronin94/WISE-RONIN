@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import random
 import time
 from pathlib import Path
@@ -46,14 +47,20 @@ class CausalBlock(nn.Module):
 
 class SmallTransformerLM(nn.Module):
     """2,295,168 parameters at the frozen 4k vocabulary and 128 context."""
-    def __init__(self, vocab_size=4096, max_seq=128):
+    def __init__(self, vocab_size=4096, max_seq=128, width=192, heads=4, ff_width=None):
         super().__init__()
-        width = 192
+        ff_width = int(ff_width or width * 3)
+        if width % heads:
+            raise ValueError("model width must be divisible by attention heads")
         self.token_emb = nn.Embedding(vocab_size, width)
         self.position_emb = nn.Embedding(max_seq, width)
-        self.blocks = nn.ModuleList([CausalBlock(width, 4, 576) for _ in range(4)])
+        self.blocks = nn.ModuleList([CausalBlock(width, heads, ff_width) for _ in range(4)])
         self.norm = nn.LayerNorm(width)
         self.lm_head = nn.Linear(width, vocab_size, bias=False)
+        # GPT-style small embedding initialization is essential with tied output
+        # weights; the nn.Embedding default N(0,1) makes initial logits explode.
+        nn.init.normal_(self.token_emb.weight, mean=0.0, std=0.02)
+        nn.init.normal_(self.position_emb.weight, mean=0.0, std=0.02)
         self.lm_head.weight = self.token_emb.weight
         self.max_seq = max_seq
 
@@ -106,7 +113,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args,
         "tokens_seen": tokens_seen,
         "params": params,
         "architecture_id": ARCHITECTURE_ID,
-        "architecture": "4-layer decoder-only Transformer, d_model=192, heads=4, ffn=576, tied embeddings",
+        "architecture": f"4-layer decoder-only Transformer, d_model={getattr(args, 'model_dim', 192)}, heads={getattr(args, 'heads', 4)}, ffn={getattr(args, 'ff_width', None) or getattr(args, 'model_dim', 192) * 3}, tied embeddings",
         "training_config": {
             "batch": args.batch, "max_len": args.max_len, "lr": args.lr,
             "warmup": args.warmup, "total_steps": args.total_steps,
@@ -138,9 +145,17 @@ def main():
                    help="Number of additional steps in this block (maximum 1000)")
     p.add_argument("--threads", type=int, default=2,
                    help="PyTorch intra-op CPU threads; benchmark 1/2/4 on the target runner")
+    p.add_argument("--interop-threads", type=int, default=1,
+                   help="PyTorch inter-op CPU threads")
+    p.add_argument("--disable-mkldnn", action="store_true")
+    p.add_argument("--disable-foreach", action="store_true")
+    p.add_argument("--cpu-affinity", action="store_true")
     p.add_argument("--resume", help="Previous global-step checkpoint")
     p.add_argument("--batch", type=int, default=8)
     p.add_argument("--max-len", type=int, default=128)
+    p.add_argument("--model-dim", type=int, default=192)
+    p.add_argument("--heads", type=int, default=4)
+    p.add_argument("--ff-width", type=int, default=None)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--lr", type=float, default=CONFIG.learning_rate)
     p.add_argument("--warmup", type=int, default=100)
@@ -148,6 +163,8 @@ def main():
     p.add_argument("--grad-clip", type=float, default=1.0)
     p.add_argument("--parameter-check-every", type=int, default=25,
                    help="Full parameter and AdamW-state finite scan interval")
+    p.add_argument("--checkpoint-every", type=int, default=250,
+                   help="Named checkpoint interval; final block checkpoint is always saved")
     p.add_argument("--allow-data-change-on-resume", action="store_true",
                    help="Allow an explicitly declared corpus expansion while preserving optimizer/model state")
     p.add_argument("--parent-data-sha256", default=None)
@@ -164,15 +181,24 @@ def main():
     args = p.parse_args()
     if not 1 <= args.steps <= 10000:
         p.error("--steps must be between 1 and 10000")
-    if args.threads < 1 or args.parameter_check_every < 1:
-        p.error("--threads and --parameter-check-every must be at least 1")
+    if args.threads < 1 or args.interop_threads < 1 or args.parameter_check_every < 1 or args.checkpoint_every < 1:
+        p.error("--threads, --interop-threads, --parameter-check-every and --checkpoint-every must be at least 1")
     if getattr(args, 'scheduler_transition', False) and not args.resume:
         p.error("--scheduler-transition requires an exact resumable parent checkpoint")
     if args.restart_scheduler_transition and not args.scheduler_transition:
         p.error("--restart-scheduler-transition requires --scheduler-transition")
 
     torch.set_num_threads(args.threads)
-    LOG.info("cpu_runtime: intraop_threads=%d", args.threads)
+    torch.set_num_interop_threads(args.interop_threads)
+    torch.backends.mkldnn.enabled = not args.disable_mkldnn
+    affinity_cpus = None
+    if args.cpu_affinity and hasattr(os, "sched_getaffinity"):
+        available = sorted(os.sched_getaffinity(0))
+        affinity_cpus = available[:args.threads]
+        os.sched_setaffinity(0, set(affinity_cpus))
+    LOG.info("cpu_runtime: intraop_threads=%d interop_threads=%d mkldnn=%s foreach=%s affinity=%s",
+             args.threads, args.interop_threads, torch.backends.mkldnn.enabled,
+             not args.disable_foreach, affinity_cpus)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     rows, data_hash = load_jsonl(args.data)
@@ -180,6 +206,14 @@ def main():
     if tokenizer.tokenizer.get_vocab_size() != CONFIG.vocab_size or tokenizer.tokenizer.token_to_id("[PAD]") != 0:
         raise ValueError("Baseline requires the shared 4k pilot tokenizer with PAD=0")
     tokenizer_hash = hashlib.sha256(Path(args.tokenizer).read_bytes()).hexdigest()
+    data_path = Path(args.data)
+    manifest_path = data_path / "manifest.json" if data_path.is_dir() else (
+        data_path if data_path.name == "manifest.json" else None
+    )
+    if manifest_path is not None:
+        corpus_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if corpus_manifest.get("tokenizer_sha256") != tokenizer_hash:
+            raise ValueError("Corpus manifest tokenizer SHA-256 does not match --tokenizer")
     tokenized_rows, row_indices = None, {}
     packed_token_rows, token_lengths = None, None
     if args.token_cache:
@@ -191,11 +225,16 @@ def main():
         tokenized_rows = None
         LOG.info("loaded packed token cache rows=%d max_len=%d", len(rows), args.max_len)
 
-    model = SmallTransformerLM(CONFIG.vocab_size, args.max_len).cpu()
+    if args.model_dim < 1 or args.heads < 1 or args.model_dim % args.heads:
+        p.error("--model-dim must be positive and divisible by --heads")
+    ff_width = args.ff_width or args.model_dim * 3
+    model = SmallTransformerLM(CONFIG.vocab_size, args.max_len, args.model_dim, args.heads, ff_width).cpu()
+    global ARCHITECTURE_ID
+    ARCHITECTURE_ID = f"decoder_transformer_4l_d{args.model_dim}_h{args.heads}_ff{ff_width}_tied_v1"
     params = sum(x.numel() for x in model.parameters())
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay,
-        foreach=True,
+        foreach=not args.disable_foreach,
     )
     scheduler = None if getattr(args, 'scheduler_transition', False) else make_scheduler(optimizer, args.warmup, args.total_steps)
     local_rng = random.Random(args.seed)
@@ -269,7 +308,7 @@ def main():
         model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
         for group in optimizer.param_groups:
-            group["foreach"] = True
+            group["foreach"] = not args.disable_foreach
         start = int(state["step"])
         if getattr(args, 'scheduler_transition', False):
             saved_transition = state.get("scheduler_transition")
@@ -389,7 +428,7 @@ def main():
         if step == start + 1 or step % 100 == 0 or step == start + args.steps:
             LOG.info("baseline=transformer step=%d loss=%.5f tokens_seen=%d lr=%.3e",
                      step, loss.item(), tokens_seen, scheduler.get_last_lr()[0])
-        if step % 250 == 0:
+        if step % args.checkpoint_every == 0:
             save_checkpoint(Path(args.ckpt_dir) / f"step_{step}.pt",
                             model, optimizer, scheduler, step, args, data_hash,
                             tokenizer_hash, local_rng, tokens_seen, params)
@@ -408,7 +447,7 @@ def main():
                 profile[key] = 0.0
 
     final_step = start + args.steps
-    if final_step % 250:
+    if final_step % args.checkpoint_every:
         save_checkpoint(Path(args.ckpt_dir) / f"step_{final_step}.pt",
                         model, optimizer, scheduler, final_step, args, data_hash,
                         tokenizer_hash, local_rng, tokens_seen, params)

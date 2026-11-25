@@ -13,7 +13,7 @@ from pathlib import Path
 
 import torch
 
-from model.config import CONFIG
+from model.config import CONFIG, LumenConfig
 from model.lumen import RoninLumen
 from model.plasticity import PlasticityProfile
 from train.curriculum import datos_para_fase, sample_phase2
@@ -267,6 +267,7 @@ def apply_organ_profile(model, profile):
     LOG.info("organ_profile applied: %s", json.dumps(profile, sort_keys=True))
 
 def main():
+    global CONFIG
     parser = argparse.ArgumentParser(description="RONIN-LUMEN CPU training")
     parser.add_argument("--steps", type=int, default=500)
     parser.add_argument("--log-every", type=int, default=100, help="Training metric log interval")
@@ -283,6 +284,7 @@ def main():
     parser.add_argument("--compile-mode", choices=("default", "reduce-overhead"),
                         help="Compile only non-diagnostic forward passes; checkpoints remain eager-model state")
     parser.add_argument("--phase", type=int, choices=(1, 2, 3), required=True)
+    parser.add_argument("--model-config", help="JSON LumenConfig override for isolated architecture experiments")
     parser.add_argument("--resume")
     parser.add_argument("--data", default="data/train_25k.jsonl")
     parser.add_argument("--tokenizer", default="data/tokenizer/tokenizer.json")
@@ -323,6 +325,16 @@ def main():
     parser.add_argument("--dummy-m1", action="store_true",
                         help="Explicit synthetic smoke test only; never a training dataset")
     args = parser.parse_args()
+
+    if args.model_config:
+        model_config_data = json.loads(Path(args.model_config).read_text(encoding="utf-8"))
+        CONFIG = LumenConfig(**model_config_data)
+        LOG.info("model_config loaded: %s", args.model_config)
+        args.lr = CONFIG.learning_rate
+        args.batch = CONFIG.batch_size
+        args.warmup = CONFIG.warmup_steps
+        args.total_steps = CONFIG.total_steps
+        args.seed = CONFIG.seed
 
     if args.steps < 1 or (args.steps > 10000 and not args.dummy_m1):
         parser.error("--steps must be between 1 and 10000")
@@ -386,7 +398,7 @@ def main():
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     device = torch.device("cpu")
-    model = RoninLumen(v32_ze=args.v32_ze).to(device)
+    model = RoninLumen(config=CONFIG, v32_ze=args.v32_ze).to(device)
     plasticity_profile = PlasticityProfile.from_config(runtime_profile.get("plasticity", {}))
     for layer in model.delta_layers:
         layer.plasticity_profile = plasticity_profile
@@ -525,7 +537,13 @@ def main():
             raise ValueError("Checkpoint training hyperparameters mismatch")
         if state.get("seed", args.seed) != args.seed:
             raise ValueError("Checkpoint seed mismatch")
-        if state["config"] != CONFIG.to_dict():
+        saved_model_config = dict(state.get("config") or {})
+        # Backward-compatible defaults for architecture fields added after
+        # older checkpoints were written. Missing keys resolve only to the
+        # original base defaults, never to an experimental override.
+        for key, value in LumenConfig().to_dict().items():
+            saved_model_config.setdefault(key, value)
+        if saved_model_config != CONFIG.to_dict():
             raise ValueError("Checkpoint model config mismatch")
         args.data_lineage = list(state.get("data_lineage", []))
         transition = resolve_data_transition(
@@ -687,11 +705,8 @@ def main():
             tokens = torch.randint(4, CONFIG.vocab_size,
                                    (args.batch, args.max_len), device=device)
         else:
-            chosen = (
-                sample_phase2(phase_data, args.batch, local_rng)
-                if args.phase == 2 and isinstance(phase_data, dict)
-                else local_rng.choices(phase_data, k=args.batch)
-            )
+            chosen = (sample_phase2(phase_data, args.batch, local_rng)
+                      if args.phase == 2 else local_rng.choices(phase_data, k=args.batch))
             if packed_token_rows is None:
                 tokens = collate_rows(chosen, tokenizer, args.max_len)
             else:

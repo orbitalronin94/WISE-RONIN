@@ -4,6 +4,11 @@ from dataclasses import asdict, dataclass
 @dataclass(frozen=True)
 class LumenConfig:
     model_dim: int = 256
+    memory_hidden: int = 64
+    head_hidden: int = 512
+    kan_splines: int = 32
+    kan_points: int = 8
+    ze_dim: int = 128
     delta_layers: int = 4
     delta_rank: int = 64
     delta_parallel_refinements: int = 6

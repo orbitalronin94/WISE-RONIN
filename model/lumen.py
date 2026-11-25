@@ -20,7 +20,7 @@ class RoninLumen(nn.Module):
         super().__init__()
         self.config = config
         self.v32_ze = bool(v32_ze)
-        self.ze = DualModelZe(config.model_dim) if self.v32_ze else None
+        self.ze = DualModelZe(config.model_dim, counterfactual_dim=config.ze_dim) if self.v32_ze else None
         self.emb = VivoEmbedding(config.vocab_size, config.model_dim)
         self.presupuesto = Presupuesto(config.model_dim)
         self.pain = Nociception()
@@ -38,8 +38,9 @@ class RoninLumen(nn.Module):
         ])
         # A shared bounded controller keeps the parameter overhead small.
         self.chunker = AdaptiveChunking(config.model_dim)
-        self.memoria = MemoriaElastica(config.model_dim)
-        self.heads = Heads(config.model_dim)
+        self.memoria = MemoriaElastica(config.model_dim, hidden=config.memory_hidden)
+        self.heads = Heads(config.model_dim, hidden=config.head_hidden,
+                               n_splines=config.kan_splines, n_puntos=config.kan_points)
         self.head_out = nn.Linear(config.model_dim, config.vocab_size, bias=False)
         self.head_out.weight = self.emb.emb.weight
         self.jepa_predictor = nn.Sequential(

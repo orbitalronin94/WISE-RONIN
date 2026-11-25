@@ -18,7 +18,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: wise-x5-from-zero-v4-1000
+  group: wise-x5-1000-step-blocks-fixed
   cancel-in-progress: true
 
 jobs:
@@ -51,7 +51,7 @@ jobs:
           assert m.get("version")=="v4.0.0"
           assert m.get("status")=="FROZEN_TRAINABLE"
           assert m.get("training_authorized") is True
-          expected="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26d3fefe"
+          expected="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
           assert m.get("tokenizer_sha256")==expected
           assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest()==expected
           total=0
@@ -152,7 +152,7 @@ jobs:
               s=torch.load(p,map_location="cpu",weights_only=False)
               assert int(s["step"])==3 and s["architecture_id"]==arch and int(s["params"])==n
               assert all(s.get(k) is not None for k in ("model","optimizer","scheduler","rng","data_sha256","tokenizer_sha256"))
-              assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26d3fefe"
+              assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
               assert int(s["seed"])==42 and int(s["training_config"]["total_steps"])==25000
               print("PREFLIGHT_PASS",arch,"step=3","exact_resume=True")
           PY
@@ -709,7 +709,7 @@ jobs:
           for path,arch,params in checks:
               s=torch.load(path,map_location="cpu",weights_only=False)
               assert int(s["step"])==25000 and s["architecture_id"]==arch and int(s["params"])==params
-              assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26d3fefe"
+              assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
               print("FINAL_CHECKPOINT_VERIFIED",arch,25000)
           PY
       - name: Evaluate both models on the same untouched holdout

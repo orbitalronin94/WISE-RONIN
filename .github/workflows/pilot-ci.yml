@@ -104,3 +104,5 @@ jobs:
 
       - name: Smoke-test both x5 trainers with synthetic checkpoint/resume
         run: PYTHONPATH=. python scripts/smoke_test_lumen_wise_x5_resume.py
+
+# Revalidate the x5 five-block workflow and per-block artifact upload steps.

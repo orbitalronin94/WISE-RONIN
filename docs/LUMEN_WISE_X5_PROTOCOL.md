@@ -13,7 +13,7 @@ Esta rama separa el experimento del entrenamiento principal. No modifica ni reem
 
 El perfil LUMEN escala conjuntamente dimensión, rango Delta, memoria, MLP, KAN y estado contrafactual ZE. Mantiene cuatro órganos Delta, el vocabulario compartido de 4.096 tokens, Top-K proporcional, homeostasis, JEPA, sueño y los órganos de regulación que estén presentes en el commit congelado. El perfil Transformer usa dimensión 488, 8 cabezas y FFN 1.464, con embeddings ligados.
 
-El script `scripts/validate_lumen_wise_x5.py` instancia los dos modelos y sus referencias base, cuenta parámetros reales desde PyTorch y comprueba que cada uno queda en el entorno de 5× y que la diferencia de tamaño entre ambos no supera el 5%. Esa validación ejecutable prevalece sobre cualquier estimación escrita aquí.
+El script `scripts/validate_lumen_wise_x5.py` instancia los dos modelos y sus referencias base, cuenta parámetros reales desde PyTorch y comprueba que cada uno queda en el entorno de 5× y que la diferencia de tamaño entre ambos no supera el 5%. Esa validación ejecutable prevalece sobre cualquier estimación escrita aquí. La inicialización del Transformer usa embeddings ligados con escala normal 0,02 (no la inicialización por defecto de `nn.Embedding`), y el validador exige una loss sintética inicial finita y en rango razonable; así se detecta una escala de logits rota antes del entrenamiento.
 
 ## Condiciones comunes pre-registradas
 
@@ -52,3 +52,8 @@ Las diferencias propias de cada arquitectura (JEPA, memoria, ZE y sueño en LUME
 ## Primera validación ejecutable
 
 En CI, el validador de esta rama instanció ambos modelos, contó sus parámetros reales y completó forward/backward sintético en CPU. Resultados: WISE-LUMEN **12.022.016 parámetros** frente a su referencia de 2.396.660 (**5,016×**); Transformer **11.611.472** frente a 2.295.168 (**5,059×**). La diferencia de tamaño entre los dos candidatos es **3,41%**. La suite completa de esta revisión pasó **137 pruebas en 5,21 s**. Esto valida la construcción y el paso numérico sintético, no el rendimiento de entrenamiento ni la calidad; esos se medirán con Corpus V4 y el holdout congelados.
+
+
+### Corrección de inicialización del Transformer
+
+La primera pasada sintética detectó que la inicialización por defecto de `nn.Embedding` con pesos ligados producía logits excesivos y loss inicial ≈319,5. Se corrigió la inicialización de embeddings de token y posición a normal(0, 0,02), conservando el weight tying. La nueva CI arroja loss sintética ≈8,07 para Transformer y ≈8,32 para WISE-LUMEN; ambos pasan forward/backward finito y la guarda de escala. No se ha iniciado entrenamiento real.

@@ -13,7 +13,7 @@ from pathlib import Path
 import torch
 from tokenizers import Tokenizer
 
-from model.config import CONFIG
+from model.config import CONFIG, LumenConfig
 from model.lumen import RoninLumen
 from train.transformer_baseline import SmallTransformerLM
 
@@ -103,14 +103,25 @@ def main():
     lumen_state = torch.load(args.lumen, map_location="cpu", weights_only=False)
     if int(lumen_state.get("step", -1)) != args.expected_step:
         raise ValueError(f"Lumen checkpoint step mismatch: {lumen_state.get('step')}")
-    lumen = RoninLumen(v32_ze=bool(lumen_state.get("v32_ze", False))).cpu()
+    lumen_config = LumenConfig(**lumen_state["config"]) if isinstance(lumen_state.get("config"), dict) else CONFIG
+    lumen = RoninLumen(config=lumen_config, v32_ze=bool(lumen_state.get("v32_ze", False))).cpu()
+    if lumen_state.get("params") is not None and sum(x.numel() for x in lumen.parameters()) != int(lumen_state["params"]):
+        raise ValueError("Lumen checkpoint parameter count does not match reconstructed architecture")
     lumen.load_state_dict(lumen_state["model"])
     lumen.eval()
 
     transformer_state = torch.load(args.transformer, map_location="cpu", weights_only=False)
     if int(transformer_state.get("step", -1)) != args.expected_step:
         raise ValueError(f"Transformer checkpoint step mismatch: {transformer_state.get('step')}")
-    transformer = SmallTransformerLM(CONFIG.vocab_size, args.max_len).cpu()
+    spec = transformer_state.get("model_spec", {})
+    transformer = SmallTransformerLM(
+        CONFIG.vocab_size, args.max_len,
+        int(spec.get("model_dim", 192)), int(spec.get("heads", 4)),
+        int(spec.get("ff_width", int(spec.get("model_dim", 192)) * 3)),
+        int(spec.get("residual_groups", 0)),
+    ).cpu()
+    if transformer_state.get("params") is not None and sum(x.numel() for x in transformer.parameters()) != int(transformer_state["params"]):
+        raise ValueError("Transformer checkpoint parameter count does not match reconstructed architecture")
     transformer.load_state_dict(transformer_state["model"])
     transformer.eval()
 

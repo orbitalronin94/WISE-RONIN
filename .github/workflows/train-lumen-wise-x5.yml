@@ -120,16 +120,11 @@ jobs:
           Path("experiment_manifest.json").write_text(json.dumps(experiment,indent=2)+"\n",encoding="utf-8")
           print(json.dumps({"version":m["version"],"rows":total,"tokens":m["token_count_without_special_tokens"],"personality_share":m["personality_dialogue_share"],"shards":len(m["shards"]),"corpus_data_sha256":experiment["corpus_data_sha256"],"tokenizer_sha256":m["tokenizer_sha256"]},indent=2))
           PY
-      - name: Train WISE-LUMEN from step 0 in five 5k blocks
+      - name: Train WISE-LUMEN block 1/5 (0 → 5000)
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p checkpoints/lumen logs
-          PREVIOUS=""
-          for BLOCK in 1 2 3 4 5; do
-            TARGET=$((BLOCK * 5000))
-            echo "===== WISE-LUMEN block ${BLOCK}/5: $((TARGET-5000)) -> ${TARGET} ====="
-            ARGS=(
+          ARGS=(
               --steps 5000
               --phase 1 --pilot-all-rows --v32-ze
               --model-config config/lumen_wise_x5.json
@@ -141,12 +136,11 @@ jobs:
               --log-every 100 --checkpoint-every 1000
               --parameter-check-every 100
               --ckpt-dir checkpoints/lumen
-            )
-            if [ -n "$PREVIOUS" ]; then ARGS+=(--resume "$PREVIOUS"); fi
-            python -m train.train "${ARGS[@]}" 2>&1 | tee "logs/lumen-block-${BLOCK}.log"
-            CURRENT="checkpoints/lumen/step_${TARGET}.pt"
-            test -s "$CURRENT"
-            python - "$CURRENT" "$TARGET" "$PREVIOUS" <<'PY'
+          )
+          python -m train.train "${ARGS[@]}" 2>&1 | tee "logs/lumen-block-1.log"
+          CURRENT="checkpoints/lumen/step_5000.pt"
+          test -s "$CURRENT"
+          python - "$CURRENT" "5000" "" <<'PY'
           import sys,torch,json
           from pathlib import Path
           path,target,previous=sys.argv[1],int(sys.argv[2]),sys.argv[3]
@@ -155,18 +149,236 @@ jobs:
           assert s["data_sha256"]==experiment["corpus_data_sha256"]
           assert s["tokenizer_sha256"]==experiment["tokenizer_sha256"]
           assert int(s["step"])==target
+          assert s.get("optimizer") and s.get("scheduler") and s.get("rng")
           assert int(s["params"])==12022016
           assert s["architecture_id"]=="ronin_lumen_v3_3_neuroplasticity"
           assert s["v32_ze"] is True
           assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
           if previous:
               p=torch.load(previous,map_location="cpu",weights_only=False)
+              assert int(p["step"])==target-5000
               assert s["data_sha256"]==p["data_sha256"]
               assert s["tokenizer_sha256"]==p["tokenizer_sha256"]
           print(f"verified LUMEN step={target} params={s['params']} data={s['data_sha256']}")
           PY
-            PREVIOUS="$CURRENT"
-          done
+      - name: Publish WISE-LUMEN block 1/5 checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-wise-x5-block-1-5000-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/step_5000.pt
+            logs/lumen-block-1.log
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+      - name: Train WISE-LUMEN block 2/5 (5000 → 10000)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARGS=(
+              --steps 5000
+              --phase 1 --pilot-all-rows --v32-ze
+              --model-config config/lumen_wise_x5.json
+              --data corpus --tokenizer corpus/tokenizer.json
+              --batch 8 --max-len 128 --seed 42
+              --lr 1.5e-4 --warmup 100 --total-steps 25000
+              --runtime-profile config/lumen_cpu_profile.json
+              --threads 4 --interop-threads 2
+              --log-every 100 --checkpoint-every 1000
+              --parameter-check-every 100
+              --ckpt-dir checkpoints/lumen
+          )
+          ARGS+=(--resume "checkpoints/lumen/step_5000.pt")
+          python -m train.train "${ARGS[@]}" 2>&1 | tee "logs/lumen-block-2.log"
+          CURRENT="checkpoints/lumen/step_10000.pt"
+          test -s "$CURRENT"
+          python - "$CURRENT" "10000" "checkpoints/lumen/step_5000.pt" <<'PY'
+          import sys,torch,json
+          from pathlib import Path
+          path,target,previous=sys.argv[1],int(sys.argv[2]),sys.argv[3]
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          experiment=json.loads(Path("experiment_manifest.json").read_text())
+          assert s["data_sha256"]==experiment["corpus_data_sha256"]
+          assert s["tokenizer_sha256"]==experiment["tokenizer_sha256"]
+          assert int(s["step"])==target
+          assert s.get("optimizer") and s.get("scheduler") and s.get("rng")
+          assert int(s["params"])==12022016
+          assert s["architecture_id"]=="ronin_lumen_v3_3_neuroplasticity"
+          assert s["v32_ze"] is True
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          if previous:
+              p=torch.load(previous,map_location="cpu",weights_only=False)
+              assert int(p["step"])==target-5000
+              assert s["data_sha256"]==p["data_sha256"]
+              assert s["tokenizer_sha256"]==p["tokenizer_sha256"]
+          print(f"verified LUMEN step={target} params={s['params']} data={s['data_sha256']}")
+          PY
+      - name: Publish WISE-LUMEN block 2/5 checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-wise-x5-block-2-10000-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/step_10000.pt
+            logs/lumen-block-2.log
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+      - name: Train WISE-LUMEN block 3/5 (10000 → 15000)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARGS=(
+              --steps 5000
+              --phase 1 --pilot-all-rows --v32-ze
+              --model-config config/lumen_wise_x5.json
+              --data corpus --tokenizer corpus/tokenizer.json
+              --batch 8 --max-len 128 --seed 42
+              --lr 1.5e-4 --warmup 100 --total-steps 25000
+              --runtime-profile config/lumen_cpu_profile.json
+              --threads 4 --interop-threads 2
+              --log-every 100 --checkpoint-every 1000
+              --parameter-check-every 100
+              --ckpt-dir checkpoints/lumen
+          )
+          ARGS+=(--resume "checkpoints/lumen/step_10000.pt")
+          python -m train.train "${ARGS[@]}" 2>&1 | tee "logs/lumen-block-3.log"
+          CURRENT="checkpoints/lumen/step_15000.pt"
+          test -s "$CURRENT"
+          python - "$CURRENT" "15000" "checkpoints/lumen/step_10000.pt" <<'PY'
+          import sys,torch,json
+          from pathlib import Path
+          path,target,previous=sys.argv[1],int(sys.argv[2]),sys.argv[3]
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          experiment=json.loads(Path("experiment_manifest.json").read_text())
+          assert s["data_sha256"]==experiment["corpus_data_sha256"]
+          assert s["tokenizer_sha256"]==experiment["tokenizer_sha256"]
+          assert int(s["step"])==target
+          assert s.get("optimizer") and s.get("scheduler") and s.get("rng")
+          assert int(s["params"])==12022016
+          assert s["architecture_id"]=="ronin_lumen_v3_3_neuroplasticity"
+          assert s["v32_ze"] is True
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          if previous:
+              p=torch.load(previous,map_location="cpu",weights_only=False)
+              assert int(p["step"])==target-5000
+              assert s["data_sha256"]==p["data_sha256"]
+              assert s["tokenizer_sha256"]==p["tokenizer_sha256"]
+          print(f"verified LUMEN step={target} params={s['params']} data={s['data_sha256']}")
+          PY
+      - name: Publish WISE-LUMEN block 3/5 checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-wise-x5-block-3-15000-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/step_15000.pt
+            logs/lumen-block-3.log
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+      - name: Train WISE-LUMEN block 4/5 (15000 → 20000)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARGS=(
+              --steps 5000
+              --phase 1 --pilot-all-rows --v32-ze
+              --model-config config/lumen_wise_x5.json
+              --data corpus --tokenizer corpus/tokenizer.json
+              --batch 8 --max-len 128 --seed 42
+              --lr 1.5e-4 --warmup 100 --total-steps 25000
+              --runtime-profile config/lumen_cpu_profile.json
+              --threads 4 --interop-threads 2
+              --log-every 100 --checkpoint-every 1000
+              --parameter-check-every 100
+              --ckpt-dir checkpoints/lumen
+          )
+          ARGS+=(--resume "checkpoints/lumen/step_15000.pt")
+          python -m train.train "${ARGS[@]}" 2>&1 | tee "logs/lumen-block-4.log"
+          CURRENT="checkpoints/lumen/step_20000.pt"
+          test -s "$CURRENT"
+          python - "$CURRENT" "20000" "checkpoints/lumen/step_15000.pt" <<'PY'
+          import sys,torch,json
+          from pathlib import Path
+          path,target,previous=sys.argv[1],int(sys.argv[2]),sys.argv[3]
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          experiment=json.loads(Path("experiment_manifest.json").read_text())
+          assert s["data_sha256"]==experiment["corpus_data_sha256"]
+          assert s["tokenizer_sha256"]==experiment["tokenizer_sha256"]
+          assert int(s["step"])==target
+          assert s.get("optimizer") and s.get("scheduler") and s.get("rng")
+          assert int(s["params"])==12022016
+          assert s["architecture_id"]=="ronin_lumen_v3_3_neuroplasticity"
+          assert s["v32_ze"] is True
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          if previous:
+              p=torch.load(previous,map_location="cpu",weights_only=False)
+              assert int(p["step"])==target-5000
+              assert s["data_sha256"]==p["data_sha256"]
+              assert s["tokenizer_sha256"]==p["tokenizer_sha256"]
+          print(f"verified LUMEN step={target} params={s['params']} data={s['data_sha256']}")
+          PY
+      - name: Publish WISE-LUMEN block 4/5 checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-wise-x5-block-4-20000-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/step_20000.pt
+            logs/lumen-block-4.log
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+      - name: Train WISE-LUMEN block 5/5 (20000 → 25000)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARGS=(
+              --steps 5000
+              --phase 1 --pilot-all-rows --v32-ze
+              --model-config config/lumen_wise_x5.json
+              --data corpus --tokenizer corpus/tokenizer.json
+              --batch 8 --max-len 128 --seed 42
+              --lr 1.5e-4 --warmup 100 --total-steps 25000
+              --runtime-profile config/lumen_cpu_profile.json
+              --threads 4 --interop-threads 2
+              --log-every 100 --checkpoint-every 1000
+              --parameter-check-every 100
+              --ckpt-dir checkpoints/lumen
+          )
+          ARGS+=(--resume "checkpoints/lumen/step_20000.pt")
+          python -m train.train "${ARGS[@]}" 2>&1 | tee "logs/lumen-block-5.log"
+          CURRENT="checkpoints/lumen/step_25000.pt"
+          test -s "$CURRENT"
+          python - "$CURRENT" "25000" "checkpoints/lumen/step_20000.pt" <<'PY'
+          import sys,torch,json
+          from pathlib import Path
+          path,target,previous=sys.argv[1],int(sys.argv[2]),sys.argv[3]
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          experiment=json.loads(Path("experiment_manifest.json").read_text())
+          assert s["data_sha256"]==experiment["corpus_data_sha256"]
+          assert s["tokenizer_sha256"]==experiment["tokenizer_sha256"]
+          assert int(s["step"])==target
+          assert s.get("optimizer") and s.get("scheduler") and s.get("rng")
+          assert int(s["params"])==12022016
+          assert s["architecture_id"]=="ronin_lumen_v3_3_neuroplasticity"
+          assert s["v32_ze"] is True
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          if previous:
+              p=torch.load(previous,map_location="cpu",weights_only=False)
+              assert int(p["step"])==target-5000
+              assert s["data_sha256"]==p["data_sha256"]
+              assert s["tokenizer_sha256"]==p["tokenizer_sha256"]
+          print(f"verified LUMEN step={target} params={s['params']} data={s['data_sha256']}")
+          PY
+      - name: Publish WISE-LUMEN block 5/5 checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-wise-x5-block-5-25000-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/step_25000.pt
+            logs/lumen-block-5.log
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
       - name: Upload WISE-LUMEN checkpoints and logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -241,16 +453,11 @@ jobs:
           Path("experiment_manifest.json").write_text(json.dumps(experiment,indent=2)+"\n",encoding="utf-8")
           print(f"Verified authorized V4: {total} rows; {len(m['shards'])} shards; data SHA {experiment['corpus_data_sha256']}")
           PY
-      - name: Train Transformer from step 0 in five 5k blocks
+      - name: Train Transformer block 1/5 (0 → 5000)
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p checkpoints/transformer logs
-          PREVIOUS=""
-          for BLOCK in 1 2 3 4 5; do
-            TARGET=$((BLOCK * 5000))
-            echo "===== Transformer block ${BLOCK}/5: $((TARGET-5000)) -> ${TARGET} ====="
-            ARGS=(
+          ARGS=(
               --steps 5000
               --model-dim 488 --heads 8 --ff-width 1464
               --data corpus --tokenizer corpus/tokenizer.json
@@ -258,12 +465,11 @@ jobs:
               --lr 1.5e-4 --warmup 100 --total-steps 25000
               --parameter-check-every 100 --checkpoint-every 1000
               --ckpt-dir checkpoints/transformer
-            )
-            if [ -n "$PREVIOUS" ]; then ARGS+=(--resume "$PREVIOUS"); fi
-            python -m train.transformer_baseline "${ARGS[@]}" 2>&1 | tee "logs/transformer-block-${BLOCK}.log"
-            CURRENT="checkpoints/transformer/step_${TARGET}.pt"
-            test -s "$CURRENT"
-            python - "$CURRENT" "$TARGET" "$PREVIOUS" <<'PY'
+          )
+          python -m train.transformer_baseline "${ARGS[@]}" 2>&1 | tee "logs/transformer-block-1.log"
+          CURRENT="checkpoints/transformer/step_5000.pt"
+          test -s "$CURRENT"
+          python - "$CURRENT" "5000" "" <<'PY'
           import sys,torch,json
           from pathlib import Path
           path,target,previous=sys.argv[1],int(sys.argv[2]),sys.argv[3]
@@ -272,17 +478,215 @@ jobs:
           assert s["data_sha256"]==experiment["corpus_data_sha256"]
           assert s["tokenizer_sha256"]==experiment["tokenizer_sha256"]
           assert int(s["step"])==target
+          assert s.get("optimizer") and s.get("scheduler") and s.get("rng")
           assert int(s["params"])==11611472
           assert s["architecture_id"]=="decoder_transformer_4l_d488_h8_ff1464_tied_v1"
           assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
           if previous:
               p=torch.load(previous,map_location="cpu",weights_only=False)
+              assert int(p["step"])==target-5000
               assert s["data_sha256"]==p["data_sha256"]
               assert s["tokenizer_sha256"]==p["tokenizer_sha256"]
           print(f"verified Transformer step={target} params={s['params']} data={s['data_sha256']}")
           PY
-            PREVIOUS="$CURRENT"
-          done
+      - name: Publish Transformer block 1/5 checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: transformer-wise-x5-block-1-5000-${{ github.run_id }}
+          path: |
+            checkpoints/transformer/step_5000.pt
+            logs/transformer-block-1.log
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+      - name: Train Transformer block 2/5 (5000 → 10000)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARGS=(
+              --steps 5000
+              --model-dim 488 --heads 8 --ff-width 1464
+              --data corpus --tokenizer corpus/tokenizer.json
+              --batch 8 --max-len 128 --seed 42 --threads 4 --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity
+              --lr 1.5e-4 --warmup 100 --total-steps 25000
+              --parameter-check-every 100 --checkpoint-every 1000
+              --ckpt-dir checkpoints/transformer
+          )
+          ARGS+=(--resume "checkpoints/transformer/step_5000.pt")
+          python -m train.transformer_baseline "${ARGS[@]}" 2>&1 | tee "logs/transformer-block-2.log"
+          CURRENT="checkpoints/transformer/step_10000.pt"
+          test -s "$CURRENT"
+          python - "$CURRENT" "10000" "checkpoints/transformer/step_5000.pt" <<'PY'
+          import sys,torch,json
+          from pathlib import Path
+          path,target,previous=sys.argv[1],int(sys.argv[2]),sys.argv[3]
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          experiment=json.loads(Path("experiment_manifest.json").read_text())
+          assert s["data_sha256"]==experiment["corpus_data_sha256"]
+          assert s["tokenizer_sha256"]==experiment["tokenizer_sha256"]
+          assert int(s["step"])==target
+          assert s.get("optimizer") and s.get("scheduler") and s.get("rng")
+          assert int(s["params"])==11611472
+          assert s["architecture_id"]=="decoder_transformer_4l_d488_h8_ff1464_tied_v1"
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          if previous:
+              p=torch.load(previous,map_location="cpu",weights_only=False)
+              assert int(p["step"])==target-5000
+              assert s["data_sha256"]==p["data_sha256"]
+              assert s["tokenizer_sha256"]==p["tokenizer_sha256"]
+          print(f"verified Transformer step={target} params={s['params']} data={s['data_sha256']}")
+          PY
+      - name: Publish Transformer block 2/5 checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: transformer-wise-x5-block-2-10000-${{ github.run_id }}
+          path: |
+            checkpoints/transformer/step_10000.pt
+            logs/transformer-block-2.log
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+      - name: Train Transformer block 3/5 (10000 → 15000)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARGS=(
+              --steps 5000
+              --model-dim 488 --heads 8 --ff-width 1464
+              --data corpus --tokenizer corpus/tokenizer.json
+              --batch 8 --max-len 128 --seed 42 --threads 4 --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity
+              --lr 1.5e-4 --warmup 100 --total-steps 25000
+              --parameter-check-every 100 --checkpoint-every 1000
+              --ckpt-dir checkpoints/transformer
+          )
+          ARGS+=(--resume "checkpoints/transformer/step_10000.pt")
+          python -m train.transformer_baseline "${ARGS[@]}" 2>&1 | tee "logs/transformer-block-3.log"
+          CURRENT="checkpoints/transformer/step_15000.pt"
+          test -s "$CURRENT"
+          python - "$CURRENT" "15000" "checkpoints/transformer/step_10000.pt" <<'PY'
+          import sys,torch,json
+          from pathlib import Path
+          path,target,previous=sys.argv[1],int(sys.argv[2]),sys.argv[3]
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          experiment=json.loads(Path("experiment_manifest.json").read_text())
+          assert s["data_sha256"]==experiment["corpus_data_sha256"]
+          assert s["tokenizer_sha256"]==experiment["tokenizer_sha256"]
+          assert int(s["step"])==target
+          assert s.get("optimizer") and s.get("scheduler") and s.get("rng")
+          assert int(s["params"])==11611472
+          assert s["architecture_id"]=="decoder_transformer_4l_d488_h8_ff1464_tied_v1"
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          if previous:
+              p=torch.load(previous,map_location="cpu",weights_only=False)
+              assert int(p["step"])==target-5000
+              assert s["data_sha256"]==p["data_sha256"]
+              assert s["tokenizer_sha256"]==p["tokenizer_sha256"]
+          print(f"verified Transformer step={target} params={s['params']} data={s['data_sha256']}")
+          PY
+      - name: Publish Transformer block 3/5 checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: transformer-wise-x5-block-3-15000-${{ github.run_id }}
+          path: |
+            checkpoints/transformer/step_15000.pt
+            logs/transformer-block-3.log
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+      - name: Train Transformer block 4/5 (15000 → 20000)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARGS=(
+              --steps 5000
+              --model-dim 488 --heads 8 --ff-width 1464
+              --data corpus --tokenizer corpus/tokenizer.json
+              --batch 8 --max-len 128 --seed 42 --threads 4 --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity
+              --lr 1.5e-4 --warmup 100 --total-steps 25000
+              --parameter-check-every 100 --checkpoint-every 1000
+              --ckpt-dir checkpoints/transformer
+          )
+          ARGS+=(--resume "checkpoints/transformer/step_15000.pt")
+          python -m train.transformer_baseline "${ARGS[@]}" 2>&1 | tee "logs/transformer-block-4.log"
+          CURRENT="checkpoints/transformer/step_20000.pt"
+          test -s "$CURRENT"
+          python - "$CURRENT" "20000" "checkpoints/transformer/step_15000.pt" <<'PY'
+          import sys,torch,json
+          from pathlib import Path
+          path,target,previous=sys.argv[1],int(sys.argv[2]),sys.argv[3]
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          experiment=json.loads(Path("experiment_manifest.json").read_text())
+          assert s["data_sha256"]==experiment["corpus_data_sha256"]
+          assert s["tokenizer_sha256"]==experiment["tokenizer_sha256"]
+          assert int(s["step"])==target
+          assert s.get("optimizer") and s.get("scheduler") and s.get("rng")
+          assert int(s["params"])==11611472
+          assert s["architecture_id"]=="decoder_transformer_4l_d488_h8_ff1464_tied_v1"
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          if previous:
+              p=torch.load(previous,map_location="cpu",weights_only=False)
+              assert int(p["step"])==target-5000
+              assert s["data_sha256"]==p["data_sha256"]
+              assert s["tokenizer_sha256"]==p["tokenizer_sha256"]
+          print(f"verified Transformer step={target} params={s['params']} data={s['data_sha256']}")
+          PY
+      - name: Publish Transformer block 4/5 checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: transformer-wise-x5-block-4-20000-${{ github.run_id }}
+          path: |
+            checkpoints/transformer/step_20000.pt
+            logs/transformer-block-4.log
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+      - name: Train Transformer block 5/5 (20000 → 25000)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARGS=(
+              --steps 5000
+              --model-dim 488 --heads 8 --ff-width 1464
+              --data corpus --tokenizer corpus/tokenizer.json
+              --batch 8 --max-len 128 --seed 42 --threads 4 --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity
+              --lr 1.5e-4 --warmup 100 --total-steps 25000
+              --parameter-check-every 100 --checkpoint-every 1000
+              --ckpt-dir checkpoints/transformer
+          )
+          ARGS+=(--resume "checkpoints/transformer/step_20000.pt")
+          python -m train.transformer_baseline "${ARGS[@]}" 2>&1 | tee "logs/transformer-block-5.log"
+          CURRENT="checkpoints/transformer/step_25000.pt"
+          test -s "$CURRENT"
+          python - "$CURRENT" "25000" "checkpoints/transformer/step_20000.pt" <<'PY'
+          import sys,torch,json
+          from pathlib import Path
+          path,target,previous=sys.argv[1],int(sys.argv[2]),sys.argv[3]
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          experiment=json.loads(Path("experiment_manifest.json").read_text())
+          assert s["data_sha256"]==experiment["corpus_data_sha256"]
+          assert s["tokenizer_sha256"]==experiment["tokenizer_sha256"]
+          assert int(s["step"])==target
+          assert s.get("optimizer") and s.get("scheduler") and s.get("rng")
+          assert int(s["params"])==11611472
+          assert s["architecture_id"]=="decoder_transformer_4l_d488_h8_ff1464_tied_v1"
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          if previous:
+              p=torch.load(previous,map_location="cpu",weights_only=False)
+              assert int(p["step"])==target-5000
+              assert s["data_sha256"]==p["data_sha256"]
+              assert s["tokenizer_sha256"]==p["tokenizer_sha256"]
+          print(f"verified Transformer step={target} params={s['params']} data={s['data_sha256']}")
+          PY
+      - name: Publish Transformer block 5/5 checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: transformer-wise-x5-block-5-25000-${{ github.run_id }}
+          path: |
+            checkpoints/transformer/step_25000.pt
+            logs/transformer-block-5.log
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
       - name: Upload Transformer checkpoints and logs
         if: always()
         uses: actions/upload-artifact@v4

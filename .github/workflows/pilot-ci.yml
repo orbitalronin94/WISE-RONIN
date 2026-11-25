@@ -100,3 +100,67 @@ jobs:
         run: |
           python -m compileall -q model train data scripts
           PYTHONPATH=. pytest -q tests
+
+      - name: Download exact step-750000 parent checkpoints and frozen inputs
+        uses: actions/download-artifact@v7
+        with:
+          name: paired-v32-inputs-500000-45480785478
+          path: resume-smoke/inputs
+          repository: ${{ github.repository }}
+          run-id: "45480785478"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download LUMEN step-750000 parent
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-step-750000-v32-750k-45480785478
+          path: resume-smoke/lumen-parent
+          repository: ${{ github.repository }}
+          run-id: "45480785478"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download Transformer step-750000 parent
+        uses: actions/download-artifact@v7
+        with:
+          name: transformer-step-750000-v32-750k-45480785478
+          path: resume-smoke/transformer-parent
+          repository: ${{ github.repository }}
+          run-id: "45480785478"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Smoke-test one-step scheduler restart from both 750k checkpoints
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          I=resume-smoke/inputs
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.train \\
+            --steps 1 --resume resume-smoke/lumen-parent/checkpoint/step_750000.pt \\
+            --phase 1 --pilot-all-rows --data "$I/data/spanish-v3-2.005-train.jsonl" \\
+            --tokenizer "$I/artifacts/tokenizer.json" --token-cache "$I/data/spanish-v3-2.005-token-cache.pt" \\
+            --batch 8 --max-len 128 --seed 42 --runtime-profile "$I/config/lumen-runtime-profile.json" \\
+            --lr 3e-5 --warmup 100 --total-steps 1000000 --scheduler-transition --restart-scheduler-transition \\
+            --transition-start 750000 --transition-end 1000000 --warmup-transition 100 \\
+            --transition-plateau-steps 0 --transition-min-lr-ratio 0.5 \\
+            --log-every 1 --checkpoint-every 1 --recovery-checkpoint-every 1 --parameter-check-every 1 \\
+            --threads 4 --interop-threads 2 --lazy-backward --surprise-gate-loss 1.8 \\
+            --ckpt-dir resume-smoke/lumen-output
+          OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.transformer_baseline \\
+            --steps 1 --resume resume-smoke/transformer-parent/checkpoint/step_750000.pt \\
+            --data "$I/data/spanish-v3-2.005-train.jsonl" --tokenizer "$I/artifacts/tokenizer.json" \\
+            --token-cache "$I/data/spanish-v3-2.005-token-cache.pt" --batch 8 --max-len 128 --seed 42 --threads 4 \\
+            --lr 3e-5 --warmup 100 --total-steps 1000000 --scheduler-transition --restart-scheduler-transition \\
+            --transition-start 750000 --transition-end 1000000 --warmup-transition 100 \\
+            --transition-plateau-steps 0 --transition-min-lr-ratio 0.5 \\
+            --parameter-check-every 1 --checkpoint-every 1 --ckpt-dir resume-smoke/transformer-output
+          python - <<'PY'
+          import hashlib, torch
+          expected_data="0f7db9d6c4264f68fd6a12a9fe5bfa708e4fc30c1df176de5a4f53081bfe79aa"
+          expected_tok="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          for model,arch in (("lumen","ronin_lumen_v3_3_neuroplasticity"),("transformer","decoder_transformer_4l_d192_h4_ff576_tied_v1")):
+            p=f"resume-smoke/{model}-output/step_750001.pt"
+            s=torch.load(p,map_location="cpu",weights_only=False)
+            t=s["scheduler_transition"]
+            assert int(s["step"])==750001 and s["architecture_id"]==arch
+            assert s.get("optimizer") and s.get("scheduler") and s.get("rng")
+            assert s["data_sha256"]==expected_data and s["tokenizer_sha256"]==expected_tok
+            assert int(t["start_step"])==750000 and int(t["end_step"])==1000000 and int(t["current_step"]) in (750001,750002),t
+            print(model,"exact-resume scheduler smoke passed",t)
+          PY

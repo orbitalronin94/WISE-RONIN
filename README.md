@@ -308,7 +308,7 @@ Los dos checkpoints step 500.000 se han validado como padres de la siguiente cam
 - **LUMEN:** perfil aprobado check 0, lazy-backward y surprise-gate; el Transformer sigue como baseline sin esos mecanismos.
 - **Evaluación:** holdout fijo de 2.431 preguntas, sin uso durante entrenamiento.
 
-El corpus v4 no participa: su auditoría independiente detectó una fila sin source_document_id y el gate de autorización no se superó.
+El corpus v4 no participa en esta continuación. La incidencia de `source_document_id` fue corregida en los builders; la congelación actual [run 45576060105](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45576060105) está revalidando merge global, hashes, loader de producción y autorización. Hasta que termine con éxito, V4 sigue fuera del entrenamiento.
 
 
 ## Holdout emparejado en step 710.000 — inversión de la ventaja (25-11-2026)
@@ -322,3 +322,19 @@ El análisis pregunta a pregunta arroja 498 aciertos compartidos, 270 exclusivos
 También se ejecutó el holdout abierto informal de **100 preguntas**, sin opciones ni respuestas de referencia, incluyendo «¿Quién eres?». Ambos modelos recibieron exactamente los mismos prompts y generaron por greedy argmax, máximo 96 tokens. El resultado cualitativo aún muestra bucles: «la que la que» aparece en 41 respuestas de LUMEN; «Contexto documental» en 20. En Transformer, «en Python» aparece en 22 y «música» en 10. Terminaron por EOS 82 respuestas de LUMEN y 83 del Transformer. No es una prueba de accuracy: expone que la generación libre sigue siendo frágil en ambos.
 
 Conclusión provisional: LUMEN ha recuperado la ventaja en el holdout de elección múltiple y mejora ligeramente la NLL, pero el margen es pequeño y la prueba pareada no lo confirma como diferencia robusta. El holdout abierto impide confundir ese avance con una solución del problema de repetición o de identidad. Se mantiene el Transformer como control y se conserva el protocolo congelado.
+
+
+## Continuación emparejada 750k→1M (en curso)
+
+La campaña [45577355018](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45577355018) continúa LUMEN y Transformer desde sus checkpoints step 750.000, con 50 bloques secuenciales de 5.000 pasos por modelo. Las cadenas avanzan en paralelo y cada bloque publica su checkpoint recuperable, wall-clock y logs.
+
+- **Padres:** ambos checkpoints step 750.000 del run [45480785478](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45480785478); pesos, momentos AdamW, scheduler y RNG verificados.
+- **Datos:** v3.2.005, 279.613 filas; SHA-256 `0f7db9d6c4264f68fd6a12a9fe5bfa708e4fc30c1df176de5a4f53081bfe79aa`.
+- **Tokenizer:** SHA-256 `d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe`.
+- **Holdout:** 2.431 filas, SHA-256 `e21ae7e292d603f1b8073d8114572c92fb0c6448bfaed9066413ddce09e5a359`; se evalúa solo al completar ambos modelos.
+- **Scheduler:** transición nueva 750k→1M; LR actual del padre 1,5e-5, LR objetivo 3e-5, warmup 100 y suelo del 50%. Se preservan pesos y momentos del optimizador.
+- **CPU:** batch 8, contexto 128, seed 42 y cuatro hilos; LUMEN mantiene lazy-backward y el perfil aprobado.
+
+## Pareja x5 desde cero — preparada, pendiente de V4
+
+WISE-LUMEN x5 (12.022.016 parámetros) y Transformer x5 (11.611.472) han superado validación de paridad y smoke test real de checkpoint/resume con datos sintéticos. Cada uno está configurado para 25.000 pasos en cinco bloques de 5.000, seed 42, batch 8, contexto 128 y holdout compartido. No se lanzará el entrenamiento hasta disponer del artefacto V4 congelado con `training_authorized=true`.

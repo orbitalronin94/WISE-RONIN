@@ -45,6 +45,7 @@ jobs:
           python -m compileall -q model train scripts
           PYTHONPATH=. pytest -q tests
           PYTHONPATH=. python scripts/validate_lumen_wise_x5.py
+          python -m train.transformer_baseline --help >/dev/null
       - name: Record frozen architecture revision
         run: |
           echo "Architecture commit: $(git rev-parse HEAD)"

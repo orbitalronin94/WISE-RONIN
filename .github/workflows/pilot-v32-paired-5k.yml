@@ -133,6 +133,7 @@ jobs:
           echo "${EXPECTED_TOKENIZER_SHA256}  inputs/artifacts/tokenizer.json" | sha256sum -c -
       - name: Train LUMEN 0 → 5000
         run: |
+          set -euo pipefail
           mkdir -p checkpoints/lumen logs
           python -m train.train \
             --steps 5000 --phase 1 --pilot-all-rows --v32-ze \
@@ -199,6 +200,7 @@ jobs:
           echo "${EXPECTED_TOKENIZER_SHA256}  inputs/artifacts/tokenizer.json" | sha256sum -c -
       - name: Train Transformer 0 → 5000
         run: |
+          set -euo pipefail
           mkdir -p checkpoints/transformer logs
           python -m train.transformer_baseline \
             --steps 5000 --data inputs/data/spanish-v3-2.005-train.jsonl \

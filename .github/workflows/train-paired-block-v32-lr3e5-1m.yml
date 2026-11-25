@@ -56,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$((PARENT_STEP + STEPS))" -eq "$TARGET_STEP"
-          test "$STEPS" -eq 10000
+          test "$STEPS" -eq 5000
           CKPT="previous/checkpoint/step_${PARENT_STEP}.pt"
           test -s "$CKPT"
           test -s inputs/data/spanish-v3-2.005-train.jsonl
@@ -128,7 +128,7 @@ jobs:
           arch="ronin_lumen_v3_3_neuroplasticity" if model=="lumen" else "decoder_transformer_4l_d192_h4_ff576_tied_v1"
           t=s["scheduler_transition"]
           assert int(s["step"])==step and s["architecture_id"]==arch
-          assert s.get("optimizer") and s.get("rng") and s.get("data_sha256")==data_sha and s.get("tokenizer_sha256")==tok_sha
+          assert s.get("optimizer") and s.get("rng") and s.get("scheduler") and s.get("data_sha256")==data_sha and s.get("tokenizer_sha256")==tok_sha
           assert abs(float(s["training_config"]["lr"])-lr)<1e-12
           assert int(t["start_step"])==750000 and int(t["end_step"])==1000000 and int(t["current_step"]) in (step,step+1),t
           print("Output validated:",model,step,t)

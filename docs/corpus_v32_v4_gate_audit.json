@@ -1,0 +1,101 @@
+{
+  "schema": "wise-ronin-corpus-v4-audit-v1",
+  "input": "spanish-v3-2.005-train.jsonl",
+  "input_sha256": "0f7db9d6c4264f68fd6a12a9fe5bfa708e4fc30c1df176de5a4f53081bfe79aa",
+  "rows": 279613,
+  "uncompressed_jsonl_bytes": 444769335,
+  "language_rows": {
+    "es": 279613
+  },
+  "approx_characters": 194284508,
+  "average_characters_per_row": 694.83,
+  "median_characters_per_row": 232,
+  "personality_rows": 72734,
+  "personality_share": 0.260124,
+  "personality_sources": {
+    "Kukedlc/Personas_Spanish-40k": 35997,
+    "BSC-LT/m-personas": 35487,
+    "StrataSynth/stratasynth-personas-spain": 1250
+  },
+  "raw_text_pretraining_rows": 178090,
+  "attractor_gate": {
+    "schema": "lumen-attractor-blocklist-v1",
+    "terms": [
+      "contexto documental",
+      "democracia",
+      "música",
+      "deformación",
+      "latinoamericana",
+      "estados miembros",
+      "unión europea"
+    ],
+    "rows_with_any_term": 16070,
+    "share": 0.057472,
+    "rows_without_terms": 263543,
+    "rows_without_terms_personality_rows": 67875,
+    "personality_share_after_simulated_gate": 0.257548,
+    "matched_rows_by_term": {
+      "contexto documental": 9092,
+      "música": 4530,
+      "unión europea": 2269,
+      "estados miembros": 1979,
+      "latinoamericana": 851,
+      "democracia": 541,
+      "deformación": 408
+    }
+  },
+  "growth_targets": {
+    "base_rows": 279613,
+    "minimum_10x_rows": 2796130,
+    "minimum_10x_additional_rows": 2516517,
+    "preferred_personality_share": 0.25,
+    "minimum_10x_additional_personality_rows": 626299,
+    "aspirational_100x_rows": 27961300,
+    "aspirational_100x_additional_rows": 27681687,
+    "aspirational_100x_additional_personality_rows": 6917591
+  },
+  "training_authorized": false,
+  "notes": [
+    "Historical rows are not deleted; the attractor gate is for new admissions.",
+    "The separate v3.1 candidate artifact of approximately 3.15 GB is not reconciled to this v3.2 lineage and must not be merged blindly."
+  ],
+  "v31_candidate": {
+    "build_run_id": 45155150980,
+    "artifact_bytes": 3150120091,
+    "rows": 16445885,
+    "exact_bpe_tokens": 2014093292,
+    "train_sha256": "d9836bf4ab1684444757e8b5221dc8d3ad34eb54d501baed103002b96e9d46be",
+    "base_v3_rows": 9933007,
+    "added_rows": {
+      "AIML-TUDA/SLR-Bench-Spanish": 2700,
+      "SINAI/ALIA-es-cultural-heritage": 6550199
+    },
+    "status": "BUILT_NEEDS_FINAL_AUDIT",
+    "training_authorized": false,
+    "unresolved_gates": {
+      "confirmed_near_duplicates": 19740,
+      "near_duplicate_queries_over_1000_candidates": 157874,
+      "possible_secret_marker_alerts": 41,
+      "literature_documents_missing_fragment_level_source_linkage": 608,
+      "repeated_completions_vs_v2": 63,
+      "exact_pair_duplicates_vs_v2": 0,
+      "exact_eval_contamination_hits": 0
+    },
+    "notes": [
+      "This candidate is not the same lineage as current v3.2.005, whose declared v3.1 base is 197,788 rows.",
+      "ALIA contribution is CC-BY-SA-4.0 and requires separate compatibility and provenance review.",
+      "50,000 verifiable_personality records derive from 40 fact cards and seven institutional URLs; 119,026 synthetic curricula derive from 24x10 reviewed seed cases."
+    ],
+    "raw_token_ratio_vs_v32": 90.56022583073468,
+    "token_count_comparison_note": "The 2,014,093,292 candidate count is pre-truncation. The current training loader truncates sequences to max_len=128 (127 IDs plus EOS). The v3.1 ALIA builder emitted 180-token chunks, so build a max_len=128 cache before claiming an effective training-token multiplier."
+  },
+  "current_token_cache": {
+    "format": "ronin_token_cache_v1",
+    "rows": 279613,
+    "max_len": 128,
+    "tokenizer_sha256": "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe",
+    "effective_token_ids_in_cache_including_eos_excluding_padding": 22240374,
+    "non_eos_token_ids": 21960761,
+    "data_sha256": "0f7db9d6c4264f68fd6a12a9fe5bfa708e4fc30c1df176de5a4f53081bfe79aa"
+  }
+}

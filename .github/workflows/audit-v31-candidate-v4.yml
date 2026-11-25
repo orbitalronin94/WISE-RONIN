@@ -1,0 +1,73 @@
+name: Audit v3.1 candidate for corpus v4
+
+on:
+  push:
+    branches:
+      - corpus/v4-diversity-expansion-audit
+    paths:
+      - .github/workflows/audit-v31-candidate-v4.yml
+      - scripts/audit_corpus_v4_gate.py
+      - data/lumen_attractor_blocklist_v1.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: corpus-v4-v31-candidate-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      PYTHONUNBUFFERED: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Download frozen v3.1 candidate artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: lumen-ronin-spanish-corpus-v3-1-45155150980
+          path: inputs/v31
+          repository: orbitalronin94/WISE-RONIN
+          run-id: 45155150980
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify candidate inputs
+        run: |
+          set -euo pipefail
+          test -s inputs/v31/train.jsonl
+          test -s inputs/v31/manifest.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path("inputs/v31/manifest.json").read_text())
+          assert m["status"] == "BUILT_NEEDS_FINAL_AUDIT"
+          assert m["authorization"]["training_authorized"] is False
+          assert m["train_rows"] == 16445885
+          assert m["train_token_count_exact"] == 2014093292
+          print("Candidate manifest verified; audit only, no training.")
+          PY
+      - name: Test attractor gate
+        run: python -m unittest discover -s tests -p "test_corpus_v4_gate.py" -v
+      - name: Scan complete candidate against LUMEN attractors
+        run: |
+          mkdir -p audit-output
+          python scripts/audit_corpus_v4_gate.py \
+            --input inputs/v31/train.jsonl \
+            --report audit-output/v31-candidate-attractor-audit.json \
+            --blocklist data/lumen_attractor_blocklist_v1.json \
+            --minimum-personality-share 0.20
+      - name: Upload audit report
+        uses: actions/upload-artifact@v6
+        with:
+          name: v31-candidate-attractor-audit-${{ github.run_id }}
+          path: audit-output/v31-candidate-attractor-audit.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1

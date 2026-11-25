@@ -51,7 +51,7 @@ Las diferencias propias de cada arquitectura (JEPA, memoria, ZE y sueño en LUME
 
 ## Primera validación ejecutable
 
-En CI, el validador de esta rama instanció ambos modelos, contó sus parámetros reales y completó forward/backward sintético en CPU. Resultados: WISE-LUMEN **12.022.016 parámetros** frente a su referencia de 2.396.660 (**5,016×**); Transformer **11.611.472** frente a 2.295.168 (**5,059×**). La diferencia de tamaño entre los dos candidatos es **3,41%**. La suite completa de esta revisión pasó **137 pruebas en 5,21 s**. Esto valida la construcción y el paso numérico sintético, no el rendimiento de entrenamiento ni la calidad; esos se medirán con Corpus V4 y el holdout congelados.
+En CI, el validador de esta rama instanció ambos modelos, contó sus parámetros reales y completó forward/backward sintético en CPU. Resultados: WISE-LUMEN **12.022.016 parámetros** frente a su referencia de 2.396.660 (**5,016×**); Transformer **11.611.472** frente a 2.295.168 (**5,059×**). La diferencia de tamaño entre los dos candidatos es **3,41%**. La suite completa de esta revisión pasó **140 pruebas en 5,99 s**, incluyendo la regresión del cargador lazy indexado de shards. Esto valida la construcción y el paso numérico sintético, no el rendimiento de entrenamiento ni la calidad; esos se medirán con Corpus V4 y el holdout congelados.
 
 
 ### Corrección de inicialización del Transformer

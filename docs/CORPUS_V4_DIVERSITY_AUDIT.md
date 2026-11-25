@@ -161,3 +161,7 @@ El gate del merge sube a 175.000 filas mínimas de personalidad/diálogo y conse
 La ejecución antigua [45559065309](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45559065309), iniciada con la configuración previa, quedó cancelada y no produjo artefactos. La nueva ejecución [45562267530](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45562267530) falló deliberadamente en el control inicial: detectó que el último candidato OpenCulture seguía en curso y se negó a reutilizar un artefacto anterior. No descargó candidatos, no hizo merge y no autorizó entrenamiento.
 
 Se corrigió además el orden final: el smoke test del cargador de producción debe pasar mientras el manifiesto sigue con `training_authorized=false`; solo después se cambia a `true`. Esta corrección está en el workflow de la rama. La próxima congelación se lanzará cuando ambos builders actuales hayan terminado y sus manifiestos se hayan auditado.
+
+### Validación de código
+
+El workflow de comprobaciones generales [45561843473](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45561843473), sobre el código de construcción y merge de la revisión 2f325bd, terminó correctamente: **159 pruebas pasaron en 5,72 s**. Esta validación cubre el conjunto de tests del repositorio; no sustituye la verificación de los artefactos de los dos builders ni el smoke test del corpus final.

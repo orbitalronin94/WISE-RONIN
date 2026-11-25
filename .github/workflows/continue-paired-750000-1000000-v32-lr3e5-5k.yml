@@ -1196,3 +1196,5 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
+
+# Retrigger after installing the reusable 5k block workflow on main.

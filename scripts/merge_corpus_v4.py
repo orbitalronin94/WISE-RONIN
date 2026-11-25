@@ -173,7 +173,7 @@ def main():
     parser.add_argument("--chunk-tokens", type=int, default=126)
     parser.add_argument("--max-shard-bytes", type=int, default=100 * 1024 * 1024)
     parser.add_argument("--minimum-raw-text-rows", type=int, default=1_800_000)
-    parser.add_argument("--minimum-personality-dialogue-rows", type=int, default=160_000)
+    parser.add_argument("--minimum-personality-dialogue-rows", type=int, default=175_000)
     parser.add_argument("--minimum-personality-share", type=float, default=0.10)
     parser.add_argument("--maximum-personality-share", type=float, default=0.15)
     args = parser.parse_args()

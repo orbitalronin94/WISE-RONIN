@@ -13,7 +13,7 @@ from pathlib import Path
 
 import torch
 
-from model.config import CONFIG
+from model.config import CONFIG, LumenConfig
 from model.lumen import RoninLumen
 from model.plasticity import PlasticityProfile
 from train.curriculum import datos_para_fase, sample_phase2
@@ -283,6 +283,7 @@ def main():
     parser.add_argument("--compile-mode", choices=("default", "reduce-overhead"),
                         help="Compile only non-diagnostic forward passes; checkpoints remain eager-model state")
     parser.add_argument("--phase", type=int, choices=(1, 2, 3), required=True)
+    parser.add_argument("--model-config", help="JSON LumenConfig override for isolated architecture experiments")
     parser.add_argument("--resume")
     parser.add_argument("--data", default="data/train_25k.jsonl")
     parser.add_argument("--tokenizer", default="data/tokenizer/tokenizer.json")
@@ -323,6 +324,17 @@ def main():
     parser.add_argument("--dummy-m1", action="store_true",
                         help="Explicit synthetic smoke test only; never a training dataset")
     args = parser.parse_args()
+
+    global CONFIG
+    if args.model_config:
+        model_config_data = json.loads(Path(args.model_config).read_text(encoding="utf-8"))
+        CONFIG = LumenConfig(**model_config_data)
+        LOG.info("model_config loaded: %s", args.model_config)
+        args.lr = CONFIG.learning_rate
+        args.batch = CONFIG.batch_size
+        args.warmup = CONFIG.warmup_steps
+        args.total_steps = CONFIG.total_steps
+        args.seed = CONFIG.seed
 
     if args.steps < 1 or (args.steps > 10000 and not args.dummy_m1):
         parser.error("--steps must be between 1 and 10000")
@@ -386,7 +398,7 @@ def main():
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     device = torch.device("cpu")
-    model = RoninLumen(v32_ze=args.v32_ze).to(device)
+    model = RoninLumen(config=CONFIG, v32_ze=args.v32_ze).to(device)
     plasticity_profile = PlasticityProfile.from_config(runtime_profile.get("plasticity", {}))
     for layer in model.delta_layers:
         layer.plasticity_profile = plasticity_profile

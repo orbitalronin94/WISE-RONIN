@@ -5,19 +5,15 @@ on:
     inputs:
       freeze_run_id:
         description: "Successful freeze-corpus-v4 workflow run ID"
-        required: false
+        required: true
         type: string
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/train-lumen-wise-x5.yml
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: lumen-wise-x5-paired-${{ github.event.inputs.freeze_run_id || 'SET_FREEZE_RUN_ID_AFTER_V4' }}
+  group: lumen-wise-x5-paired-${{ inputs.freeze_run_id }}
   cancel-in-progress: false
 
 env:
@@ -26,7 +22,7 @@ env:
   OMP_DYNAMIC: "FALSE"
   MKL_DYNAMIC: "FALSE"
   OMP_WAIT_POLICY: "PASSIVE"
-  FREEZE_RUN_ID: ${{ github.event.inputs.freeze_run_id || 'SET_FREEZE_RUN_ID_AFTER_V4' }}
+  FREEZE_RUN_ID: ${{ inputs.freeze_run_id }}
   PYTHONUNBUFFERED: "1"
   EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
 

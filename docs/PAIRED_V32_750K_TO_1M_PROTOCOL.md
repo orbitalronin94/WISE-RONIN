@@ -9,7 +9,7 @@ Los dos modelos continúan desde los artefactos step-750.000 del run [4548078547
 | LUMEN | ronin_lumen_v3_3_neuroplasticity | 2.281.841 | step_750000.pt |
 | Transformer | decoder_transformer_4l_d192_h4_ff576_tied_v1 | 2.295.168 | step_750000.pt |
 
-El workflow vuelve a comprobar step, arquitectura, parámetros, optimizer, scheduler, RNG, perfil de CPU y hashes antes de iniciar cualquier bloque.
+El workflow vuelve a comprobar step, arquitectura, optimizer, scheduler, RNG, perfil de CPU y hashes antes de iniciar cualquier bloque; además comprueba los hashes del corpus, tokenizer y holdout.
 
 ## Datos y evaluación
 
@@ -35,7 +35,7 @@ Resultado de referencia en step 750.000, evaluado con el mismo holdout:
 - AdamW, momentos, pesos, RNG y estado del modelo se restauran desde el padre.
 - Batch 8, contexto 128, seed 42.
 - CPU: 4 hilos intra-op; LUMEN usa 2 inter-op y su perfil fijado; Transformer mantiene el perfil de ejecución del baseline.
-- 25 bloques secuenciales de 10.000 pasos por modelo. Cada bloque publica un checkpoint final; los checkpoints de recuperación se guardan cada 100 pasos en LUMEN.
+- 50 bloques secuenciales de 5.000 pasos por modelo. Cada bloque publica un checkpoint final, wall-clock y logs; LUMEN conserva además checkpoints de recuperación cada 100 pasos. Cada bloque publica un checkpoint final; los checkpoints de recuperación se guardan cada 100 pasos en LUMEN.
 - LUMEN y Transformer avanzan en cadenas independientes y pueden ejecutarse en paralelo.
 - Al terminar ambos, el evaluador compara los dos step-1.000.000 contra el mismo holdout sellado.
 

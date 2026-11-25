@@ -112,7 +112,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "model": model.state_dict(),
         "architecture_id": "ronin_lumen_v3_3_neuroplasticity",
         "architecture": {
-            "model": "RoninLumen", "config": CONFIG.to_dict(),
+            "model": "RoninLumen", "config": model.config.to_dict(),
             "v32_ze": args.v32_ze, "pilot_all_rows": args.pilot_all_rows,
             "no_sleep": args.no_sleep, "no_jepa": args.no_jepa,
             "no_rep": args.no_rep,
@@ -140,7 +140,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args, data_hash, lo
         "step": step,
         "phase": args.phase,
         "seed": args.seed,
-        "config": CONFIG.to_dict(),
+        "config": model.config.to_dict(),
         "data_sha256": data_hash,
         "data_lineage": list(getattr(args, "data_lineage", [])),
         "rng": capture_rng(local_rng),

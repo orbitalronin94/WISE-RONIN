@@ -1,0 +1,208 @@
+name: LUMEN-WISE x5 — isolated 1000-step train
+
+on:
+  push:
+    branches:
+      - lumen-x5-isolated-1000c
+    paths:
+      - .github/workflows/lumen-x5-isolated-1000c.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-x5-isolated-1000c
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+  EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+  FREEZE_RUN_ID: "45580013610"
+
+jobs:
+  lumen-1000:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download frozen V4 corpus
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-corpus-v4-frozen-45580013610
+          path: corpus
+          repository: orbitalronin94/WISE-RONIN
+          run-id: 45580013610
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify frozen V4 metadata, tokenizer and all shards
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path("corpus")
+          m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          expected="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          assert m.get("version")=="v4.0.0", m.get("version")
+          assert m.get("status")=="FROZEN_TRAINABLE", m.get("status")
+          assert m.get("training_authorized") is True
+          assert m.get("tokenizer_sha256")==expected
+          assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest()==expected
+          shards=m.get("shards",[])
+          assert len(shards)==24, len(shards)
+          total=0
+          for shard in shards:
+              p=root/shard["file"]
+              assert p.is_file() and p.stat().st_size==int(shard["bytes"]), shard["file"]
+              h=hashlib.sha256()
+              with p.open("rb") as f:
+                  for block in iter(lambda:f.read(1024*1024),b""):
+                      h.update(block)
+              assert h.hexdigest()==shard["sha256"], shard["file"]
+              total+=int(shard["rows"])
+          assert total==int(m["total_rows"])
+          print(f"V4_METADATA_OK rows={total} shards={len(shards)} tokenizer_sha256={expected}")
+          PY
+
+      - name: Install CPU training dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "numpy>=1.26,<3" "tokenizers>=0.20,<1.0" "tqdm>=4.66,<5"
+
+      - name: Verify trainer, corpus index and tokenizer compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m train.train --help >/dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from train.dataset import load_jsonl, BPETokenizer
+          root=Path("corpus")
+          m=json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+          rows,digest=load_jsonl(root)
+          assert len(rows)==int(m["total_rows"])
+          tok=BPETokenizer(root/"tokenizer.json")
+          assert tok.tokenizer.get_vocab_size()==4096
+          assert tok.tokenizer.token_to_id("[PAD]")==0
+          assert tok.tokenizer.token_to_id("[EOS]") is not None
+          print(f"LUMEN_INPUT_OK rows={len(rows)} data_sha256={digest}")
+          rows.close()
+          PY
+
+      - name: Record runner resource baseline
+        shell: bash
+        run: |
+          mkdir -p logs checkpoints/lumen
+          {
+            date -u
+            uname -a
+            nproc
+            free -h
+            df -h .
+            cat /proc/meminfo
+            ulimit -a
+          } | tee logs/runner-baseline.txt
+
+      - name: Create explicit 1000-step model config
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          source=Path("config/lumen_wise_x5.json")
+          config=json.loads(source.read_text(encoding="utf-8"))
+          assert config["vocab_size"]==4096
+          assert config["model_dim"]==672
+          assert config["delta_layers"]==4
+          config["total_steps"]=1000
+          config["warmup_steps"]=100
+          target=Path("config/lumen_wise_x5_smoke_1000.json")
+          target.write_text(json.dumps(config,indent=2)+"\n",encoding="utf-8")
+          print("SMOKE_CONFIG_OK total_steps=1000 warmup=100; architecture unchanged")
+          PY
+
+      - name: Train LUMEN for exactly 1000 steps with live RSS telemetry
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            exec python -m train.train --steps 1000 --log-every 100 \
+              --data corpus --tokenizer corpus/tokenizer.json \
+              --batch 8 --max-len 128 --seed 42 --lr 1.5e-4 \
+              --warmup 100 --total-steps 1000 --checkpoint-every 1000 \
+              --parameter-check-every 100 --threads 4 --interop-threads 2 \
+              --ckpt-dir checkpoints/lumen --phase 1 --pilot-all-rows --v32-ze \
+              --model-config config/lumen_wise_x5_smoke_1000.json \
+              --runtime-profile config/lumen_cpu_profile.json \
+              --recovery-checkpoint-every 100
+          ) > >(tee logs/lumen-0-1000.log) 2>&1 &
+          TRAIN_PID=$!
+          echo "TRAIN_PID=$TRAIN_PID" | tee logs/train-process.txt
+          while kill -0 "$TRAIN_PID" 2>/dev/null; do
+            {
+              printf '\n--- %s ---\n' "$(date -u +%FT%TZ)"
+              ps -o pid,ppid,%cpu,%mem,rss,vsz,etime,stat,cmd -p "$TRAIN_PID" || true
+              grep -E '^(VmPeak|VmSize|VmRSS|VmHWM|Threads):' "/proc/$TRAIN_PID/status" 2>/dev/null || true
+              grep -E '^(MemAvailable|MemFree|SwapFree):' /proc/meminfo || true
+            } >> logs/memory-telemetry.log
+            sleep 10
+          done
+          set +e
+          wait "$TRAIN_PID"
+          STATUS=$?
+          set -e
+          echo "TRAIN_EXIT_CODE=$STATUS" | tee -a logs/train-process.txt
+          exit "$STATUS"
+
+      - name: Verify LUMEN step-1000 checkpoint and exact config
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import torch
+          p="checkpoints/lumen/step_1000.pt"
+          s=torch.load(p,map_location="cpu",weights_only=False)
+          assert int(s["step"])==1000
+          assert s["architecture_id"]=="ronin_lumen_v3_3_neuroplasticity"
+          assert int(s["params"])==12022016
+          assert s["v32_ze"] is True and s["pilot_all_rows"] is True
+          assert int(s["seed"])==42
+          assert int(s["training_config"]["total_steps"])==1000
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          for key in ("model","optimizer","scheduler","rng","data_sha256"):
+              assert s.get(key) is not None, key
+          print("LUMEN_CHECKPOINT_OK step=1000 params=12022016 scheduler_horizon=1000")
+          PY
+
+      - name: Publish checkpoint, logs and resource telemetry
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-x5-isolated-1000c
+          path: |
+            checkpoints/lumen/
+            logs/
+            config/lumen_wise_x5_smoke_1000.json
+          if-no-files-found: warn
+          retention-days: 30
+          compression-level: 1

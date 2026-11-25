@@ -1,0 +1,124 @@
+name: LUMEN — 100-step backward-compute tournament
+
+on:
+  push:
+    branches:
+      - benchmark/backward-compute-100steps
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-backward-compute-100steps-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tournament:
+    name: "${{ matrix.candidate }} — paired 100-step run"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        candidate:
+          - 01_surprise_gate
+          - 02_topk10
+          - 03_wta8
+          - 04_stopgrad2
+          - 05_lowrank8
+          - 06_lazy_backward
+          - 07_homeostatic_norm
+          - 08_sleep_replay20
+    env:
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      OMP_DYNAMIC: "FALSE"
+      MKL_DYNAMIC: "FALSE"
+      OMP_WAIT_POLICY: "PASSIVE"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU training runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+      - name: Download frozen paired training inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: paired-inputs-45273897576
+          path: inputs
+          repository: ${{ github.repository }}
+          run-id: 45273897576
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download exact LUMEN step-389700 parent
+        uses: actions/download-artifact@v4
+        with:
+          name: lumen-step-389700-45273897576
+          path: parent
+          repository: ${{ github.repository }}
+          run-id: 45273897576
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve and verify immutable inputs
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import torch
+          candidates = [
+              Path("parent/checkpoint/step_389700.pt"),
+              Path("parent/checkpoints/lumen/step_389700.pt"),
+              Path("parent/checkpoints/lumen/latest_good.pt"),
+          ]
+          checkpoint = next((p for p in candidates if p.is_file()), None)
+          if checkpoint is None:
+              files = [str(p) for p in Path("parent").rglob("*.pt")]
+              raise SystemExit(f"step-389700 checkpoint not found; available={files}")
+          state = torch.load(checkpoint, map_location="cpu", weights_only=False)
+          assert int(state["step"]) == 389700, state.get("step")
+          assert state["architecture_id"] == "ronin_lumen_v3_3_neuroplasticity"
+          assert state.get("model") and state.get("optimizer")
+          assert state.get("rng") and state.get("scheduler_transition")
+          print(f"CHECKPOINT={checkpoint}")
+          Path("checkpoint-path.txt").write_text(str(checkpoint) + "\n")
+          for p in [
+              Path("inputs/data/spanish-v2-plus-personality-250k.jsonl"),
+              Path("inputs/data/spanish-v2-plus-personality-token-cache.pt"),
+              Path("inputs/artifacts/tokenizer.json"),
+          ]:
+              assert p.is_file() and p.stat().st_size > 0, p
+          PY
+      - name: Compile benchmark harness
+        run: |
+          python -m py_compile scripts/benchmark_backward_compute.py
+      - name: Run matched control and candidate (100 steps each)
+        env:
+          CANDIDATE: ${{ matrix.candidate }}
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          CHECKPOINT="$(cat checkpoint-path.txt)"
+          mkdir -p results
+          python scripts/benchmark_backward_compute.py \
+            --candidate "$CANDIDATE" \
+            --inputs inputs \
+            --checkpoint "$CHECKPOINT" \
+            --steps 100 \
+            --seed 42 \
+            --output "results/$CANDIDATE.json" \
+            2>&1 | tee "results-$CANDIDATE.log"
+      - name: Publish comparison and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-backward-${{ matrix.candidate }}-${{ github.run_id }}
+          path: |
+            results/
+            results-${{ matrix.candidate }}.log
+          if-no-files-found: warn
+          retention-days: 30

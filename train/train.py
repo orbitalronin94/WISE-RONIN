@@ -271,6 +271,7 @@ def main():
     parser = argparse.ArgumentParser(description="RONIN-LUMEN CPU training")
     parser.add_argument("--steps", type=int, default=500)
     parser.add_argument("--log-every", type=int, default=100, help="Training metric log interval")
+    parser.add_argument("--affect-every", type=int, default=100, help="Glucose/pain/pleasure/eligibility update interval, independent of metric logging")
     parser.add_argument("--checkpoint-every", type=int, default=250, help="Named checkpoint interval")
     parser.add_argument("--recovery-checkpoint-every", type=int, default=0, help="Overwrite latest_good.pt every N successful updates; 0 disables")
     parser.add_argument("--parameter-check-every", type=int, default=25, help="Full parameter and optimizer-state finite scan interval; loss and gradients are still checked every step")
@@ -338,8 +339,8 @@ def main():
 
     if args.steps < 1 or (args.steps > 10000 and not args.dummy_m1):
         parser.error("--steps must be between 1 and 10000")
-    if args.log_every < 1 or args.checkpoint_every < 1 or args.recovery_checkpoint_every < 0 or args.parameter_check_every < 1:
-        parser.error("log/checkpoint/parameter-check intervals must be positive; recovery interval may be zero")
+    if args.log_every < 1 or args.affect_every < 1 or args.checkpoint_every < 1 or args.recovery_checkpoint_every < 0 or args.parameter_check_every < 1:
+        parser.error("log/affect/checkpoint/parameter-check intervals must be positive; recovery interval may be zero")
     if args.surprise_gate_loss is not None and args.surprise_gate_loss < 0:
         parser.error("--surprise-gate-loss must be non-negative")
     if args.threads < 1 or args.interop_threads < 1:
@@ -680,7 +681,7 @@ def main():
     if args.compile_mode:
         compiled_model = torch.compile(model, mode=args.compile_mode)
         LOG.info("torch_compile enabled: mode=%s; diagnostic forwards remain eager", args.compile_mode)
-    glucose_loss_window = deque(maxlen=args.log_every)
+    glucose_loss_window = deque(maxlen=args.affect_every)
     profile = {"forward": 0.0, "backward": 0.0, "sleep": 0.0, "wall": 0.0}
     cached_gradients = None
     optimizer_updates = 0
@@ -824,7 +825,7 @@ def main():
 
         if step % args.log_every == 0 or step == start + 1:
             glucose_signal = "not_checked"
-            if step % args.log_every == 0 and glucose_loss_window:
+            if step % args.affect_every == 0 and glucose_loss_window:
                 check_loss = sum(glucose_loss_window) / len(glucose_loss_window)
                 shared_loss_signal = model.presupuesto.check_loss_signal(check_loss)
                 improved = shared_loss_signal["improved"]

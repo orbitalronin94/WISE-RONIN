@@ -14,6 +14,8 @@ on:
       - ".github/workflows/lumen-2000-3000-compiled-holdout.yml"
       - ".github/workflows/lumen-3000-6000-compiled.yml"
       - ".github/workflows/lumen-stability-ab.yml"
+      - ".github/workflows/continue-paired-750000-1000000-v32-lr3e5.yml"
+      - ".github/workflows/train-paired-block-v32-lr3e5-1m.yml"
       - ".github/workflows/lumen-memory-sleep-3000-4000.yml"
       - ".github/workflows/ronin-longrun-3000-8000-parallel.yml"
       - ".github/workflows/benchmark-lumen-hotspots.yml"
@@ -73,6 +75,8 @@ jobs:
               Path(".github/workflows/lumen-memory-sleep-3000-4000.yml"),
               Path(".github/workflows/ronin-longrun-3000-8000-parallel.yml"),
               Path(".github/workflows/benchmark-lumen-hotspots.yml"),
+              Path(".github/workflows/continue-paired-750000-1000000-v32-lr3e5.yml"),
+              Path(".github/workflows/train-paired-block-v32-lr3e5-1m.yml"),
           ):
               workflow = yaml.safe_load(workflow_path.read_text())
               for job_name, job in workflow.get("jobs", {}).items():

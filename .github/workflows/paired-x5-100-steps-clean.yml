@@ -2,6 +2,10 @@ name: WISE-RONIN — paired LUMEN x5 + Transformer x5 (100 steps)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/paired-x5-100-steps-clean.yml'
 
 permissions:
   contents: read

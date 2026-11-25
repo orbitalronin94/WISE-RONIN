@@ -398,3 +398,48 @@ Lumen queda 26 respuestas por delante (+1,07 puntos porcentuales); Transformer c
 Se preservan pesos, momentos AdamW y RNG. Cada modelo reinicia una transición de learning rate desde el estado del optimizador que conserva, hasta el horizonte común de 300.000, con tasas base respectivas de 3e-5 para Lumen y 7,5e-5 para Transformer. Los tramos se guardan en bloques de 10.000 o menos; Lumen mantiene recovery checkpoints cada 100 actualizaciones y checkpoints numerados cada 1.000, Transformer checkpoints cada 250.
 
 El corpus permanece congelado en 250.000 filas (200.000 v2 + 50.000 de personalidad factual), tokenizer de 4.096 IDs, seed 42, batch 8 y contexto 128. El corpus v3 no se incorpora: su gate de entrenamiento continúa cerrado. La ficha estructurada de promoción y procedencia está en [experiments/step_219700_promotion.json](../experiments/step_219700_promotion.json).
+
+
+## XII. Holdout doble de step 710.000: LUMEN invierte la ventaja en elección múltiple
+
+**25 de noviembre de 2026** · [Run de evaluación 45558806917](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45558806917) · [Artefacto 14996339403](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45558806917/artifacts/14996339403) · [Informe completo](RESULTADOS_HOLDOUT_710K_ES.md).
+
+### Holdout oficial de elección múltiple
+
+Los checkpoints exactos de step 710.000 se evaluaron sobre las mismas 2.431 preguntas, tokenizer y método de NLL condicional por opción. No hubo actualizaciones durante la evaluación.
+
+| Modelo | Aciertos | Accuracy | NLL media |
+|---|---:|---:|---:|
+| **LUMEN** | **839/2.431** | **34,51 %** | **5,4783408** |
+| Transformer | 814/2.431 | 33,48 % | 5,4867445 |
+
+LUMEN obtiene 25 aciertos más (+1,03 puntos porcentuales) y una NLL 0,0084036 menor. Es la inversión respecto al check 500k, donde LUMEN obtuvo 816 y Transformer 840: el saldo relativo pasa de −24 a +25 respuestas.
+
+La comparación emparejada: ambos correctos 498; solo LUMEN correcto 270; solo Transformer correcto 258; ambos incorrectos 1.230. McNemar exacto bilateral p≈0,632. La diferencia no es estadísticamente concluyente. El resultado sí documenta una mejora observada de LUMEN frente a su propio check 500k (+23 aciertos) y un descenso del Transformer (−26), pero no permite atribuir causalidad a un órgano o mecanismo aislado.
+
+### Holdout abierto informal de 100 preguntas
+
+Se ejecutó además scripts/freeform_identity_general_holdout.py sobre las 100 preguntas fijas en español, sin opciones ni respuestas de referencia. Se comprobó expresamente que la primera pregunta fuera **«¿Quién eres?»**. Ambos checkpoints recibieron los mismos prompts; decodificación greedy argmax, sin penalización de repetición y con máximo de 96 tokens.
+
+| Indicador | LUMEN | Transformer |
+|---|---:|---:|
+| Respuestas que terminaron por EOS | 82/100 | 83/100 |
+| Respuestas que alcanzaron 96 tokens | 18/100 | 17/100 |
+| Media de tokens generados | 42,02 | 43,21 |
+| Respuestas con «la que la que» | 41/100 | — |
+| Respuestas con «Contexto documental» | 20/100 | — |
+| Respuestas con «en Python» | — | 22/100 |
+| Respuestas con «música» | — | 10/100 |
+
+La primera respuesta a «¿Quién eres?» no es satisfactoria en ninguno de los dos casos: LUMEN entra en repetición de «la que», mientras Transformer deriva hacia una repetición sobre «la música». El conjunto completo mantiene otros bucles léxicos. Son recuentos de presencia de cadenas, no una puntuación semántica ni una métrica automática de calidad.
+
+**Lectura:** el holdout de elección múltiple favorece ahora a LUMEN en las dos métricas registradas; el holdout abierto muestra que la fluidez y la identidad conversacional continúan sin resolver. No se deben mezclar ambas tareas ni presentar la victoria de accuracy como una mejora general de generación. La diferencia de elección múltiple tampoco supera el umbral de evidencia estadística convencional en el análisis pareado.
+
+### Trazabilidad
+
+- Run: [45558806917](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45558806917).
+- Artefacto: [14996339403](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45558806917/artifacts/14996339403), contiene paired_step710000_official_2431.json y los informes JSON/Markdown de las 100 respuestas libres.
+- Checkpoint LUMEN step 710.000: artefacto [14996386123](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45480785478/artifacts/14996386123).
+- Checkpoint Transformer step 710.000: artefacto [14988880143](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45480785478/artifacts/14988880143).
+
+La conclusión queda limitada a estos checkpoints, este corpus, esta semilla y estos dos protocolos. La siguiente evaluación deberá mantener el pareado y volver a observar si la inversión se sostiene.

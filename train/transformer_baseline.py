@@ -46,12 +46,14 @@ class CausalBlock(nn.Module):
 
 class SmallTransformerLM(nn.Module):
     """2,295,168 parameters at the frozen 4k vocabulary and 128 context."""
-    def __init__(self, vocab_size=4096, max_seq=128):
+    def __init__(self, vocab_size=4096, max_seq=128, width=192, heads=4, ff_width=None):
         super().__init__()
-        width = 192
+        ff_width = int(ff_width or width * 3)
+        if width % heads:
+            raise ValueError("model width must be divisible by attention heads")
         self.token_emb = nn.Embedding(vocab_size, width)
         self.position_emb = nn.Embedding(max_seq, width)
-        self.blocks = nn.ModuleList([CausalBlock(width, 4, 576) for _ in range(4)])
+        self.blocks = nn.ModuleList([CausalBlock(width, heads, ff_width) for _ in range(4)])
         self.norm = nn.LayerNorm(width)
         self.lm_head = nn.Linear(width, vocab_size, bias=False)
         self.lm_head.weight = self.token_emb.weight
@@ -106,7 +108,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args,
         "tokens_seen": tokens_seen,
         "params": params,
         "architecture_id": ARCHITECTURE_ID,
-        "architecture": "4-layer decoder-only Transformer, d_model=192, heads=4, ffn=576, tied embeddings",
+        "architecture": f"4-layer decoder-only Transformer, d_model={args.model_dim}, heads={args.heads}, ffn={args.ff_width or args.model_dim * 3}, tied embeddings",
         "training_config": {
             "batch": args.batch, "max_len": args.max_len, "lr": args.lr,
             "warmup": args.warmup, "total_steps": args.total_steps,
@@ -141,6 +143,9 @@ def main():
     p.add_argument("--resume", help="Previous global-step checkpoint")
     p.add_argument("--batch", type=int, default=8)
     p.add_argument("--max-len", type=int, default=128)
+    p.add_argument("--model-dim", type=int, default=192)
+    p.add_argument("--heads", type=int, default=4)
+    p.add_argument("--ff-width", type=int, default=None)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--lr", type=float, default=CONFIG.learning_rate)
     p.add_argument("--warmup", type=int, default=100)
@@ -191,7 +196,12 @@ def main():
         tokenized_rows = None
         LOG.info("loaded packed token cache rows=%d max_len=%d", len(rows), args.max_len)
 
-    model = SmallTransformerLM(CONFIG.vocab_size, args.max_len).cpu()
+    if args.model_dim < 1 or args.heads < 1 or args.model_dim % args.heads:
+        p.error("--model-dim must be positive and divisible by --heads")
+    ff_width = args.ff_width or args.model_dim * 3
+    model = SmallTransformerLM(CONFIG.vocab_size, args.max_len, args.model_dim, args.heads, ff_width).cpu()
+    global ARCHITECTURE_ID
+    ARCHITECTURE_ID = f"decoder_transformer_4l_d{args.model_dim}_h{args.heads}_ff{ff_width}_tied_v1"
     params = sum(x.numel() for x in model.parameters())
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.lr, weight_decay=CONFIG.weight_decay,

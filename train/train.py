@@ -521,7 +521,13 @@ def main():
             raise ValueError("Checkpoint training hyperparameters mismatch")
         if state.get("seed", args.seed) != args.seed:
             raise ValueError("Checkpoint seed mismatch")
-        if state["config"] != CONFIG.to_dict():
+        saved_model_config = dict(state.get("config") or {})
+        # Backward-compatible defaults for architecture fields added after
+        # older checkpoints were written. Missing keys resolve only to the
+        # original base defaults, never to an experimental override.
+        for key, value in LumenConfig().to_dict().items():
+            saved_model_config.setdefault(key, value)
+        if saved_model_config != CONFIG.to_dict():
             raise ValueError("Checkpoint model config mismatch")
         args.data_lineage = list(state.get("data_lineage", []))
         transition = resolve_data_transition(

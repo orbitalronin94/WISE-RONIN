@@ -103,7 +103,7 @@ Esta sección sustituye las estimaciones preliminares anteriores sobre el alcanc
 
 ### Ajuste de la cuota de personalidad
 
-Con el rechazo documental completo, el candidato inicial de 160.000 filas dejaría el bloque de personalidad por debajo del mínimo del 10% después de la deduplicación y la mezcla. La cuota se elevó a **165.000 filas** (105.000 m-personas + 60.000 SFT-General Spanish). La proporción real solo se podrá confirmar después del merge, los rechazos y la deduplicación global.
+Con el rechazo documental completo, el candidato inicial de 160.000 filas dejaría el bloque de personalidad por debajo del mínimo del 10% después de la deduplicación y la mezcla. La cuota se elevó a **180.000 filas** (114.545 m-personas + 65.455 SFT-General Spanish). La proporción real solo se podrá confirmar después del merge, los rechazos y la deduplicación global.
 
 Este cálculo no autoriza el entrenamiento. La compilación documental de 1,8 M, el merge final y la auditoría independiente de los shards siguen siendo requisitos.
 
@@ -146,3 +146,12 @@ La congelación no debe tomar silenciosamente un artefacto antiguo cuando existe
 La modificación del workflow está en la rama de la PR #97. La compilación OpenCulture anterior [45559446972](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45559446972) se sustituyó porque utilizaba una revisión del builder con fuentes que ya no forman parte de la allowlist. La nueva compilación estricta es [45561584743](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45561584743), basada en el commit `44db282`; sigue en curso y no se considera válida hasta que termine y sus shards y manifiesto superen el merge. La personalidad/diálogo tiene un artefacto candidato verificado de 165.000 filas, 105.000 de m-personas y 60.000 de SFT-General-Spanish; conserva `training_authorized=false`.
 
 **Estado de esta auditoría:** corpus todavía no entrenable. La cifra de filas candidatas, por sí sola, no cambia este estado. Solo el artefacto final con hashes verificados, objetivos cumplidos, proporción de personalidad dentro del 10–15%, procedencia/licencias comprobadas, ausencia de atractores/PII/holdout y smoke test del cargador real puede recibir autorización.
+
+
+## Reescalado de personalidad para la expansión documental x10 (25-11-2026)
+
+La cuota anterior de 165.000 filas era un mínimo ajustado al límite inferior del 10%, no una reserva con margen. El cálculo debe incluir las 57.870 filas de personalidad que sobreviven en la base tras la auditoría de atractores; no se debe calcular la cuota como si la base careciera de personalidad. Con 251.230 filas base admitidas, 1.800.000 filas documentales nuevas y 165.000 filas nuevas de personalidad, la estimación previa era aproximadamente 10,06%, antes de los rechazos finales por licencia y deduplicación global.
+
+Para no trabajar pegados al umbral, la cuota candidata se eleva a **180.000 filas nuevas** manteniendo el reparto de fuentes: **114.545 m-personas (Apache-2.0)** y **65.455 SFT-General-Spanish (CC-BY-4.0)**. Bajo los recuentos auditados, esto proyecta aproximadamente **10,66%** de personalidad/diálogo en el corpus final. Es una proyección, no un resultado: el manifiesto de merge debe calcular la proporción real después de todos los filtros y deduplicación.
+
+El gate del merge sube a 175.000 filas mínimas de personalidad/diálogo y conserva la condición obligatoria de share entre 10% y 15%. Si la compilación documental supera 1,8 M o los rechazos alteran la mezcla, el gate debe fallar y la cuota se recalculará; nunca se autoriza por cumplir solo el recuento bruto del builder.

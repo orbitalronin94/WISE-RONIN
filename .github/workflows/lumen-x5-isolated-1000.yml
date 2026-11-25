@@ -46,7 +46,7 @@ jobs:
           path: corpus
           repository: orbitalronin94/WISE-RONIN
           run-id: 45580013610
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify frozen V4 metadata, tokenizer and all shards
         shell: bash

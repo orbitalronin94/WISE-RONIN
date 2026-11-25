@@ -309,3 +309,16 @@ Los dos checkpoints step 500.000 se han validado como padres de la siguiente cam
 - **Evaluación:** holdout fijo de 2.431 preguntas, sin uso durante entrenamiento.
 
 El corpus v4 no participa: su auditoría independiente detectó una fila sin source_document_id y el gate de autorización no se superó.
+
+
+## Holdout emparejado en step 710.000 — inversión de la ventaja (25-11-2026)
+
+Run de evaluación: [45558806917](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45558806917) · [Artefacto con ambos holdouts y predicciones](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45558806917/artifacts/14996339403) · [Informe detallado](docs/RESULTADOS_HOLDOUT_710K_ES.md).
+
+Sobre el holdout oficial congelado de 2.431 preguntas, LUMEN obtiene **839/2.431 (34,51%; NLL 5,47834)** y el Transformer **814/2.431 (33,48%; NLL 5,48674)**. LUMEN queda 25 respuestas por delante (+1,03 puntos porcentuales) y su NLL es 0,00840 menor. En step 500.000 el Transformer aventajaba a LUMEN por 24 respuestas; en step 710.000 la diferencia observada se invierte y LUMEN queda 25 por delante.
+
+El análisis pregunta a pregunta arroja 498 aciertos compartidos, 270 exclusivos de LUMEN, 258 exclusivos del Transformer y 1.230 fallos compartidos. McNemar exacto bilateral: p≈0,632. La inversión es prometedora, pero no estadísticamente concluyente; no se proclama superioridad general ni causalidad de un mecanismo concreto.
+
+También se ejecutó el holdout abierto informal de **100 preguntas**, sin opciones ni respuestas de referencia, incluyendo «¿Quién eres?». Ambos modelos recibieron exactamente los mismos prompts y generaron por greedy argmax, máximo 96 tokens. El resultado cualitativo aún muestra bucles: «la que la que» aparece en 41 respuestas de LUMEN; «Contexto documental» en 20. En Transformer, «en Python» aparece en 22 y «música» en 10. Terminaron por EOS 82 respuestas de LUMEN y 83 del Transformer. No es una prueba de accuracy: expone que la generación libre sigue siendo frágil en ambos.
+
+Conclusión provisional: LUMEN ha recuperado la ventaja en el holdout de elección múltiple y mejora ligeramente la NLL, pero el margen es pequeño y la prueba pareada no lo confirma como diferencia robusta. El holdout abierto impide confundir ese avance con una solución del problema de repetición o de identidad. Se mantiene el Transformer como control y se conserva el protocolo congelado.

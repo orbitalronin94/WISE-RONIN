@@ -108,7 +108,7 @@ def save_checkpoint(path, model, optimizer, scheduler, step, args,
         "tokens_seen": tokens_seen,
         "params": params,
         "architecture_id": ARCHITECTURE_ID,
-        "architecture": f"4-layer decoder-only Transformer, d_model={args.model_dim}, heads={args.heads}, ffn={args.ff_width or args.model_dim * 3}, tied embeddings",
+        "architecture": f"4-layer decoder-only Transformer, d_model={getattr(args, 'model_dim', 192)}, heads={getattr(args, 'heads', 4)}, ffn={getattr(args, 'ff_width', None) or getattr(args, 'model_dim', 192) * 3}, tied embeddings",
         "training_config": {
             "batch": args.batch, "max_len": args.max_len, "lr": args.lr,
             "warmup": args.warmup, "total_steps": args.total_steps,

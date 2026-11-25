@@ -155,3 +155,9 @@ La cuota anterior de 165.000 filas era un mínimo ajustado al límite inferior d
 Para no trabajar pegados al umbral, la cuota candidata se eleva a **180.000 filas nuevas** manteniendo el reparto de fuentes: **114.545 m-personas (Apache-2.0)** y **65.455 SFT-General-Spanish (CC-BY-4.0)**. Bajo los recuentos auditados, esto proyecta aproximadamente **10,66%** de personalidad/diálogo en el corpus final. Es una proyección, no un resultado: el manifiesto de merge debe calcular la proporción real después de todos los filtros y deduplicación.
 
 El gate del merge sube a 175.000 filas mínimas de personalidad/diálogo y conserva la condición obligatoria de share entre 10% y 15%. Si la compilación documental supera 1,8 M o los rechazos alteran la mezcla, el gate debe fallar y la cuota se recalculará; nunca se autoriza por cumplir solo el recuento bruto del builder.
+
+## Control de congelación actualizado (25-11-2026)
+
+La ejecución antigua [45559065309](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45559065309), iniciada con la configuración previa, quedó cancelada y no produjo artefactos. La nueva ejecución [45562267530](https://github.com/orbitalronin94/WISE-RONIN/actions/runs/45562267530) falló deliberadamente en el control inicial: detectó que el último candidato OpenCulture seguía en curso y se negó a reutilizar un artefacto anterior. No descargó candidatos, no hizo merge y no autorizó entrenamiento.
+
+Se corrigió además el orden final: el smoke test del cargador de producción debe pasar mientras el manifiesto sigue con `training_authorized=false`; solo después se cambia a `true`. Esta corrección está en el workflow de la rama. La próxima congelación se lanzará cuando ambos builders actuales hayan terminado y sus manifiestos se hayan auditado.

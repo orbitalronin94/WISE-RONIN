@@ -138,7 +138,7 @@ jobs:
           set -euo pipefail
           mkdir -p checkpoints/lumen logs
           python -m train.train \
-            --steps 100 --checkpoint-every 100 \
+            --steps 100 --log-every 1 --checkpoint-every 100 \
             --recovery-checkpoint-every 25 --parameter-check-every 25 \
             --threads 4 --interop-threads 2 \
             --data inputs --tokenizer inputs/tokenizer.json \
@@ -167,7 +167,7 @@ jobs:
           set -euo pipefail
           mkdir -p checkpoints/transformer logs
           python -m train.transformer_baseline \
-            --steps 100 --log-every 1 --checkpoint-every 100 \
+            --steps 100 --checkpoint-every 100 \
             --parameter-check-every 25 \
             --data inputs --tokenizer inputs/tokenizer.json \
             --batch 8 --max-len 128 --seed 42 --threads 4 --interop-threads 2 \

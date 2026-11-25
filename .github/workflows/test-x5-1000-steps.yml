@@ -1,4 +1,4 @@
-name: WISE-RONIN x5 — paired 1000-step smoke train
+# First paired from-zero train: push-triggered, one independent job per model.\nname: WISE-RONIN x5 — paired 1000-step smoke train
 
 on:
   push:

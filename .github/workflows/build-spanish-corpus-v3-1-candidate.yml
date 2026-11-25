@@ -1,0 +1,116 @@
+name: Build Spanish corpus v3.1 conservative candidate (not authorized)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [corpus-v3-1-audit]
+    paths:
+      - scripts/build_spanish_corpus_v3_1_candidate.py
+      - .github/workflows/build-spanish-corpus-v3-1-candidate.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: spanish-corpus-v3-1-candidate
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install candidate builder dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install datasets huggingface_hub tokenizers
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Download exact frozen 250k base corpus, tokenizer and token cache
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-v2-plus-personality-250k-45149684913
+          path: prepared
+          repository: orbitalronin94/WISE-RONIN
+          run-id: 45149684913
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify known immutable source paths
+        run: |
+          set -euo pipefail
+          BASE_JSONL=prepared/data/spanish-v2-plus-personality-250k.jsonl
+          BASE_CACHE=prepared/data/spanish-v2-plus-personality-token-cache.pt
+          TOKENIZER=prepared/artifacts/spanish-v2/tokenizer.json
+          HOLDOUT=prepared/artifacts/spanish-v2/holdout_multiple_choice.jsonl
+          test -s "$BASE_JSONL"
+          test -s "$BASE_CACHE"
+          test -s "$TOKENIZER"
+          test -s "$HOLDOUT"
+          echo "BASE_JSONL=$BASE_JSONL" >> "$GITHUB_ENV"
+          echo "BASE_CACHE=$BASE_CACHE" >> "$GITHUB_ENV"
+          echo "TOKENIZER=$TOKENIZER" >> "$GITHUB_ENV"
+          echo "HOLDOUT=$HOLDOUT" >> "$GITHUB_ENV"
+          sha256sum "$BASE_JSONL" "$BASE_CACHE" "$TOKENIZER" "$HOLDOUT"
+      - name: Audit the original personality/factual dataset
+        run: |
+          python scripts/audit_personality_corpus.py \
+            --input "$BASE_JSONL" \
+            --output-dir artifacts/personality-audit \
+            --sample-per-source 120 --seed 42
+      - name: Build conservative v3.1 and quarantine doubtful rows
+        run: |
+          python scripts/build_spanish_corpus_v3_1_candidate.py \
+            --base-jsonl "$BASE_JSONL" \
+            --base-token-cache "$BASE_CACHE" \
+            --tokenizer "$TOKENIZER" \
+            --output-dir artifacts/spanish-v3-1-candidate \
+            --max-len 128 \
+            --review-per-source 200
+      - name: Preserve frozen tokenizer, holdout and validation
+        run: |
+          set -euo pipefail
+          cp "$TOKENIZER" artifacts/spanish-v3-1-candidate/tokenizer.json
+          cp "$HOLDOUT" artifacts/spanish-v3-1-candidate/holdout_multiple_choice.jsonl
+          cmp -s "$HOLDOUT" artifacts/spanish-v3-1-candidate/holdout_multiple_choice.jsonl
+          if test -f prepared/artifacts/spanish-v2/validation.jsonl; then
+            cp prepared/artifacts/spanish-v2/validation.jsonl artifacts/spanish-v3-1-candidate/validation.jsonl
+          fi
+      - name: Validate manifest, cache, hashes and protected evaluation
+        run: |
+          python - <<'PY'
+          import hashlib, json, torch
+          from pathlib import Path
+          root = Path("artifacts/spanish-v3-1-candidate")
+          manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+          assert manifest["status"] == "CANDIDATE_NOT_AUTHORIZED"
+          assert manifest["training_authorized"] is False
+          assert manifest["added_rows"] > 0
+          assert manifest["quarantined_base_rows"] > 0
+          data = root / "spanish-v3-1-candidate.jsonl"
+          rows = sum(1 for _ in data.open(encoding="utf-8"))
+          assert rows == manifest["total_rows"]
+          assert hashlib.sha256(data.read_bytes()).hexdigest() == manifest["combined_data_sha256"]
+          cache = torch.load(root / "spanish-v3-1-token-cache.pt", map_location="cpu", weights_only=False)
+          assert cache["format"] == "ronin_token_cache_v1"
+          assert cache["data_sha256"] == manifest["combined_data_sha256"]
+          assert cache["row_count"] == manifest["total_rows"] == len(cache["encoded_rows"])
+          assert cache["tokenizer_sha256"] == manifest["tokenizer_sha256"]
+          assert all(isinstance(row, list) and 2 <= len(row) <= 128 for row in cache["encoded_rows"])
+          assert hashlib.sha256((root / "tokenizer.json").read_bytes()).hexdigest() == manifest["tokenizer_sha256"]
+          assert (root / "holdout_multiple_choice.jsonl").is_file()
+          print(json.dumps(manifest, ensure_ascii=False, indent=2))
+          PY
+      - name: Upload non-authorized corpus and redacted review material
+        uses: actions/upload-artifact@v4
+        with:
+          name: wise-ronin-spanish-corpus-v3-1-candidate-${{ github.run_id }}
+          path: |
+            artifacts/spanish-v3-1-candidate/
+            artifacts/personality-audit/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0

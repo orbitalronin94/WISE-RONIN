@@ -1,0 +1,50 @@
+name: Audit frozen personality corpus for v3.1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [corpus-v3-1-audit]
+    paths:
+      - scripts/audit_personality_corpus.py
+      - .github/workflows/audit-personality-corpus-v3-1.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: personality-corpus-audit-v3-1
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exact frozen 250k input used by the 155.7k paired run
+        uses: actions/download-artifact@v4
+        with:
+          name: ronin-v2-plus-personality-250k-45149684913
+          path: prepared
+          repository: orbitalronin94/WISE-RONIN
+          run-id: 45149684913
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify source and audit the original merged dataset
+        run: |
+          set -euo pipefail
+          INPUT="prepared/data/spanish-v2-plus-personality-250k.jsonl"
+          test -s "$INPUT"
+          python scripts/audit_personality_corpus.py \
+            --input "$INPUT" \
+            --output-dir artifacts/personality-audit \
+            --sample-per-source 120 \
+            --seed 42
+      - name: Publish audit report and redacted review sample
+        uses: actions/upload-artifact@v4
+        with:
+          name: personality-corpus-audit-v3-1-${{ github.run_id }}
+          path: artifacts/personality-audit/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6

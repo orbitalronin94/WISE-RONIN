@@ -1,0 +1,232 @@
+name: V3.2.005 pilot — LUMEN × Transformer, 5k each
+
+on:
+  workflow_dispatch:
+    inputs:
+      corpus_run_id:
+        description: "Successful run that published the immutable v3.2.005 input artifact"
+        required: true
+        default: "45405758303"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: wise-ronin-v32-pilot-5k
+  cancel-in-progress: false
+
+env:
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+  PYTHONUNBUFFERED: "1"
+  EXPECTED_CORPUS_SHA256: "0f7db9d6c4264f68fd6a12a9fe5bfa708e4fc30c1df176de5a4f53081bfe79aa"
+  EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+  ARCHITECTURE_REF: "0047e6d00a143ee0fdd8d0435aab7f18ed6aaec7"
+
+jobs:
+  validate-inputs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CORPUS_RUN_ID: ${{ inputs.corpus_run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.ARCHITECTURE_REF }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download immutable V3.2.005 corpus and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: paired-v32-inputs-${{ inputs.corpus_run_id }}
+          path: inputs
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.corpus_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify corpus, tokenizer, row count and holdout separation
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path("inputs")
+          manifest=json.loads((root/"data/spanish-v3-2.005-manifest.json").read_text(encoding="utf-8"))
+          sha=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+          data=root/"data/spanish-v3-2.005-train.jsonl"
+          tokenizer=root/"artifacts/tokenizer.json"
+          holdout=root/"eval/holdout_multiple_choice.jsonl"
+          assert manifest["corpus"] == "WISE-RONIN Spanish v3.2.005"
+          assert manifest["total_train_rows"] == 279613
+          assert manifest["user_training_authorized"] is True
+          assert manifest["holdout_included"] is False
+          assert manifest["validation_included"] is False
+          assert manifest["data_sha256"] == sha(data) == __import__("os").environ["EXPECTED_CORPUS_SHA256"]
+          assert sha(tokenizer) == __import__("os").environ["EXPECTED_TOKENIZER_SHA256"]
+          assert holdout.is_file() and holdout.stat().st_size > 0
+          with data.open(encoding="utf-8") as f:
+              rows=sum(1 for line in f if line.strip())
+          assert rows == manifest["total_train_rows"]
+          print(json.dumps({
+              "corpus": manifest["corpus"], "rows": rows,
+              "corpus_sha256": sha(data), "tokenizer_sha256": sha(tokenizer),
+              "holdout_sha256": sha(holdout), "holdout_rows": sum(1 for x in holdout.open(encoding="utf-8") if x.strip()),
+              "holdout_used_for_training": False
+          }, ensure_ascii=False, indent=2))
+          PY
+      - name: Validate both trainer CLIs and architecture configs
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+          python -m train.train --help >/dev/null
+          python -m train.transformer_baseline --help >/dev/null
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          l=json.loads(Path("config/lumen_wise_x5.json").read_text())
+          t=json.loads(Path("config/transformer_wise_x5.json").read_text())
+          assert l["vocab_size"] == t["vocab_size"] == 4096
+          assert l["batch_size"] == t["batch_size"] == 8
+          assert l["sequence_length"] == t["max_sequence_length"] == 128
+          assert l["seed"] == t["seed"] == 42
+          assert l["total_steps"] == t["total_steps"] == 25000
+          assert l["learning_rate"] == t["learning_rate"] == 0.00015
+          assert l["warmup_steps"] == t["warmup_steps"] == 100
+          assert (t["model_dim"],t["heads"],t["ff_width"]) == (488,8,1464)
+          print("Matched 5k pilot configuration validated.")
+          PY
+
+  train-lumen:
+    needs: validate-inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      CORPUS_RUN_ID: ${{ inputs.corpus_run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.ARCHITECTURE_REF }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install LUMEN CPU runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+      - name: Download V3.2.005 inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: paired-v32-inputs-${{ inputs.corpus_run_id }}
+          path: inputs
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.corpus_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Recheck immutable inputs before training
+        run: |
+          echo "${EXPECTED_CORPUS_SHA256}  inputs/data/spanish-v3-2.005-train.jsonl" | sha256sum -c -
+          echo "${EXPECTED_TOKENIZER_SHA256}  inputs/artifacts/tokenizer.json" | sha256sum -c -
+      - name: Train LUMEN 0 → 5000
+        run: |
+          mkdir -p checkpoints/lumen logs
+          python -m train.train \
+            --steps 5000 --phase 1 --pilot-all-rows --v32-ze \
+            --model-config config/lumen_wise_x5.json \
+            --runtime-profile config/lumen_cpu_profile.json \
+            --data inputs/data/spanish-v3-2.005-train.jsonl \
+            --tokenizer inputs/artifacts/tokenizer.json \
+            --batch 8 --max-len 128 --seed 42 \
+            --lr 1.5e-4 --warmup 100 --total-steps 25000 \
+            --threads 4 --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity \
+            --log-every 100 --checkpoint-every 1000 --parameter-check-every 100 \
+            --ckpt-dir checkpoints/lumen 2>&1 | tee logs/lumen-0-5000.log
+          test -s checkpoints/lumen/step_5000.pt
+          python - <<'PY'
+          import torch
+          s=torch.load("checkpoints/lumen/step_5000.pt",map_location="cpu",weights_only=False)
+          assert int(s["step"]) == 5000
+          assert int(s["params"]) == 12022016
+          assert s["data_sha256"] == __import__("os").environ["EXPECTED_CORPUS_SHA256"]
+          assert s["tokenizer_sha256"] == __import__("os").environ["EXPECTED_TOKENIZER_SHA256"]
+          assert s.get("optimizer") and s.get("scheduler") and s.get("rng")
+          print("LUMEN checkpoint verified:",s["step"],"steps;",s["params"],"parameters")
+          PY
+      - name: Publish LUMEN checkpoint and log
+        uses: actions/upload-artifact@v4
+        with:
+          name: v32-pilot-lumen-step5000-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/step_5000.pt
+            logs/lumen-0-5000.log
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
+
+  train-transformer:
+    needs: validate-inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      CORPUS_RUN_ID: ${{ inputs.corpus_run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.ARCHITECTURE_REF }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Transformer CPU runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm
+      - name: Download V3.2.005 inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: paired-v32-inputs-${{ inputs.corpus_run_id }}
+          path: inputs
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.corpus_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Recheck immutable inputs before training
+        run: |
+          echo "${EXPECTED_CORPUS_SHA256}  inputs/data/spanish-v3-2.005-train.jsonl" | sha256sum -c -
+          echo "${EXPECTED_TOKENIZER_SHA256}  inputs/artifacts/tokenizer.json" | sha256sum -c -
+      - name: Train Transformer 0 → 5000
+        run: |
+          mkdir -p checkpoints/transformer logs
+          python -m train.transformer_baseline \
+            --steps 5000 --data inputs/data/spanish-v3-2.005-train.jsonl \
+            --tokenizer inputs/artifacts/tokenizer.json \
+            --model-dim 488 --heads 8 --ff-width 1464 \
+            --batch 8 --max-len 128 --seed 42 \
+            --lr 1.5e-4 --warmup 100 --total-steps 25000 \
+            --threads 4 --interop-threads 2 --disable-mkldnn --disable-foreach --cpu-affinity \
+            --log-every 100 --checkpoint-every 1000 --parameter-check-every 100 \
+            --ckpt-dir checkpoints/transformer 2>&1 | tee logs/transformer-0-5000.log
+          test -s checkpoints/transformer/step_5000.pt
+          python - <<'PY'
+          import torch,os
+          s=torch.load("checkpoints/transformer/step_5000.pt",map_location="cpu",weights_only=False)
+          assert int(s["step"]) == 5000
+          assert int(s["params"]) == 11611472
+          assert s["data_sha256"] == os.environ["EXPECTED_CORPUS_SHA256"]
+          assert s["tokenizer_sha256"] == os.environ["EXPECTED_TOKENIZER_SHA256"]
+          assert s.get("optimizer") and s.get("scheduler") and s.get("rng")
+          print("Transformer checkpoint verified:",s["step"],"steps;",s["params"],"parameters")
+          PY
+      - name: Publish Transformer checkpoint and log
+        uses: actions/upload-artifact@v4
+        with:
+          name: v32-pilot-transformer-step5000-${{ github.run_id }}
+          path: |
+            checkpoints/transformer/step_5000.pt
+            logs/transformer-0-5000.log
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1

@@ -1,0 +1,347 @@
+name: LUMEN-WISE x5 — 25k in five recoverable 5k blocks
+
+on:
+  workflow_dispatch:
+    inputs:
+      freeze_run_id:
+        description: "Successful freeze-corpus-v4 workflow run ID"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lumen-wise-x5-paired-${{ inputs.freeze_run_id }}
+  cancel-in-progress: false
+
+env:
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  OMP_DYNAMIC: "FALSE"
+  MKL_DYNAMIC: "FALSE"
+  OMP_WAIT_POLICY: "PASSIVE"
+  FREEZE_RUN_ID: ${{ inputs.freeze_run_id }}
+  PYTHONUNBUFFERED: "1"
+  EXPECTED_TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU test runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy tokenizers tqdm pytest
+      - name: Compile, run all tests and verify x5 parity
+        run: |
+          python -m compileall -q model train scripts
+          PYTHONPATH=. pytest -q tests
+          PYTHONPATH=. python scripts/validate_lumen_wise_x5.py
+      - name: Record frozen architecture revision
+        run: |
+          echo "Architecture commit: $(git rev-parse HEAD)"
+          sha256sum config/lumen_wise_x5.json config/transformer_wise_x5.json config/lumen_cpu_profile.json
+
+  train-lumen:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU training runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download the authorized frozen V4 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-corpus-v4-frozen-${{ inputs.freeze_run_id }}
+          path: corpus
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.freeze_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify authorization, shard hashes and tokenizer
+        run: |
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path("corpus")
+          manifest_path=root/"manifest.json"
+          m=json.loads(manifest_path.read_text(encoding="utf-8"))
+          assert m.get("version")=="v4.0.0"
+          assert m.get("status")=="FROZEN_TRAINABLE"
+          assert m.get("training_authorized") is True
+          assert m.get("raw_text_target_met") and m.get("personality_target_met")
+          assert m.get("tokenizer_sha256")==os.environ["EXPECTED_TOKENIZER_SHA256"]
+          assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest()==m["tokenizer_sha256"]
+          total=0
+          corpus_digest=hashlib.sha256()
+          for shard in m["shards"]:
+              p=root/shard["file"]
+              assert p.is_file() and p.stat().st_size==shard["bytes"]<=104857600
+              shard_digest=hashlib.sha256()
+              with p.open("rb") as handle:
+                  for chunk in iter(lambda:handle.read(1024*1024),b""):
+                      shard_digest.update(chunk)
+                      corpus_digest.update(chunk)
+              assert shard_digest.hexdigest()==shard["sha256"]
+              total+=shard["rows"]
+          assert total==m["total_rows"]
+          experiment={
+              "architecture_commit":os.environ["GITHUB_SHA"],
+              "freeze_run_id":os.environ["FREEZE_RUN_ID"],
+              "freeze_manifest_sha256":hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+              "corpus_data_sha256":corpus_digest.hexdigest(),
+              "tokenizer_sha256":m["tokenizer_sha256"],
+              "lumen_config_sha256":hashlib.sha256(Path("config/lumen_wise_x5.json").read_bytes()).hexdigest(),
+              "transformer_config_sha256":hashlib.sha256(Path("config/transformer_wise_x5.json").read_bytes()).hexdigest(),
+              "lumen_runtime_profile_sha256":hashlib.sha256(Path("config/lumen_cpu_profile.json").read_bytes()).hexdigest(),
+              "steps":25000,"blocks":[5000]*5,"batch":8,"sequence_length":128,"seed":42,
+              "learning_rate":0.00015,"warmup_steps":100,"device":"cpu"
+          }
+          Path("experiment_manifest.json").write_text(json.dumps(experiment,indent=2)+"\n",encoding="utf-8")
+          print(json.dumps({"version":m["version"],"rows":total,"tokens":m["token_count_without_special_tokens"],"personality_share":m["personality_dialogue_share"],"shards":len(m["shards"]),"corpus_data_sha256":experiment["corpus_data_sha256"],"tokenizer_sha256":m["tokenizer_sha256"]},indent=2))
+          PY
+      - name: Train WISE-LUMEN from step 0 in five 5k blocks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/lumen logs
+          PREVIOUS=""
+          for BLOCK in 1 2 3 4 5; do
+            TARGET=$((BLOCK * 5000))
+            echo "===== WISE-LUMEN block ${BLOCK}/5: $((TARGET-5000)) -> ${TARGET} ====="
+            ARGS=(
+              --steps 5000
+              --phase 1 --pilot-all-rows --v32-ze
+              --model-config config/lumen_wise_x5.json
+              --data corpus --tokenizer corpus/tokenizer.json
+              --batch 8 --max-len 128 --seed 42
+              --lr 1.5e-4 --warmup 100 --total-steps 25000
+              --runtime-profile config/lumen_cpu_profile.json
+              --threads 4 --interop-threads 2
+              --log-every 100 --checkpoint-every 1000
+              --recovery-checkpoint-every 100 --parameter-check-every 100
+              --ckpt-dir checkpoints/lumen
+            )
+            if [ -n "$PREVIOUS" ]; then ARGS+=(--resume "$PREVIOUS"); fi
+            python -m train.train "${ARGS[@]}" 2>&1 | tee "logs/lumen-block-${BLOCK}.log"
+            CURRENT="checkpoints/lumen/step_${TARGET}.pt"
+            test -s "$CURRENT"
+            python - "$CURRENT" "$TARGET" "$PREVIOUS" <<'PY'
+          import sys,torch,json
+          from pathlib import Path
+          path,target,previous=sys.argv[1],int(sys.argv[2]),sys.argv[3]
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          experiment=json.loads(Path("experiment_manifest.json").read_text())
+          assert s["data_sha256"]==experiment["corpus_data_sha256"]
+          assert s["tokenizer_sha256"]==experiment["tokenizer_sha256"]
+          assert int(s["step"])==target
+          assert int(s["params"])==12022016
+          assert s["architecture_id"]=="ronin_lumen_v3_3_neuroplasticity"
+          assert s["v32_ze"] is True
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          if previous:
+              p=torch.load(previous,map_location="cpu",weights_only=False)
+              assert s["data_sha256"]==p["data_sha256"]
+              assert s["tokenizer_sha256"]==p["tokenizer_sha256"]
+          print(f"verified LUMEN step={target} params={s['params']} data={s['data_sha256']}")
+          PY
+            PREVIOUS="$CURRENT"
+          done
+      - name: Upload WISE-LUMEN checkpoints and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-wise-x5-checkpoints-${{ github.run_id }}
+          path: |
+            checkpoints/lumen/
+            experiment_manifest.json
+            logs/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 1
+
+  train-transformer:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU training runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download the authorized frozen V4 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wise-ronin-corpus-v4-frozen-${{ inputs.freeze_run_id }}
+          path: corpus
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.freeze_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify authorization, shard hashes and tokenizer
+        run: |
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path("corpus")
+          manifest_path=root/"manifest.json"
+          m=json.loads(manifest_path.read_text(encoding="utf-8"))
+          assert m.get("version")=="v4.0.0" and m.get("status")=="FROZEN_TRAINABLE"
+          assert m.get("training_authorized") is True
+          assert m.get("tokenizer_sha256")==os.environ["EXPECTED_TOKENIZER_SHA256"]
+          assert hashlib.sha256((root/"tokenizer.json").read_bytes()).hexdigest()==m["tokenizer_sha256"]
+          total=0
+          corpus_digest=hashlib.sha256()
+          for shard in m["shards"]:
+              p=root/shard["file"]
+              assert p.is_file() and p.stat().st_size==shard["bytes"]<=104857600
+              shard_digest=hashlib.sha256()
+              with p.open("rb") as handle:
+                  for chunk in iter(lambda:handle.read(1024*1024),b""):
+                      shard_digest.update(chunk); corpus_digest.update(chunk)
+              assert shard_digest.hexdigest()==shard["sha256"]
+              total+=shard["rows"]
+          assert total==m["total_rows"]
+          experiment={
+              "architecture_commit":os.environ["GITHUB_SHA"],
+              "freeze_run_id":os.environ["FREEZE_RUN_ID"],
+              "freeze_manifest_sha256":hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+              "corpus_data_sha256":corpus_digest.hexdigest(),
+              "tokenizer_sha256":m["tokenizer_sha256"],
+              "lumen_config_sha256":hashlib.sha256(Path("config/lumen_wise_x5.json").read_bytes()).hexdigest(),
+              "transformer_config_sha256":hashlib.sha256(Path("config/transformer_wise_x5.json").read_bytes()).hexdigest(),
+              "lumen_runtime_profile_sha256":hashlib.sha256(Path("config/lumen_cpu_profile.json").read_bytes()).hexdigest(),
+              "steps":25000,"blocks":[5000]*5,"batch":8,"sequence_length":128,"seed":42,
+              "learning_rate":0.00015,"warmup_steps":100,"device":"cpu"
+          }
+          Path("experiment_manifest.json").write_text(json.dumps(experiment,indent=2)+"\\n",encoding="utf-8")
+          print(f"Verified authorized V4: {total} rows; {len(m['shards'])} shards; data SHA {experiment['corpus_data_sha256']}")
+          PY
+      - name: Train Transformer from step 0 in five 5k blocks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p checkpoints/transformer logs
+          PREVIOUS=""
+          for BLOCK in 1 2 3 4 5; do
+            TARGET=$((BLOCK * 5000))
+            echo "===== Transformer block ${BLOCK}/5: $((TARGET-5000)) -> ${TARGET} ====="
+            ARGS=(
+              --steps 5000
+              --model-dim 488 --heads 8 --ff-width 1464
+              --data corpus --tokenizer corpus/tokenizer.json
+              --batch 8 --max-len 128 --seed 42 --threads 4
+              --lr 1.5e-4 --warmup 100 --total-steps 25000
+              --parameter-check-every 100 --checkpoint-every 1000
+              --ckpt-dir checkpoints/transformer
+            )
+            if [ -n "$PREVIOUS" ]; then ARGS+=(--resume "$PREVIOUS"); fi
+            python -m train.transformer_baseline "${ARGS[@]}" 2>&1 | tee "logs/transformer-block-${BLOCK}.log"
+            CURRENT="checkpoints/transformer/step_${TARGET}.pt"
+            test -s "$CURRENT"
+            python - "$CURRENT" "$TARGET" "$PREVIOUS" <<'PY'
+          import sys,torch,json
+          from pathlib import Path
+          path,target,previous=sys.argv[1],int(sys.argv[2]),sys.argv[3]
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          experiment=json.loads(Path("experiment_manifest.json").read_text())
+          assert s["data_sha256"]==experiment["corpus_data_sha256"]
+          assert s["tokenizer_sha256"]==experiment["tokenizer_sha256"]
+          assert int(s["step"])==target
+          assert int(s["params"])==11611472
+          assert s["architecture_id"]=="decoder_transformer_4l_d488_h8_ff1464_tied_v1"
+          assert s["tokenizer_sha256"]=="d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+          if previous:
+              p=torch.load(previous,map_location="cpu",weights_only=False)
+              assert s["data_sha256"]==p["data_sha256"]
+              assert s["tokenizer_sha256"]==p["tokenizer_sha256"]
+          print(f"verified Transformer step={target} params={s['params']} data={s['data_sha256']}")
+          PY
+            PREVIOUS="$CURRENT"
+          done
+      - name: Upload Transformer checkpoints and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transformer-wise-x5-checkpoints-${{ github.run_id }}
+          path: |
+            checkpoints/transformer/
+            experiment_manifest.json
+            logs/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 1
+
+  paired-holdout:
+    needs: [train-lumen, train-transformer]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install evaluation runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy scipy
+      - name: Download final LUMEN and Transformer checkpoints
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-wise-x5-checkpoints-${{ github.run_id }}"
+          path: checkpoints
+          merge-multiple: false
+      - name: Download the frozen paired holdout and tokenizer
+        uses: actions/download-artifact@v4
+        with:
+          name: paired-v32-inputs-45405758303
+          path: eval_inputs
+          repository: ${{ github.repository }}
+          run-id: 45405758303
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify both training manifests describe the same experiment
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          manifests=[json.loads(p.read_text()) for p in Path("checkpoints").rglob("experiment_manifest.json")]
+          assert len(manifests)==2, len(manifests)
+          keys=("architecture_commit","freeze_run_id","freeze_manifest_sha256","corpus_data_sha256","tokenizer_sha256","steps","blocks","batch","sequence_length","seed","learning_rate","warmup_steps")
+          for key in keys: assert manifests[0][key]==manifests[1][key], (key,manifests[0][key],manifests[1][key])
+          print(json.dumps({key:manifests[0][key] for key in keys},indent=2))
+          PY
+      - name: Evaluate both step-25k models on the same untouched holdout
+        run: |
+          LUMEN_CKPT="$(find checkpoints -path '*/step_25000.pt' | grep lumen | head -n 1)"
+          TRANSFORMER_CKPT="$(find checkpoints -path '*/step_25000.pt' | grep transformer | head -n 1)"
+          test -s "$LUMEN_CKPT" && test -s "$TRANSFORMER_CKPT"
+          python scripts/evaluate_lumen_wise_x5_holdout.py             --holdout eval_inputs/eval/holdout_multiple_choice.jsonl             --tokenizer eval_inputs/artifacts/tokenizer.json             --lumen "$LUMEN_CKPT" --transformer "$TRANSFORMER_CKPT"             --lumen-config config/lumen_wise_x5.json             --transformer-model-dim 488 --transformer-heads 8 --transformer-ff-width 1464             --expected-lumen-step 25000 --expected-transformer-step 25000             --out results/lumen-wise-x5-holdout.json
+          python scripts/audit_paired_holdout.py             --input results/lumen-wise-x5-holdout.json             --output results/lumen-wise-x5-holdout-audit.json
+      - name: Upload paired holdout report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-wise-x5-holdout-${{ github.run_id }}
+          path: results/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 6

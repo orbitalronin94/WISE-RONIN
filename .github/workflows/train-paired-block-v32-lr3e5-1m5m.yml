@@ -78,7 +78,10 @@ jobs:
           t=s["scheduler_transition"]
           assert int(t["current_step"]) in (step,step+1),t
           if restart:
-            assert step==1000000 and int(t["start_step"])==1000000 and int(t["end_step"])==1000000,t
+            # The 1M parent legitimately ends the prior 750k->1M transition.
+            # The training CLI then starts a fresh 1M->1.5M transition while
+            # preserving optimizer moments, RNG, model weights and data lineage.
+            assert step==1000000 and int(t["start_step"])==750000 and int(t["end_step"])==1000000,t
           else:
             assert int(t["start_step"])==1000000 and int(t["end_step"])==1500000,t
           if model=="lumen":

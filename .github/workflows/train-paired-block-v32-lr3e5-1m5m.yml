@@ -1,0 +1,148 @@
+name: Reusable — paired v3.2.005 training block 1M to 1.5M (LR 3e-5)
+on:
+  workflow_call:
+    inputs:
+      model: {required: true, type: string}
+      parent_step: {required: true, type: number}
+      target_step: {required: true, type: number}
+      steps: {required: true, type: number}
+      parent_artifact: {required: true, type: string}
+      restart_scheduler_transition: {required: false, type: boolean, default: false}
+permissions: {contents: read, actions: read}
+jobs:
+  train:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 720
+    env:
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      OMP_DYNAMIC: "FALSE"
+      MKL_DYNAMIC: "FALSE"
+      OMP_WAIT_POLICY: "PASSIVE"
+      PYTHONUNBUFFERED: "1"
+      TARGET_LR: "3e-5"
+      TOTAL_STEPS: "1500000"
+      TRANSITION_START: "1000000"
+      TRANSITION_END: "1500000"
+      DATA_SHA256: "0f7db9d6c4264f68fd6a12a9fe5bfa708e4fc30c1df176de5a4f53081bfe79aa"
+      TOKENIZER_SHA256: "d7869c11809a28085d5156638086c4833a1dcbacfda4a60b69ec71e26ed3fefe"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: {python-version: "3.14.10"}
+      - name: Install CPU training runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install tokenizers numpy tqdm
+      - name: Download frozen v3.2.005 inputs for this run
+        uses: actions/download-artifact@v7
+        with:
+          name: paired-v32-inputs-1000000-${{ github.run_id }}
+          path: inputs
+      - name: Download preceding checkpoint block
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ inputs.parent_artifact }}
+          path: previous
+      - name: Verify parent and run recoverable block
+        shell: bash
+        env:
+          MODEL: ${{ inputs.model }}
+          PARENT_STEP: ${{ inputs.parent_step }}
+          TARGET_STEP: ${{ inputs.target_step }}
+          STEPS: ${{ inputs.steps }}
+          RESTART_TRANSITION: ${{ inputs.restart_scheduler_transition }}
+        run: |
+          set -euo pipefail
+          test "$((PARENT_STEP + STEPS))" -eq "$TARGET_STEP"
+          test "$STEPS" -eq 5000
+          CKPT="previous/checkpoint/step_${PARENT_STEP}.pt"
+          test -s "$CKPT"
+          test -s inputs/data/spanish-v3-2.005-train.jsonl
+          test -s inputs/data/spanish-v3-2.005-token-cache.pt
+          test -s inputs/artifacts/tokenizer.json
+          test -s inputs/config/lumen-runtime-profile.json
+          mkdir -p checkpoint logs
+          if [ -s "previous/${MODEL}-wall.json" ]; then cp "previous/${MODEL}-wall.json" "${MODEL}-wall.json"; fi
+          python - "$CKPT" "$PARENT_STEP" "$MODEL" "$TARGET_LR" "$RESTART_TRANSITION" "$DATA_SHA256" "$TOKENIZER_SHA256" <<'PY'
+          import hashlib, sys, torch
+          from pathlib import Path
+          path, step, model, lr, restart, data_sha, tok_sha = sys.argv[1], int(sys.argv[2]), sys.argv[3], float(sys.argv[4]), sys.argv[5]=="true", sys.argv[6], sys.argv[7]
+          s=torch.load(path,map_location="cpu",weights_only=False)
+          arch="ronin_lumen_v3_3_neuroplasticity" if model=="lumen" else "decoder_transformer_4l_d192_h4_ff576_tied_v1"
+          assert int(s["step"])==step and s["architecture_id"]==arch
+          assert s.get("optimizer") and s.get("rng") and s.get("scheduler_transition")
+          assert s.get("data_sha256")==data_sha and s.get("tokenizer_sha256")==tok_sha
+          assert abs(float(s["training_config"]["lr"])-lr)<1e-12
+          t=s["scheduler_transition"]
+          assert int(t["current_step"]) in (step,step+1),t
+          if restart:
+            assert step==1000000 and int(t["start_step"])==1000000 and int(t["end_step"])==1000000,t
+          else:
+            assert int(t["start_step"])==1000000 and int(t["end_step"])==1500000,t
+          if model=="lumen":
+            assert s.get("runtime_profile",{}).get("profile_id")=="check0_selected_H02_H03_H04_H05_H06_H09_H18"
+            assert s.get("compute_policy",{}).get("lazy_backward") is True
+          print("Parent validated:",model,step,t)
+          PY
+          RESTART=()
+          if [ "$RESTART_TRANSITION" = "true" ]; then RESTART=(--restart-scheduler-transition); fi
+          if [ "$MODEL" = "lumen" ]; then
+            OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.train \
+              --steps "$STEPS" --resume "$CKPT" --phase 1 --pilot-all-rows \
+              --data inputs/data/spanish-v3-2.005-train.jsonl \
+              --tokenizer inputs/artifacts/tokenizer.json \
+              --token-cache inputs/data/spanish-v3-2.005-token-cache.pt \
+              --batch 8 --max-len 128 --seed 42 \
+              --runtime-profile inputs/config/lumen-runtime-profile.json \
+              --lr "$TARGET_LR" --warmup 100 --total-steps "$TOTAL_STEPS" \
+              --scheduler-transition "${RESTART[@]}" \
+              --transition-start "$TRANSITION_START" --transition-end "$TRANSITION_END" \
+              --warmup-transition 100 --transition-plateau-steps 0 --transition-min-lr-ratio 0.5 \
+              --log-every 100 --checkpoint-every 1000 --recovery-checkpoint-every 100 --parameter-check-every 100 \
+              --threads 4 --interop-threads 2 --lazy-backward --surprise-gate-loss 1.8 \
+              --ckpt-dir checkpoints/lumen --wall-clock-file lumen-wall.json 2>&1 | tee "logs/lumen-${PARENT_STEP}-${TARGET_STEP}.log"
+            FINAL="checkpoints/lumen/step_${TARGET_STEP}.pt"
+          elif [ "$MODEL" = "transformer" ]; then
+            OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python -m train.transformer_baseline \
+              --steps "$STEPS" --resume "$CKPT" \
+              --data inputs/data/spanish-v3-2.005-train.jsonl \
+              --tokenizer inputs/artifacts/tokenizer.json --token-cache inputs/data/spanish-v3-2.005-token-cache.pt \
+              --batch 8 --max-len 128 --seed 42 --threads 4 \
+              --lr "$TARGET_LR" --warmup 100 --total-steps "$TOTAL_STEPS" \
+              --scheduler-transition "${RESTART[@]}" \
+              --transition-start "$TRANSITION_START" --transition-end "$TRANSITION_END" \
+              --warmup-transition 100 --transition-plateau-steps 0 --transition-min-lr-ratio 0.5 \
+              --parameter-check-every 100 --ckpt-dir checkpoints/transformer --wall-clock-file transformer-wall.json \
+              2>&1 | tee "logs/transformer-${PARENT_STEP}-${TARGET_STEP}.log"
+            FINAL="checkpoints/transformer/step_${TARGET_STEP}.pt"
+          else
+            echo "Unsupported model: $MODEL" >&2; exit 2
+          fi
+          test -s "$FINAL"
+          python - "$FINAL" "$TARGET_STEP" "$MODEL" "$TARGET_LR" "$DATA_SHA256" "$TOKENIZER_SHA256" <<'PY'
+          import sys,torch
+          p,step,model,lr,data_sha,tok_sha=sys.argv[1],int(sys.argv[2]),sys.argv[3],float(sys.argv[4]),sys.argv[5],sys.argv[6]
+          s=torch.load(p,map_location="cpu",weights_only=False)
+          arch="ronin_lumen_v3_3_neuroplasticity" if model=="lumen" else "decoder_transformer_4l_d192_h4_ff576_tied_v1"
+          t=s["scheduler_transition"]
+          assert int(s["step"])==step and s["architecture_id"]==arch
+          assert s.get("optimizer") and s.get("rng") and s.get("scheduler") and s.get("data_sha256")==data_sha and s.get("tokenizer_sha256")==tok_sha
+          assert abs(float(s["training_config"]["lr"])-lr)<1e-12
+          assert int(t["start_step"])==1000000 and int(t["end_step"])==1500000 and int(t["current_step"]) in (step,step+1),t
+          print("Output validated:",model,step,t)
+          PY
+          cp "$FINAL" "checkpoint/step_${TARGET_STEP}.pt"
+      - name: Publish recoverable block artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.model }}-step-${{ inputs.target_step }}-v32-1m-${{ github.run_id }}
+          path: |
+            checkpoint/step_${{ inputs.target_step }}.pt
+            ${{ inputs.model }}-wall.json
+            logs/
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 1
